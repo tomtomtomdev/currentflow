@@ -1,6 +1,8 @@
-# IDX Smart-Money Screener — Locked Specification v1.0
+# IDX Smart-Money Screener — Locked Specification v1.1
 
 **Status:** LOCKED. This resolves the eight contradictions from `CONSOLIDATED_THESIS.md` into single, non-negotiable decisions. Build to this; changes require a version bump and a documented reason.
+
+**Changelog — v1.1 (2026-06-30):** §5 veto filters extended with the finer **trap taxonomy** (markup-on-thin-volume, wash/churn, broker rotation), absorbed from the detection-layer spec (`screener/CONSOLIDATED_SCREENER_SPEC.md`). *Reason:* the single "distribution-dressed-as-accumulation" veto was coarse; these three named sub-screens catch pump, manufactured-volume, and disguised-single-player manipulation it misses. No decision (LD-1…LD-8), weight, or threshold changed.
 
 **Core thesis (unchanged):** Smart-money flow *leads* → technical structure *confirms timing* → fundamental quality *sizes conviction & hold horizon*. EOD/T+1 cadence. Long-only. Liquidity-gated.
 
@@ -37,7 +39,7 @@ SCHEDULER (fires on broker-summary publication, ~T+0 evening / T+1)
    ▼
 [4] SMART MONEY SCORE (§4)    — track-specific weights → SMS 0–100
    ▼
-[5] VETO FILTERS (§5)         — kill single-bandar / distribution-dressed-as-accum / news
+[5] VETO FILTERS (§5)         — kill single-bandar / distribution / markup / wash / rotation / news
    ▼
    SMS ≥ 70  AND  phase ∈ {C,D}  AND  no veto  →  state = ARMED  (watchlist)
    ▼
@@ -92,8 +94,16 @@ SCHEDULER (fires on broker-summary publication, ~T+0 evening / T+1)
 
 ## 5. Veto Filters (hard reject regardless of SMS)
 
+*Manipulation / trap detectors:*
+
 - **Single-bandar monopoly** — one broker > 60% of net-buy concentration (gameable).
 - **Distribution-dressed-as-accumulation** — high volume + up-bars closing in lower half / UTAD / no-demand rallies / dominant buyer flipping to net sell.
+- **Markup-on-thin-volume** — price spiking on low value traded (pump signature, not real demand).
+- **Wash / churn** — same broker showing high buy AND high sell (manufactured volume to bait followers).
+- **Broker rotation** — buying baton passing between related/correlated broker codes (one player disguised as many; flag correlated-broker behaviour).
+
+*Noise / context filters:*
+
 - **Retail-FOMO** — retail buy ratio > 60% of volume.
 - **Event-driven** — material news in window (flow is reacting, not leading).
 - **Phase mismatch** — anything not Phase C/D (enforced at [3], restated here).
@@ -147,10 +157,11 @@ Fundamentals **never block an entry** — they only set the multiplier and hold 
 
 ---
 
-## 10. Acceptance Criteria (definition of done for v1.0 rules engine)
+## 10. Acceptance Criteria (definition of done for v1.1 rules engine)
 
 - [ ] No signal consumes data with `availability_ts ≥ decision_ts` (look-ahead test passes).
 - [ ] Phase gate rejects all non-C/D candidates (unit-tested on labeled charts).
+- [ ] Veto filters reject markup-on-thin-volume / wash-churn / broker-rotation cases (unit-tested on labeled examples).
 - [ ] Every order is a limit order with a defined stop and R:R ≥ 2:1.
 - [ ] Fill engine reproduces lot/tick/ARA-ARB/fee math against hand-checked cases.
 - [ ] Backtest and forward-paper share one fill engine; results reconcile.
