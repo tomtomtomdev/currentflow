@@ -1,1 +1,15 @@
 .DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+.venv/
+venv/
+
+# Local store (never commit operator data — spec §10, local-only)
+*.duckdb
+*.duckdb.wal
+*.sqlite
+data/

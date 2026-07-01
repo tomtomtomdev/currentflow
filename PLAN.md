@@ -18,16 +18,17 @@ Legend: ⬜ not started · 🟡 in progress · ✅ done. Keep the box in sync wi
 
 ---
 
-## Slice 1 — Data layer + integrity checks  ⬜
+## Slice 1 — Data layer + integrity checks  ✅
 **Goal:** trustworthy ingestion before anything renders.
-- [ ] `ExodusClient`: Bearer auth + token refresh/re-capture; 401 → fail loud; paywall/rate-limit backoff.
-- [ ] `broker_summary(sym, from, to)` — `marketdetectors/{sym}` (core; history to 2019).
-- [ ] `ohlcv_foreign(sym, from, to)` — `company-price-feed/historical/summary/{sym}` (OHLCV + foreign + VWAP).
-- [ ] `as_of` (availability_ts) stamped on every record; DuckDB store keyed `(symbol, date, as_of)`.
-- [ ] Ingest-once cache: never re-pull a stored datum; nightly incremental only.
-- [ ] Integrity/gap checks: "no trades" ≠ "not published" ≠ "gap"; missing data never read as zero.
-- [ ] **Empirically measure broker-summary publish latency** before trusting same-day signals (LD-5).
-- **Tests:** look-ahead test (`availability_ts < decision_ts`); gap-vs-zero test; cache-idempotency.
+- [x] `ExodusClient`: Bearer auth + token refresh/re-capture (one refresh on 401); 401 → fail loud, no retry; paywall/rate-limit/5xx exponential backoff (2,4,8,16s). Transport injected. `currentflow/dal/client.py`.
+- [x] `broker_summary(sym, from, to)` — `marketdetectors/{sym}` → `list[BrokerNet]` (buy/sell, investor tag, accumulator VWAP).
+- [x] `ohlcv_foreign(sym, from, to)` — `company-price-feed/historical/summary/{sym}` → `list[DailyBar]` (OHLCV + foreign + VWAP).
+- [x] `as_of` (availability_ts) stamped on every record (`dal/timing.py`); DuckDB store keyed `(symbol, date, as_of)` (`store/db.py`, `store/schema.py`).
+- [x] Ingest-once cache: `ingest_symbol` fetches only missing trading days; writes `ON CONFLICT DO NOTHING`; re-pull is a no-op (`ingest/pipeline.py`).
+- [x] Integrity/gap checks: TRADED / NO_TRADES / NOT_PUBLISHED / GAP; missing never read as zero (`store/integrity.py`).
+- [~] **Empirically measure broker-summary publish latency** (LD-5): measurement tool built (`ingest/publish_latency.py`); actual pinning of `config.BROKER_PUBLISH_LATENCY` awaits accrued live data — conservative next-day fallback in force until then.
+- [x] **Tests (23 passing):** look-ahead (`as_of < decision_ts`, strict, latest-visible); gap-vs-zero; cache-idempotency; + parser/client/pipeline.
+- [~] **Live transport not wired:** `login/v6` + MFA Bearer capture and the real httpx transport need operator credentials (out of scope for CI). The client is transport-agnostic and ready to accept it.
 
 ## Slice 2 — Universe gate (§3) + Broker Flow Analyzer  ⬜
 **Goal:** first end-to-end vertical; proves the pipeline.

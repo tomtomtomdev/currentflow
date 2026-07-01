@@ -1,0 +1,22 @@
+[project]
+name = "currentflow"
+version = "0.1.0"
+description = "Private single-operator IDX smart-money screener & flow terminal"
+requires-python = ">=3.11"
+dependencies = [
+    "duckdb>=1.0",
+    "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.setuptools.packages.find]
+include = ["currentflow*"]

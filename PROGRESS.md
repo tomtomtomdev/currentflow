@@ -15,7 +15,7 @@ whenever a slice lands or a module changes validation state. Pairs with `PLAN.md
 | Spec & docs (LOCKED_SPEC v1.1, DATA_SOURCES, screeners) | ✅ | 2026-07-01 | Spec locked; data layer mapped to Stockbit `exodus`; server-side screeners defined. |
 | Companion scaffolding (PLAN, CLAUDE, PROGRESS) | ✅ | 2026-07-01 | This file + PLAN.md + CLAUDE.md created per spec §14. |
 | UI design handoff (hifi) | ✅ | 2026-07-01 | `design/` — README + `.dc.html` prototype; all 8 modules, RULE A/B enforced, seeded mock. Spec in bundle verified identical to root. Reference only, not shipped. |
-| 1 · Data layer + integrity checks | ⬜ | — | Not started. |
+| 1 · Data layer + integrity checks | ✅ | 2026-07-01 | `ExodusClient` (broker_summary + ohlcv_foreign; 401 fail-loud, refresh, exponential backoff); DuckDB store keyed `(symbol,date,as_of)`, ingest-once; integrity TRADED/NO_TRADES/NOT_PUBLISHED/GAP; look-ahead-safe reads. 23 tests pass. Pending live: `login/v6`+MFA transport & empirical broker publish-latency pinning (LD-5, conservative next-day fallback in force). |
 | 2 · Universe gate + Broker Flow Analyzer | ⬜ | — | Not started. |
 | 3 · Foreign Flow Dashboard + Money Flow Replay | ⬜ | — | Not started. |
 | 4 · Phase classifier + SMS (internal) + veto | ⬜ | — | Not started. |
@@ -72,3 +72,4 @@ Record any spec deviation here with a reason and the spec version bump it trigge
 | 2026-07-01 | UI design handoff added under `design/` | Operator-provided hifi design target for §9 modules | v1.1 (no bump) |
 | 2026-07-01 | Front-end stack = Streamlit (chose over React/hybrid) | Stay faithful to spec §10; single-user local tool; accept approximate fidelity | v1.1 (no bump) |
 | 2026-07-01 | Store pinned = DuckDB (chose over SQLite) | Analytical (OLAP) workload — backtest, window-function aggregations (persistence/Herfindahl/NBSA), Replay range-scans over `(symbol, date, as_of)`; native Pandas/Polars/Arrow integration; nightly-batch single-writer ingest makes SQLite's OLTP/concurrency edge irrelevant. Within spec §10's SQLite/DuckDB allowance — pin, not a deviation. | v1.1 (no bump) |
+| 2026-07-01 | Slice 1 impl choices: async DAL (injectable transport); timestamps WIB-local tz-naive; broker `as_of` = feed `data_last_updated` else conservative next-day 09:00 (LD-5) | Async matches DATA_SOURCES §6 surface + enables throttled concurrent paywalled pulls; single-exchange tz needs no zone mixing; conservative fallback keeps look-ahead honest until latency measured. Implementation detail within spec. | v1.1 (no bump) |
