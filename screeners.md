@@ -12,6 +12,11 @@ IHSG universe (~900)
    ▼  computes SMS components → phase gate → veto → ARMED   (spec §2–§5)
 ```
 
+> **Full flowchart:** [`diagrams/screening-flow.pdf`](diagrams/screening-flow.pdf) — the complete
+> funnel (SCR-0 → SCR-1A/B/C → engine → RULE A phase gate → veto → ARMED → SCR-2/3 → trigger →
+> SCR-4 → fill → SCR-EXIT → RULE B validation → UI), colour-coded server-side vs in-engine.
+> Regenerable from [`diagrams/screening-flow.html`](diagrams/screening-flow.html) (see file header).
+
 **RULE B (spec §1):** every screener output is an **observation candidate list**, never a ranked buy claim. The composite Smart Money Score is computed in-engine and **stays hidden until paper-validated**. Screeners fill *inputs*, they do not emit *scores*.
 
 ---

@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<!--
+  CurrentFlow screening-process flowchart. Source of truth: LOCKED_SPEC v1.1 §2 + screeners.md.
+  Regenerate the PDF (from repo root, no installs — uses headless Chrome):
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+      --headless=new --disable-gpu --no-pdf-header-footer \
+      --print-to-pdf=diagrams/screening-flow.pdf \
+      file://$PWD/diagrams/screening-flow.html
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CurrentFlow — Screening Process Flowchart</title>
+<style>
+  :root{
+    --bg:#0b0e14; --panel:#121722; --ink:#e6edf3; --muted:#8b98a9;
+    --line:#2b3240;
+    --scr:#1f6feb;      /* server-side screener */
+    --eng:#8957e5;      /* engine compute */
+    --gate:#d29922;     /* hard gate */
+    --veto:#f85149;     /* veto / reject */
+    --state:#2ea043;    /* state */
+    --ui:#39c5cf;       /* terminal ui */
+    --exit:#db6d28;     /* exit loop */
+  }
+  @page{ size:A4 portrait; margin:12mm; }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; background:var(--bg); color:var(--ink);
+    font-family:"Geist","Inter",-apple-system,"Helvetica Neue",Arial,sans-serif; }
+  .doc{ width:186mm; margin:0 auto; padding:4mm 0 8mm; }
+  h1{ font-size:19px; margin:0 0 2px; letter-spacing:.2px; }
+  .sub{ color:var(--muted); font-size:11px; margin:0 0 14px;
+    font-family:"Geist Mono","SF Mono",ui-monospace,Menlo,monospace; }
+  .flow{ display:flex; flex-direction:column; align-items:stretch; gap:0; }
+
+  .node{ border:1px solid var(--line); border-left-width:4px; border-radius:8px;
+    background:var(--panel); padding:9px 12px; position:relative; }
+  .node .tag{ font-family:"Geist Mono",ui-monospace,Menlo,monospace; font-size:10px;
+    color:var(--muted); letter-spacing:.4px; text-transform:uppercase; }
+  .node .title{ font-size:13px; font-weight:600; margin:2px 0 3px; }
+  .node .body{ font-size:11px; color:var(--muted); line-height:1.45; }
+  .node .body b{ color:var(--ink); font-weight:600; }
+  .node .body code{ font-family:"Geist Mono",ui-monospace,Menlo,monospace;
+    font-size:10px; color:#cdd6e0; }
+
+  .scr{ border-left-color:var(--scr); }
+  .eng{ border-left-color:var(--eng); }
+  .gate{ border-left-color:var(--gate); background:#1a160c; }
+  .state{ border-left-color:var(--state); background:#0f1a11; }
+  .ui{ border-left-color:var(--ui); }
+  .exit{ border-left-color:var(--exit); }
+
+  .count{ position:absolute; top:9px; right:12px; font-size:10px; color:var(--muted);
+    font-family:"Geist Mono",ui-monospace,Menlo,monospace; }
+
+  .arrow{ align-self:center; color:var(--line); font-size:16px; line-height:1;
+    padding:3px 0; }
+  .arrow.label{ display:flex; flex-direction:column; align-items:center; gap:1px; }
+  .arrow .lab{ font-size:9px; color:var(--muted);
+    font-family:"Geist Mono",ui-monospace,Menlo,monospace; }
+
+  /* fan / union row */
+  .row{ display:flex; gap:8px; }
+  .row .node{ flex:1; }
+
+  .legend{ display:flex; flex-wrap:wrap; gap:6px 16px; margin-top:16px;
+    padding-top:10px; border-top:1px solid var(--line); font-size:10px; color:var(--muted); }
+  .legend span{ display:inline-flex; align-items:center; gap:5px; }
+  .sw{ width:11px; height:11px; border-radius:3px; display:inline-block; }
+
+  .rulebox{ margin-top:14px; display:flex; gap:8px; }
+  .rulebox .r{ flex:1; border:1px dashed var(--line); border-radius:8px; padding:8px 10px;
+    background:#0d1117; }
+  .rulebox .r .h{ font-size:11px; font-weight:700; }
+  .rulebox .r .t{ font-size:10px; color:var(--muted); line-height:1.45; margin-top:3px; }
+  .rulebox .ra .h{ color:var(--gate); }
+  .rulebox .rb .h{ color:var(--ui); }
+  .foot{ margin-top:12px; font-size:9px; color:var(--muted);
+    font-family:"Geist Mono",ui-monospace,Menlo,monospace; }
+</style>
+</head>
+<body>
+<div class="doc">
+  <h1>CurrentFlow — Smart-Money Screening Process</h1>
+  <p class="sub">LOCKED_SPEC v1.1 §2 pipeline · screeners.md funnel · Stockbit exodus DAL — private single-operator tool, observation-only until paper-validated</p>
+
+  <div class="flow">
+
+    <div class="node scr">
+      <span class="count">~900 names</span>
+      <div class="tag">Source · Stockbit exodus (Bearer, own session)</div>
+      <div class="title">IHSG Universe</div>
+      <div class="body">Full listed board. Server-side screener evaluates <code>fitem_id</code> filters across the whole market in one <code>POST /screener/templates</code> call — before any paywall-counted per-name pull.</div>
+    </div>
+    <div class="arrow label"><span class="lab">SCR-0 · one screener call</span><span>▼</span></div>
+
+    <div class="node gate">
+      <span class="count">→ ~100–150</span>
+      <div class="tag">SCR-0 · Stage 0 / §3 · HARD GATE</div>
+      <div class="title">Universe Eligibility</div>
+      <div class="body">Screened: <b>Value MA20 &gt; Rp 10 bn</b> · <b>Price &gt; 100</b> · <b>Free Float &gt; 15%</b>.
+      <br>Engine residual: exclude suspended/halted/UMA, IPO &lt; 60 days, ARA/ARB-pinned close, incomplete broker summary (gap check). Assign <b>Track A / B</b>, tag sector.</div>
+    </div>
+    <div class="arrow label"><span class="lab">eligible universe (cached to DuckDB w/ as_of)</span><span>▼</span></div>
+
+    <div class="node eng"><div class="tag">SCR-1 · §4 accumulation leads · observation candidate lists</div>
+      <div class="title">Accumulation Screeners — run in parallel, union &amp; dedupe</div></div>
+    <div class="arrow">▼</div>
+    <div class="row">
+      <div class="node scr"><div class="tag">SCR-1A · NBSA · wt 25</div>
+        <div class="title">Foreign Accumulation</div>
+        <div class="body">Scope <b>LQ45</b>. Foreign net buy &gt; 2× MA20, buy streak ≥ 3d, flow MA20 &gt; 0. → Track A lead.</div></div>
+      <div class="node scr"><div class="tag">SCR-1B · broker conc. · wt 35</div>
+        <div class="title">Bandar Accumulation</div>
+        <div class="body">Scope <b>IDXSMC-LIQ</b>. Bandar Value &gt; its MA20, net &gt; 0, Accum/Dist &gt; 0. → Track B lead.</div></div>
+      <div class="node scr"><div class="tag">SCR-1C · P-V divergence · wt 30</div>
+        <div class="title">Stealth Divergence</div>
+        <div class="body">Bandar Value rising, 1M return &lt; 3% (flat), Volume &gt; 1.5× MA20 (effort). Coarse pre-filter.</div></div>
+    </div>
+    <div class="arrow label"><span class="lab">shortlist (union, deduped) — column values stored as SMS <b>component inputs</b>, not scores</span><span>▼</span></div>
+
+    <div class="node eng"><div class="tag">DATA_SOURCES §6 · paywall-frugal</div>
+      <div class="title">Engine pulls raw data for shortlist ONLY</div>
+      <div class="body"><code>broker_summary</code> + <code>ohlcv_foreign</code> per surviving name. Then compute the un-screenable: top-2 broker share + Herfindahl, persistence, accumulator VWAP, true price-volume correlation, CMF, absorption, VSA effort-vs-result.</div></div>
+    <div class="arrow">▼</div>
+
+    <div class="node gate"><div class="tag">Pipeline [3] · RULE A · HARD GATE (pre-scoring)</div>
+      <div class="title">Wyckoff Phase Classifier</div>
+      <div class="body"><b>PASS only if Accumulation Phase C or D.</b> Threshold detectors feed the classifier; they never bypass it. Everything else is rejected here — before SMS is ever computed.</div></div>
+    <div class="arrow label"><span class="lab">phase ∈ {C, D}</span><span>▼</span></div>
+
+    <div class="node eng"><div class="tag">Pipeline [4] · §4 · INTERNAL until validated</div>
+      <div class="title">Smart Money Score</div>
+      <div class="body">Track-specific weights → SMS 0–100. Weights tune only via walk-forward Sharpe optimizer — never hand-edited. <b>Number stays hidden</b> (RULE B).</div></div>
+    <div class="arrow">▼</div>
+
+    <div class="node veto" style="border-left-color:var(--veto);"><div class="tag">Pipeline [5] · §5 · VETO FILTERS</div>
+      <div class="title">Kill switches</div>
+      <div class="body">Single-bandar monopoly (&gt;60% one broker) · distribution · markup · wash trade · index-rotation (β-explained → −30%) · news. Any hit → drop.</div></div>
+    <div class="arrow label"><span class="lab">SMS ≥ 70 &nbsp;AND&nbsp; phase ∈ {C,D} &nbsp;AND&nbsp; no veto</span><span>▼</span></div>
+
+    <div class="node state">
+      <div class="tag">STATE · watchlist</div>
+      <div class="title">ARMED</div>
+      <div class="body">Candidate carried to the watchlist. SCR-2 (RVOL ≥ 3× + frequency spike) and SCR-3 (Close &gt; 20MA &gt; 50MA, &gt; VWAP, ADX &gt; 20, RS &gt; 0) refine on ARMED names ahead of the trigger.</div></div>
+    <div class="arrow">▼</div>
+
+    <div class="node eng"><div class="tag">Pipeline [6] · LD-3 · technical trigger</div>
+      <div class="title">Entry Trigger</div>
+      <div class="body">Spring-test OR LPS; compute stop + R:R; require <b>R:R ≥ 2:1</b>; 9-day exhaustion cap.</div></div>
+    <div class="arrow">▼</div>
+
+    <div class="node scr"><div class="tag">SCR-4 · §7 · TILT, never a gate</div>
+      <div class="title">Fundamental Tilt</div>
+      <div class="body">Rank(Magic Formula) <code>13474</code> → tercile COMPOUNDER / NEUTRAL / SPECULATIVE → conviction × &amp; hold horizon. Financials/utilities = FLOW_ONLY (skip MF, ROE&gt;12% proxy). <b>Never blocks entry.</b></div></div>
+    <div class="arrow">▼</div>
+
+    <div class="node eng"><div class="tag">Pipeline [8]–[10]</div>
+      <div class="title">Order Gen → Paper Fill → Risk/Exit</div>
+      <div class="body">Limit @ trigger, size to 1% risk → IDX-aware fill (next-open + slippage, lot 100, tick bands, ARA/ARB reject, full fee stack) → stop · target · trailing · signal-decay exit.</div></div>
+    <div class="arrow label"><span class="lab">SCR-EXIT runs continuously over open + ARMED → decay flag</span><span>▲ ▼</span></div>
+
+    <div class="node exit"><div class="tag">SCR-EXIT · §8 signal-decay</div>
+      <div class="title">Distribution / Mirror Warning</div>
+      <div class="body">Accum/Dist &lt; 0 · Foreign MA20 &lt; 0 · sell streak &gt; 2 → decay flag. Engine residual: UTAD/no-demand, dominant-broker flip, price-vs-flow divergence (the single best exit signal).</div></div>
+    <div class="arrow">▼</div>
+
+    <div class="node gate"><div class="tag">Pipeline [11] · RULE B · validation authority</div>
+      <div class="title">Backtest ⇄ Forward-Paper</div>
+      <div class="body">Separate code paths, <b>shared fill engine</b>. Promotes per-module validation state after <code>PAPER_VALIDATION_MONTHS</code> (default 3) of fill-realistic paper trading → flips observation ↔ claim.</div></div>
+    <div class="arrow">▼</div>
+
+    <div class="node ui"><div class="tag">Pipeline [12] · §9 · Streamlit terminal</div>
+      <div class="title">Terminal UI</div>
+      <div class="body">Observation modules · money-flow replay · heatmap · risk monitor · P&amp;L / armed list / attribution vs LQ45/sector. Unvalidated modules show components only — no SMS, no probability, no buy/sell verb.</div></div>
+  </div>
+
+  <div class="rulebox">
+    <div class="r ra"><div class="h">RULE A — Tradeability gate (LD-2)</div>
+      <div class="t">The Wyckoff phase classifier is a hard gate <b>before</b> scoring at step [3]. Only Accumulation Phase C or D is tradeable. Detectors feed it; nothing bypasses it.</div></div>
+    <div class="r rb"><div class="h">RULE B — Presentation gate (LD-9)</div>
+      <div class="t">A module may show SMS / probability / rank / buy-sell claim <b>only after</b> it survives paper validation. Until earned: render the observation, no number attached. The paper engine is the sole promoter.</div></div>
+  </div>
+
+  <div class="legend">
+    <span><i class="sw" style="background:var(--scr)"></i>Server-side screener (Stockbit)</span>
+    <span><i class="sw" style="background:var(--eng)"></i>Engine compute (in-process)</span>
+    <span><i class="sw" style="background:var(--gate)"></i>Hard gate / validation</span>
+    <span><i class="sw" style="background:var(--veto)"></i>Veto / reject</span>
+    <span><i class="sw" style="background:var(--state)"></i>State</span>
+    <span><i class="sw" style="background:var(--exit)"></i>Exit loop</span>
+    <span><i class="sw" style="background:var(--ui)"></i>Terminal UI</span>
+  </div>
+
+  <div class="foot">Cadence: fires on broker-summary publication (~T+0 eve / T+1). SCR-0 → SCR-1(A∪B∪C) → engine → RULE A → veto → ARMED → SCR-2/3 → trigger → SCR-4 → fill → SCR-EXIT. No silent caps: anything a screener can't express is logged as an engine residual, never dropped.</div>
+</div>
+</body>
+</html>
