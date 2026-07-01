@@ -1,25 +1,41 @@
-# IDX Smart-Money Screener — Locked Specification v1.1
+# IDX Smart-Money Screener & Flow Terminal — Locked Specification v1.1
 
-**Status:** LOCKED. This resolves the eight contradictions from `CONSOLIDATED_THESIS.md` into single, non-negotiable decisions. Build to this; changes require a version bump and a documented reason.
+**Status:** LOCKED. v1.0 resolved the eight contradictions from `CONSOLIDATED_THESIS.md` into a decision engine. **v1.1 merges `vector-lab.md`** — the same domain re-framed as a private, single-operator flow *terminal* — into this spec: the v1.0 engine is kept intact as the core, wrapped in an observation/UI layer, hardened data posture, and a stricter presentation gate. Build to this; changes require a version bump and a documented reason.
 
 **Changelog — v1.1 (2026-06-30):** §5 veto filters extended with the finer **trap taxonomy** (markup-on-thin-volume, wash/churn, broker rotation), absorbed from the detection-layer spec (`screener/CONSOLIDATED_SCREENER_SPEC.md`). *Reason:* the single "distribution-dressed-as-accumulation" veto was coarse; these three named sub-screens catch pump, manufactured-volume, and disguised-single-player manipulation it misses. No decision (LD-1…LD-8), weight, or threshold changed.
 
 **Core thesis (unchanged):** Smart-money flow *leads* → technical structure *confirms timing* → fundamental quality *sizes conviction & hold horizon*. EOD/T+1 cadence. Long-only. Liquidity-gated.
 
+**Posture (from vector-lab):** Private, single-user analysis tooling for one operator, consuming the operator's own authenticated data session, for the operator's own decisions. Not a product. No billing, no multi-user, no redistribution. All monetization / go-to-market / "moat" framing is dropped as inapplicable.
+
 ---
 
-## 1. Decision Log — the eight, resolved
+## 0. The two governing rules
+
+Everything below serves two hard rules. They are orthogonal and compose — one governs *what is tradeable*, the other governs *what may be displayed as a number*.
+
+**RULE A — Tradeability gate (LD-2).** Only Wyckoff **Accumulation Phase C or D** is tradeable. The phase classifier is a hard gate *before* scoring; threshold detectors feed it and never bypass it.
+
+**RULE B — Presentation gate (from vector-lab §1).** A module may display a confidence number, probability, **Smart Money Score, or ranked buy/sell claim ONLY after that signal has survived `PAPER_VALIDATION_MONTHS` of fill-realistic forward paper trading.** Until earned, the module renders the **observation** (raw flow, accumulation, divergence, score *components*) with **no number attached**. The paper-trade engine is the sole authority that promotes a signal from *observation* to *claim*. Config: `PAPER_VALIDATION_MONTHS` (default 3). Framing is always *observation* ("here is the flow, you decide"), never *advice* ("buy these").
+
+> **v1.0→v1.1 change of record:** v1.0 displayed `SMS 0–100` and `ARMED@70` immediately. Under RULE B this is **overridden**: SMS and the ARMED threshold are computed internally but **not shown as a number** until validated. Pre-validation, the screener renders SMS *components* as observation and an internal `ARMED` state drives the watchlist without exposing the score. See §4.
+
+---
+
+## 1. Decision Log — the eight, resolved (+ merge additions)
 
 | # | Contradiction | LOCKED DECISION | Rationale |
 |---|---|---|---|
 | **LD-1** | Signal hierarchy | **Price-Volume Divergence is the universal spine.** Confirming-leads are tier-dependent: Track A (large-cap) = NBSA foreign flow + broker concentration co-lead; Track B (lapis-2) = broker concentration leads, foreign flow excluded. Weights locked in §4. | Foreign flow only reliable on foreign-held large-caps; broker concentration is the lapis-2 signal. Divergence is confirmed by every source. |
-| **LD-2** | Cycle-phase blindness | **Wyckoff phase classifier is a HARD GATE before scoring.** Only Accumulation **Phase C or D** is tradeable. Threshold detectors *feed* the classifier; they never bypass it. | A volume/flow threshold with no phase context buys distribution tops. This is the #1 edge-vs-artifact decision. |
-| **LD-3** | Entry discipline | **Grimes wins. No market-on-signal.** A passing score sets state = `ARMED`, not `ENTER`. Entry requires a confirmation trigger (Spring-test or LPS) via **limit order**, and **R:R ≥ 2:1** or no trade. | Paper 3 agrees on mechanics (next-open + ARA/ARB make market fills fiction anyway). |
-| **LD-4** | Universe direction | **Hard liquidity floor is absolute** (§3). Within the liquid set, an index-rebalancing filter down-weights pure-beta moves. **Never chase illiquidity for alpha.** | Resolves "non-benchmark alpha" vs "stay liquid": stay liquid, then strip index noise *inside* the liquid set. |
-| **LD-5** | Data cadence | **EOD/T+1 first.** Scheduler fires on **broker-summary publication**, not market close. Real-time tick / L2 order book DEFERRED to Phase 2+, added only if an intraday signal proves incremental edge. | The binding signal (broker summary) is EOD. Low-latency architecture is over-engineering for a T+1 signal. |
-| **LD-6** | Fundamental layer | **Present, as a conviction/horizon TILT — not an entry gate.** Metric = **Magic Formula (EY = EBIT/EV, ROC = EBIT/(NWC+NFA))**. Reject ROE/PE/PB. | ROE/PE/PB distorted by leverage — fatal on a bank-heavy index. Fundamentals decide *how much / how long*, not *whether to enter*. |
-| **LD-7** | Financials-exclusion paradox | **Dual-track scoring.** Financials (bank/insurance/multifinance) + utilities run **flow+technical only**, scored with sector proxies (banks: ROE, NIM, CAR), flagged `FLOW_ONLY → shorter hold, tighter trail`. They stay in the universe. | They are the most liquid, most Wyckoff-able, most foreign-flow-driven names. Excluding them discards the best universe. |
-| **LD-8** | ML vs overfitting | **Deferred to Phase 4+ and gated.** Rules system must first show **≥3 months forward-paper with positive walk-forward Sharpe**. ML role = signal-weight optimizer / ranker on engineered features ONLY — never a black-box entry generator. Mandatory purged/embargoed CV + out-of-sample. | Reflexive, non-stationary, small-sample IDX flow data overfits trivially. |
+| **LD-2** | Cycle-phase blindness | **Wyckoff phase classifier is a HARD GATE before scoring** (RULE A). Only Accumulation **Phase C or D** is tradeable. Threshold detectors *feed* the classifier; they never bypass it. | A volume/flow threshold with no phase context buys distribution tops. The #1 edge-vs-artifact decision. |
+| **LD-3** | Entry discipline | **Grimes wins. No market-on-signal.** A passing score sets state = `ARMED`, not `ENTER`. Entry requires a confirmation trigger (Spring-test or LPS) via **limit order**, and **R:R ≥ 2:1** or no trade. | Next-open + ARA/ARB make market fills fiction anyway. |
+| **LD-4** | Universe direction | **Hard liquidity floor is absolute** (§3). Within the liquid set, an index-rebalancing filter down-weights pure-beta moves. **Never chase illiquidity for alpha.** | Stay liquid, then strip index noise *inside* the liquid set. |
+| **LD-5** | Data cadence | **EOD/T+1 first.** Scheduler fires on **broker-summary publication**, not market close. Real-time tick / L2 order book DEFERRED to Phase 2+. | The binding signal (broker summary) is EOD. |
+| **LD-6** | Fundamental layer | **Present, as a conviction/horizon TILT — not an entry gate.** Metric = **Magic Formula (EY = EBIT/EV, ROC = EBIT/(NWC+NFA))**. Reject ROE/PE/PB. | ROE/PE/PB distorted by leverage — fatal on a bank-heavy index. |
+| **LD-7** | Financials-exclusion paradox | **Dual-track scoring.** Financials + utilities run **flow+technical only**, scored with sector proxies, flagged `FLOW_ONLY → shorter hold, tighter trail`. They stay in the universe. | They are the most liquid, most Wyckoff-able, most foreign-flow-driven names. |
+| **LD-8** | ML vs overfitting | **Deferred to Phase 4+ and gated.** Rules system must first show **≥3 months forward-paper with positive walk-forward Sharpe**. ML = signal-weight optimizer / ranker on engineered features ONLY. Mandatory purged/embargoed CV + out-of-sample. | Reflexive, non-stationary, small-sample IDX flow data overfits trivially. |
+| **LD-9** *(merge)* | Number-display discipline | **Presentation gate (RULE B).** No probability / score / buy-sell verb until `PAPER_VALIDATION_MONTHS` of fill-realistic forward paper. Pre-validation = observation-only. Per-module validation state drives the observation↔claim UI switch. | A self-built confidence number is the easiest thing to over-trust; IDX small-caps can't be honestly calibrated without forward validation. |
+| **LD-10** *(merge)* | Data & product posture | **Private single-user, own authenticated session, local-only, never redistributed.** No SaaS, no billing, no multi-user. Stack simplified to local-first (§10). | Personal analysis tool for one operator. Redistribution posture and cloud scale are out of scope. |
 
 ---
 
@@ -27,17 +43,18 @@
 
 ```
 SCHEDULER (fires on broker-summary publication, ~T+0 evening / T+1)
-   │   look-ahead control: every datum stamped with availability_ts;
+   │   look-ahead control: every datum stamped with availability_ts (as_of);
    │   a signal may use a datum ONLY IF availability_ts < decision_ts
    ▼
 [1] INGEST   OHLCV · broker summary · NBSA foreign flow · corp actions ·
-             halt/suspend flags · KSEI ownership · financials (TTM)
+             halt/suspend flags · KSEI ownership · free-float · financials (TTM)
+   │   integrity checks flag gaps — missing data never read as zero flow
    ▼
 [2] UNIVERSE GATE (§3)        — hard liquidity floor; assign Track A / B; tag sector
    ▼
-[3] PHASE CLASSIFIER (LD-2)   — Wyckoff phase; PASS only if Phase C or D accumulation
+[3] PHASE CLASSIFIER (RULE A) — Wyckoff phase; PASS only if Phase C or D accumulation
    ▼
-[4] SMART MONEY SCORE (§4)    — track-specific weights → SMS 0–100
+[4] SMART MONEY SCORE (§4)    — track-specific weights → SMS 0–100 (INTERNAL until validated)
    ▼
 [5] VETO FILTERS (§5)         — kill single-bandar / distribution / markup / wash / rotation / news
    ▼
@@ -55,8 +72,10 @@ SCHEDULER (fires on broker-summary publication, ~T+0 evening / T+1)
 [10] RISK / EXIT MGR (§6,§7)  — stop · target · trailing · signal-decay exit
    ▼
 [11] BACKTEST ⇄ FORWARD-PAPER (separate code paths, shared fill engine)
+   │   promotes per-module validation state → flips observation↔claim (RULE B)
    ▼
-[12] DASHBOARD               — P&L, armed list, flow, attribution vs benchmark (§8)
+[12] TERMINAL UI (§9)         — observation modules · replay · heatmap · risk monitor ·
+                                P&L / armed list / attribution vs benchmark
 ```
 
 ---
@@ -68,16 +87,18 @@ SCHEDULER (fires on broker-summary publication, ~T+0 evening / T+1)
 - Last price **≥ IDR 100**
 - Not suspended; not IPO with < 60 trading days of history
 - Did not close ARA/ARB-pinned on the signal day (no fillable band → reject)
+- Complete broker summary for the day (integrity check passed)
+- No corporate action within ±5 days (adjust levels; exclude window)
 
 **Track assignment:**
 - **Track A** — member of LQ45/IDX80 AND ADV ≥ IDR 25 bn → foreign-flow-reliable
 - **Track B** — passes hard floor, not Track A → broker-concentration-reliable
 
-**Index-rebalancing filter:** if a candidate's move is explained by index/sector beta (rolling β-adjusted return ≈ sector return, flow concentrated on index-tracker brokers near rebalance dates), **down-weight SMS by 30%**. Don't reject — just stop paying alpha prices for beta.
+**Index-rebalancing filter:** if a candidate's move is explained by index/sector beta (rolling β-adjusted return ≈ sector return, flow concentrated on index-tracker brokers near rebalance dates), **down-weight SMS by 30%**. Track MSCI free-float / FIF-cut review calendar (2026: BBCA, GOTO, AMMN…) as event risk. Don't reject — just stop paying alpha prices for beta.
 
 ---
 
-## 4. Smart Money Score (LD-1) — locked weights (0–100)
+## 4. Smart Money Score (LD-1) — locked weights (0–100), INTERNAL until validated
 
 | Component | Track A (large-cap) | Track B (lapis-2) |
 |---|---|---|
@@ -89,6 +110,10 @@ SCHEDULER (fires on broker-summary publication, ~T+0 evening / T+1)
 | Wyckoff phase-alignment bonus (Spring/LPS proximity) | 10 | 10 |
 
 `SMS ≥ 70` = ARMED threshold (locked). Weights are the **only** tunable surface, and only via backtest Sharpe maximization with walk-forward — never hand-edited live.
+
+**Presentation (RULE B / LD-9):**
+- **Pre-validation:** SMS is computed and drives internal `ARMED` state, but the **number is not displayed**. The screener renders the score's *components* as raw observation (divergence bars, broker concentration, foreign-flow Z, RVOL, blocks) and labels the watchlist "highest flow-signal names today — observation, not a recommendation." No % probability, no buy/sell verb.
+- **Post-validation** (module has ≥ `PAPER_VALIDATION_MONTHS` fill-realistic forward paper): the numeric SMS and stronger ranking language may be displayed for that module only.
 
 ---
 
@@ -116,9 +141,9 @@ SCHEDULER (fires on broker-summary publication, ~T+0 evening / T+1)
 - **Order:** limit at/below trigger price. No market orders.
 - **Stop:** below spring low / swing low (thesis-invalidation level). Never widened.
 - **R:R:** ≥ 2:1 to first structural target (AR high / next HVN) or **skip**.
-- **Position size:** `qty = (equity × 1%) / (entry − stop)`, rounded down to whole lots. **Risk locked at 1%** (not 2% — IDX manipulation tax).
+- **Position size:** `qty = (equity × 1%) / (entry − stop)`, rounded down to whole lots. **Risk locked at 1%** (IDX manipulation tax).
 - **Conviction multiplier from §7:** compounder ×1.0; speculative ×0.5.
-- **Exposure caps:** ≤ 10% equity per name; ≤ 30% per sector; correlated-pair check.
+- **Exposure caps:** ≤ 10% equity per name; ≤ 30% per sector; correlated-pair / crowding check (§9 Risk Monitor).
 - **Circuit breakers:** halt new entries at −3% daily P&L; pause system at −10% peak-to-trough drawdown.
 
 ---
@@ -138,36 +163,106 @@ Fundamentals **never block an entry** — they only set the multiplier and hold 
 
 ## 8. Exit, Benchmark, Validation — locked
 
-**Exit (any one triggers):** stop hit · target hit · trailing stop · **signal-decay** (NBSA flips negative / dominant broker flips to net sell / VPA prints UTAD or no-demand / phase rolls to distribution).
+**Exit (any one triggers):** stop hit · target hit · trailing stop · **signal-decay** (NBSA flips negative / dominant broker flips to net sell / VPA prints UTAD or no-demand / phase rolls to distribution). **Divergence is the single best exit signal:** price rising while CMF / foreign-flow / A-D all fall.
 
-**Benchmark (LD per source):** Track A → LQ45. Track B → relevant sector index (or IDX SMC index). **Never IHSG** as the headline benchmark.
+**Benchmark:** Track A → LQ45. Track B → relevant sector index (or IDX SMC index). **Never IHSG** as headline benchmark. Bar to beat: buy-and-hold the applicable benchmark.
 
 **Metrics tracked:** total/annualized return, Sharpe, max drawdown, hit rate, **turnover** (flow strategies churn; fees punish churn), and **return net of full fee stack** (the only number that counts).
 
-**Validation gate to advance a phase:** walk-forward + out-of-sample only; backtest and forward-paper are separate code paths sharing the fill engine; survivorship + look-ahead controls mandatory.
+**Validation gate to advance a phase / promote a module (RULE B):** walk-forward + out-of-sample only; backtest and forward-paper are separate code paths sharing the fill engine; survivorship + look-ahead controls mandatory.
 
 ---
 
-## 9. Build Order (locked phasing)
+## 9. Terminal / observation layer (from vector-lab §5) — the operator-facing shell
 
-1. **Foundation** — ingest (OHLCV + broker summary + NBSA, with availability timestamps), universe gate, manual armed-list alerts. Validate signal quality 2–4 weeks before automating.
-2. **Signal** — phase classifier + SMS + veto filters; backtest 2+ yrs with fees & look-ahead controls.
-3. **Execution** — technical-trigger logic, fundamental tilt, fill engine (fees/ARA-ARB/lots/ticks), risk mgr; run forward-paper.
-4. **Scale / ML (gated)** — only after ≥3 months positive forward-paper walk-forward Sharpe; ML as ranker/weight-optimizer with purged CV.
+The pipeline (§2) is the engine; this is the workbench over it. Modules are tiered by whether they may show a number (RULE B). Single-user, keyboard-driven, dark, paned.
+
+**Ships now — pure observation (no gate):**
+- **Broker Flow Analyzer** *(the differentiator)* — per-stock broker net buy/sell; broker DNA classification (Foreign Inst / Local Inst / Smart Money / Retail / Prop); concentration (top-N share / Herfindahl); persistence over rolling window; custom "syndicate" grouping; broker-stock matrix (top buyers vs sellers).
+- **Foreign Flow Dashboard** — foreign net-buy magnitude & persistence vs float; foreign-vs-domestic split; market/stock/sector levels; flow-reversal detection; KSEI ownership trend overlay.
+- **Institutional Accumulation Detector** — stealth divergence (price flat/down while net accumulation rises), accumulator VWAP estimate, absorption (if depth), volume dry-up + price-tightness during consolidation.
+- **Money Flow Replay (timeline)** — scrub historical flow/price evolution for any name; overlay price/volume/foreign/broker on one axis. **The audit tool for every signal — build it early.**
+
+**Ships now — derived visualizations (rendering, not new signal):**
+- **Smart Money Heatmap** — aggregate over Flow/Foreign/Accumulation signals; color = direction, intensity = flow-as-%-of-cap; sector→stock→broker drill-down; divergence alerts (local buy + foreign sell).
+- **Sector Rotation Map** — flow aggregated by sector; RS-vs-flow quadrant (Leaders / Early Recovery / Distribution Warning / Avoid); foreign/domestic tide framing.
+
+**Ships now — observation-only (risk observations, not return predictions):**
+- **Portfolio Risk Monitor** — crowding ("same bandar" correlation), beta vs IHSG, sector concentration (Herfindahl), VaR, liquidity / days-to-exit, gap/volatility & event risk, scenario stress tests. Feeds the §6 exposure caps and correlated-pair check.
+
+**Gated behind paper-trade validation — NO number until earned (RULE B):**
+- **Smart Money Score / Breakout components** — pre-validation show raw components; post-validation may show the SMS number (§4).
+- **AI Buy/Sell Ranking** — pre-validation a "flow-derived ranking, not a recommendation"; stronger language only once forward hit-rate is paper-validated (LD-8 also governs the ML ranker).
+- **Daily Top Opportunities** — "highest flow-signal names today," observation framing; narrative digest of what the flow shows.
 
 ---
 
-## 10. Acceptance Criteria (definition of done for v1.1 rules engine)
+## 10. Data posture & stack (LD-10) — locked
+
+**Data:** feed consumed from the operator's own authenticated session (e.g. HAR-derived endpoints). Likely violates provider ToS; done at operator's own risk for personal use only. **Local persistence only — nothing leaves the machine, nothing is republished.** Parser breakage on endpoint changes is expected maintenance, not a crisis. Third-party APIs (OHLC.Dev, Sectors, Invezgo, iTick, RTI, KSEI) are reference-only and not redistributed.
+
+**Required feeds:** broker summary (core), OHLCV, foreign/domestic classification, corporate actions + suspension/halt + ARA/ARB state, free-float / shares-outstanding, financials (TTM). Order-book depth is an optional tier — some modules degrade gracefully without it.
+
+**Stack (single-user, local-first):** Python (Pandas/Polars, TA-Lib) for analytics & signals; local time-series store (SQLite / DuckDB — no cloud for one user); **Streamlit** prototype UI (richer later); feature-store schema with `as_of` stamps so gated modules have clean inputs when they earn validation. *(Supersedes the v1.0 thesis's TimescaleDB/Postgres/Docker-cloud sketch — over-built for one operator.)*
+
+---
+
+## 11. Build Order (locked phasing)
+
+Each slice is a full vertical (data → signal → view → test). Bootstraps off the existing paper-trade system.
+
+1. **Data layer + integrity checks** — broker summary + OHLCV + NBSA ingestion, `as_of` stamps, gap detection. Nothing renders until trustworthy.
+2. **Universe gate (§3) + Broker Flow Analyzer** — first end-to-end vertical slice; proves the pipeline. Manual armed-list alerts; validate signal quality 2–4 weeks before automating.
+3. **Foreign Flow Dashboard + Money Flow Replay** — replay early; it is the audit tool for everything downstream.
+4. **Phase classifier + SMS (internal) + veto filters** — Institutional Accumulation Detector + Smart Money Heatmap over them; backtest 2+ yrs with fees & look-ahead controls.
+5. **Stage-2 distribution/trap layer** — the credibility layer; wire trap/veto flags into every view.
+6. **Sector Rotation Map + Portfolio Risk Monitor** — Stage-4 gates surfaced as risk observations; feed §6 caps.
+7. **Execution** — technical-trigger logic, fundamental tilt, fill engine (fees / ARA-ARB / lots / ticks), risk mgr; run forward-paper.
+8. **Paper-trade validation wiring** — connect forward results to per-module validation state; implement the observation↔claim presentation switch (RULE B). Gated modules ship observation-only from step 4 and earn claims only as this step promotes them.
+9. **Scale / ML (gated)** — only after ≥3 months positive forward-paper walk-forward Sharpe; ML as ranker / weight-optimizer with purged CV (LD-8).
+
+**Governing filter throughout:** if a signal can't survive fill-realistic paper trading, it does not earn the right to show a number.
+
+---
+
+## 12. Paper broker (IDX-aware) — locked
+
+Lots of 100 shares · auto-reject bands (±7% main board / ±10–25% dev board / ±35% first 15d post-IPO) · fees ~0.15–0.25% + levy + VAT + 0.1% sell tax · T+2 settlement · IDR · WIB hours (09:00–11:30, 13:30–15:00). Next-open fills with slippage (LQ45 0.05–0.15%, mid-cap 0.2–0.5%, small-cap >1%). Bar to beat: buy-and-hold the applicable benchmark (§8). Personal account only.
+
+---
+
+## 13. Acceptance Criteria (definition of done for v1.1)
 
 - [ ] No signal consumes data with `availability_ts ≥ decision_ts` (look-ahead test passes).
 - [ ] Phase gate rejects all non-C/D candidates (unit-tested on labeled charts).
 - [ ] Veto filters reject markup-on-thin-volume / wash-churn / broker-rotation cases (unit-tested on labeled examples).
+- [ ] **No unvalidated module displays a number** — SMS, probabilities, and buy/sell verbs are hidden until the module clears `PAPER_VALIDATION_MONTHS` (RULE B test passes).
+- [ ] Per-module validation state exists and drives the observation↔claim UI switch.
 - [ ] Every order is a limit order with a defined stop and R:R ≥ 2:1.
 - [ ] Fill engine reproduces lot/tick/ARA-ARB/fee math against hand-checked cases.
 - [ ] Backtest and forward-paper share one fill engine; results reconcile.
 - [ ] Reported return is net of the full fee stack and benchmarked to LQ45/sector, not IHSG.
+- [ ] Money Flow Replay can reconstruct any past signal from stored `as_of` data (audit test).
+- [ ] All data stays local; nothing is republished (posture check).
 - [ ] No live hand-editing of SMS weights; tuning only via walk-forward optimizer.
 
 ---
 
-*Educational/informational only. Paper results do not guarantee live performance.*
+## 14. Companion files (to create)
+
+- `PLAN.md` — slice-by-slice execution plan from §11.
+- `CLAUDE.md` — repo conventions: stack (§10), architecture, TDD loop, and RULES A & B restated as hard constraints (never render a number for an unvalidated module).
+- `PROGRESS.md` — durable log of shipped slices and each module's current validation state.
+
+---
+
+## 15. Disclaimers (embed in-app, operator-facing)
+
+- Private personal-use analytics tool. Not a product, not a service, not for redistribution.
+- Not investment advice. All outputs are observations for the operator's own decisions.
+- Data consumed from the operator's own session; used at own risk; not republished.
+- No live execution. Paper trading only. Paper results do not guarantee live performance.
+
+---
+
+*v1.1 consolidated from: `LOCKED_SPEC.md` v1.0 (engine core) + `vector-lab.md` (terminal re-frame, presentation gate, data posture). Upstream: `CONSOLIDATED_THESIS.md` and the six source drafts.*
