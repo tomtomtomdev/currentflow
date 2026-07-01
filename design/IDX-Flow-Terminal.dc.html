@@ -1,0 +1,1268 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #070a10; }
+  ::selection { background: rgba(88,196,221,0.3); }
+  ::-webkit-scrollbar { width: 9px; height: 9px; }
+  ::-webkit-scrollbar-thumb { background: #1e2632; border-radius: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  input[type=range]{ -webkit-appearance:none; appearance:none; background:transparent; }
+  input[type=range]::-webkit-slider-runnable-track{ height:4px; background:#1e2632; border-radius:4px; }
+  input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; appearance:none; margin-top:-6px; width:16px; height:16px; border-radius:50%; background:#58c4dd; border:2px solid #0a0e14; box-shadow:0 0 0 1px #58c4dd; cursor:pointer; }
+  @keyframes armedpulse { 0%,100%{ box-shadow:0 0 0 0 rgba(210,153,34,0.55);} 50%{ box-shadow:0 0 0 5px rgba(210,153,34,0);} }
+  @keyframes tickscroll { from{ transform:translateX(0);} to{ transform:translateX(-50%);} }
+  @keyframes livedot { 0%,100%{ opacity:1;} 50%{ opacity:0.25;} }
+</style>
+</helmet>
+
+<div style="width:100%; height:100vh; min-height:760px; display:flex; flex-direction:column; background:#070a10; color:#e6edf3; font-family:'Geist',sans-serif; overflow:hidden;">
+
+  <!-- TOP BAR -->
+  <div style="height:52px; flex:0 0 52px; display:flex; align-items:center; gap:18px; padding:0 18px; background:linear-gradient(180deg,#0d121b,#0a0e14); border-bottom:1px solid rgba(255,255,255,0.07);">
+    <div style="display:flex; align-items:center; gap:10px;">
+      <div style="width:26px; height:26px; border-radius:6px; background:linear-gradient(135deg,#58c4dd,#3a8fb0); display:flex; align-items:center; justify-content:center; font-family:'Geist'; font-weight:700; color:#04121a; font-size:15px;">V</div>
+      <div style="line-height:1;">
+        <div style="font-family:'Geist'; font-weight:600; font-size:15px; letter-spacing:0.02em;">VECTOR<span style="color:#58c4dd;">·</span>LAB</div>
+        <div style="font-size:10px; color:#5a6675; letter-spacing:0.14em; margin-top:2px;">IDX SMART-MONEY FLOW TERMINAL</div>
+      </div>
+    </div>
+    <div style="width:1px; height:26px; background:rgba(255,255,255,0.08);"></div>
+    <div style="display:flex; align-items:center; gap:7px; font-size:11px; color:#8b98a9;">
+      <span style="width:7px; height:7px; border-radius:50%; background:#3fb950; animation:livedot 1.8s infinite;"></span>
+      Broker summary published · T+1
+    </div>
+    <div style="display:flex; align-items:center; gap:7px; font-size:11px; color:#8b98a9;">
+      <span style="color:#5a6675;">as-of</span>
+      <span style="font-family:'Geist Mono'; color:#e6edf3;">{{ headerAsOf }}</span>
+      <span style="color:#5a6675;">WIB</span>
+    </div>
+    <div style="flex:1;"></div>
+    <div style="display:flex; align-items:center; gap:8px; padding:5px 11px; border:1px solid rgba(210,153,34,0.32); background:rgba(210,153,34,0.08); border-radius:6px; font-size:10.5px; color:#e8c168; letter-spacing:0.04em;">
+      <span style="font-family:'Geist Mono'; font-weight:600;">RULE&nbsp;B</span>
+      <span style="color:#b99a54;">·</span>
+      OBSERVATION ONLY — scores gated until paper-validated
+    </div>
+    <div style="display:flex; align-items:center; gap:14px; font-family:'Geist Mono'; font-size:11px; color:#8b98a9;">
+      <div>IHSG <span style="color:#f85149;">7,241.6</span> <span style="color:#f85149;">-0.42%</span></div>
+      <div>Track&nbsp;B</div>
+    </div>
+  </div>
+
+  <!-- BODY -->
+  <div style="flex:1; display:flex; min-height:0;">
+
+    <!-- NAV RAIL -->
+    <div style="width:82px; flex:0 0 82px; background:#0a0e14; border-right:1px solid rgba(255,255,255,0.06); display:flex; flex-direction:column; padding:10px 0; gap:2px;">
+      <sc-for list="{{ modules }}" as="mod" hint-placeholder-count="8">
+        <div onClick="{{ mod.onClick }}" title="{{ mod.tip }}" style="{{ mod.wrapStyle }}">
+          <div style="{{ mod.iconStyle }}">{{ mod.glyph }}</div>
+          <div style="font-size:9px; letter-spacing:0.02em; text-align:center; line-height:1.15;">{{ mod.label }}</div>
+          <sc-if value="{{ mod.locked }}" hint-placeholder-val="{{ false }}"><div style="position:absolute; top:6px; right:9px; font-size:9px; color:#5a6675;">🔒</div></sc-if>
+        </div>
+      </sc-for>
+    </div>
+
+    <!-- MAIN -->
+    <div style="flex:1; min-width:0; display:flex; flex-direction:column; background:#070a10;">
+
+      <!-- module header ribbon -->
+      <div style="flex:0 0 auto; padding:14px 20px 12px; border-bottom:1px solid rgba(255,255,255,0.06); display:flex; align-items:flex-end; gap:16px;">
+        <div style="min-width:0;">
+          <div style="font-family:'Geist'; font-weight:600; font-size:19px; letter-spacing:0.01em;">{{ moduleTitle }}</div>
+          <div style="font-size:11.5px; color:#8b98a9; margin-top:3px; max-width:640px;">{{ moduleSubtitle }}</div>
+        </div>
+        <div style="flex:1;"></div>
+        <div style="{{ moduleBadgeStyle }}">
+          <span style="width:6px; height:6px; border-radius:50%; background:{{ moduleBadgeDot }};"></span>
+          {{ moduleBadgeText }}
+        </div>
+      </div>
+
+      <div style="flex:1; overflow:auto; padding:18px 20px;">
+
+        <!-- ================= BROKER FLOW ================= -->
+        <sc-if value="{{ showBroker }}" hint-placeholder-val="{{ true }}">
+        <div>
+          <!-- stock header -->
+          <div style="display:flex; align-items:center; gap:16px; margin-bottom:16px; flex-wrap:wrap;">
+            <div style="display:flex; align-items:baseline; gap:10px;">
+              <span style="font-family:'Geist'; font-weight:700; font-size:26px; letter-spacing:0.01em;">{{ stock.ticker }}</span>
+              <span style="font-size:12px; color:#8b98a9;">{{ stock.name }}</span>
+            </div>
+            <span style="font-size:10px; padding:3px 8px; border-radius:5px; background:rgba(88,196,221,0.12); color:#58c4dd; border:1px solid rgba(88,196,221,0.25); letter-spacing:0.06em;">{{ stock.trackLabel }}</span>
+            <span style="font-size:10px; padding:3px 8px; border-radius:5px; background:rgba(255,255,255,0.05); color:#8b98a9;">{{ stock.sector }}</span>
+            <div style="flex:1;"></div>
+            <div style="text-align:right; font-family:'Geist Mono';">
+              <div style="font-size:20px; font-weight:600;">{{ stock.priceStr }}</div>
+              <div style="font-size:12px; color:{{ stock.chgColor }};">{{ stock.chgStr }}</div>
+            </div>
+            <div style="text-align:right; font-family:'Geist Mono'; padding-left:14px; border-left:1px solid rgba(255,255,255,0.08);">
+              <div style="font-size:10px; color:#5a6675;">20d ADV</div>
+              <div style="font-size:14px; color:#e6edf3;">{{ stock.advStr }}</div>
+            </div>
+          </div>
+
+          <div style="display:grid; grid-template-columns:1.35fr 1fr; gap:14px; align-items:start;">
+
+            <!-- LEFT: net flow table -->
+            <div style="background:#0d121b; border:1px solid rgba(255,255,255,0.06); border-radius:10px; overflow:hidden;">
+              <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 14px; border-bottom:1px solid rgba(255,255,255,0.06);">
+                <div style="font-size:12px; font-weight:600; letter-spacing:0.03em;">BROKER NET FLOW <span style="color:#5a6675; font-weight:400;">· today</span></div>
+                <div style="font-size:10px; color:#5a6675; font-family:'Geist Mono';">net value, IDR bn</div>
+              </div>
+              <div style="display:grid; grid-template-columns:34px 1fr 96px 70px; padding:7px 14px; font-size:10px; color:#5a6675; letter-spacing:0.05em; border-bottom:1px solid rgba(255,255,255,0.05);">
+                <div>#</div><div>BROKER · DNA</div><div style="text-align:right;">NET</div><div style="text-align:right;">PERSIST</div>
+              </div>
+              <sc-for list="{{ brokerRows }}" as="row" hint-placeholder-count="10">
+                <div style="display:grid; grid-template-columns:34px 1fr 96px 70px; align-items:center; padding:8px 14px; border-bottom:1px solid rgba(255,255,255,0.035);">
+                  <div style="font-family:'Geist Mono'; font-size:11px; color:#5a6675;">{{ row.rank }}</div>
+                  <div style="display:flex; align-items:center; gap:9px; min-width:0;">
+                    <span style="font-family:'Geist Mono'; font-weight:600; font-size:12.5px; width:26px;">{{ row.code }}</span>
+                    <span style="font-size:11px; color:#c2ccd8; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ row.name }}</span>
+                    <span style="{{ row.dnaStyle }}">{{ row.dna }}</span>
+                  </div>
+                  <div style="text-align:right; font-family:'Geist Mono';">
+                    <div style="font-size:12.5px; font-weight:600; color:{{ row.netColor }};">{{ row.netStr }}</div>
+                    <div style="height:3px; margin-top:3px; border-radius:2px; background:{{ row.netColor }}; width:{{ row.barW }}; margin-left:auto; opacity:0.65;"></div>
+                  </div>
+                  <div style="text-align:right; display:flex; justify-content:flex-end; gap:2px;">
+                    <sc-for list="{{ row.persistDots }}" as="d" hint-placeholder-count="5">
+                      <span style="width:5px; height:5px; border-radius:1px; background:{{ d.c }};"></span>
+                    </sc-for>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+
+            <!-- RIGHT: concentration + veto -->
+            <div style="display:flex; flex-direction:column; gap:14px;">
+
+              <div style="background:#0d121b; border:1px solid rgba(255,255,255,0.06); border-radius:10px; padding:14px;">
+                <div style="font-size:12px; font-weight:600; letter-spacing:0.03em; margin-bottom:12px;">CONCENTRATION</div>
+                <div style="display:flex; gap:14px;">
+                  <div style="flex:1;">
+                    <div style="font-size:10px; color:#5a6675; margin-bottom:5px;">Top-2 net-buy share</div>
+                    <div style="font-family:'Geist Mono'; font-size:26px; font-weight:600; color:#58c4dd; line-height:1;">{{ conc.top2Str }}</div>
+                    <div style="height:6px; border-radius:4px; background:rgba(255,255,255,0.07); margin-top:9px; overflow:hidden;">
+                      <div style="height:100%; width:{{ conc.top2W }}; background:linear-gradient(90deg,#3a8fb0,#58c4dd);"></div>
+                    </div>
+                  </div>
+                  <div style="flex:1; padding-left:14px; border-left:1px solid rgba(255,255,255,0.07);">
+                    <div style="font-size:10px; color:#5a6675; margin-bottom:5px;">Herfindahl (HHI)</div>
+                    <div style="font-family:'Geist Mono'; font-size:26px; font-weight:600; line-height:1;">{{ conc.hhiStr }}</div>
+                    <div style="font-size:10px; color:#8b98a9; margin-top:9px;">{{ conc.hhiLabel }}</div>
+                  </div>
+                </div>
+                <div style="font-size:10.5px; color:#8b98a9; margin-top:13px; line-height:1.5; padding-top:11px; border-top:1px solid rgba(255,255,255,0.05);">{{ conc.note }}</div>
+              </div>
+
+              <div style="background:#0d121b; border:1px solid rgba(255,255,255,0.06); border-radius:10px; padding:14px;">
+                <div style="font-size:12px; font-weight:600; letter-spacing:0.03em; margin-bottom:11px;">VETO CHECKS <span style="color:#5a6675; font-weight:400;">· §5 hard rejects</span></div>
+                <div style="display:flex; flex-direction:column; gap:8px;">
+                  <sc-for list="{{ vetoChecks }}" as="v" hint-placeholder-count="4">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                      <span style="width:16px; height:16px; border-radius:4px; display:flex; align-items:center; justify-content:center; font-size:10px; background:{{ v.bg }}; color:{{ v.fg }};">{{ v.mark }}</span>
+                      <span style="font-size:11px; color:#c2ccd8; flex:1;">{{ v.label }}</span>
+                      <span style="font-family:'Geist Mono'; font-size:10.5px; color:{{ v.fg }};">{{ v.val }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- BROKER-DNA MATRIX -->
+          <div style="background:#0d121b; border:1px solid rgba(255,255,255,0.06); border-radius:10px; margin-top:14px; overflow:hidden;">
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 14px; border-bottom:1px solid rgba(255,255,255,0.06);">
+              <div style="font-size:12px; font-weight:600; letter-spacing:0.03em;">BROKER × STOCK MATRIX <span style="color:#5a6675; font-weight:400;">· net direction across the Track-B watchlist</span></div>
+              <div style="display:flex; gap:12px; align-items:center; font-size:9.5px; color:#8b98a9;">
+                <span style="display:flex; align-items:center; gap:5px;"><span style="width:10px; height:10px; border-radius:2px; background:#3fb950;"></span>net buy</span>
+                <span style="display:flex; align-items:center; gap:5px;"><span style="width:10px; height:10px; border-radius:2px; background:#f85149;"></span>net sell</span>
+                <span style="color:#5a6675;">intensity = share of flow</span>
+              </div>
+            </div>
+            <div style="padding:6px 14px 14px;">
+              <div style="display:grid; grid-template-columns:150px repeat(7,1fr); gap:5px; align-items:center;">
+                <div></div>
+                <sc-for list="{{ matrixCols }}" as="c" hint-placeholder-count="7">
+                  <div style="text-align:center; font-family:'Geist Mono'; font-size:10.5px; color:#8b98a9; padding:6px 0; cursor:pointer;" onClick="{{ c.onClick }}">{{ c.t }}</div>
+                </sc-for>
+                <sc-for list="{{ matrixRows }}" as="mr" hint-placeholder-count="6">
+                  <div style="display:flex; align-items:center; gap:8px; padding:3px 0;">
+                    <span style="font-family:'Geist Mono'; font-weight:600; font-size:11px; width:24px;">{{ mr.code }}</span>
+                    <span style="{{ mr.dnaStyle }}">{{ mr.dna }}</span>
+                  </div>
+                  <sc-for list="{{ mr.cells }}" as="cell" hint-placeholder-count="7">
+                    <div title="{{ cell.tip }}" style="{{ cell.style }}">{{ cell.txt }}</div>
+                  </sc-for>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- ================= REPLAY ================= -->
+        <sc-if value="{{ showReplay }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <div style="display:flex; align-items:center; gap:16px; margin-bottom:14px; flex-wrap:wrap;">
+            <span style="font-family:'Geist'; font-weight:700; font-size:22px;">{{ stock.ticker }}</span>
+            <span style="font-size:11px; color:#8b98a9;">{{ stock.name }}</span>
+            <div style="flex:1;"></div>
+            <div style="display:flex; align-items:center; gap:8px; font-family:'Geist Mono'; font-size:11px;">
+              <span style="color:#5a6675;">reconstructing from stored</span>
+              <span style="color:#58c4dd;">as_of</span>
+              <span style="color:#5a6675;">·</span>
+              <span style="color:#e6edf3;">{{ replay.asOf }}</span>
+            </div>
+          </div>
+
+          <div style="display:grid; grid-template-columns:1fr 260px; gap:14px; align-items:start;">
+            <div style="background:#0d121b; border:1px solid rgba(255,255,255,0.06); border-radius:10px; padding:8px 10px 4px;">
+              {{ replayChart }}
+            </div>
+            <div style="display:flex; flex-direction:column; gap:10px;">
+              <div style="background:#0d121b; border:1px solid rgba(255,255,255,0.06); border-radius:10px; padding:14px;">
+                <div style="font-size:10px; color:#5a6675; letter-spacing:0.06em; margin-bottom:10px;">AT PLAYHEAD</div>
+                <sc-for list="{{ replay.readout }}" as="r" hint-placeholder-count="5">
+                  <div style="display:flex; align-items:center; justify-content:space-between; padding:6px 0; border-bottom:1px solid rgba(255,255,255,0.04);">
+                    <span style="font-size:11px; color:#8b98a9;">{{ r.label }}</span>
+                    <span style="font-family:'Geist Mono'; font-size:12.5px; font-weight:600; color:{{ r.color }};">{{ r.val }}</span>
+                  </div>
+                </sc-for>
+                <div style="margin-top:12px; padding:9px 11px; border-radius:7px; background:{{ replay.phaseBg }}; border:1px solid {{ replay.phaseBorder }};">
+                  <div style="font-size:9.5px; color:#8b98a9; letter-spacing:0.05em;">WYCKOFF PHASE</div>
+                  <div style="font-family:'Geist'; font-weight:600; font-size:15px; color:{{ replay.phaseColor }}; margin-top:2px;">{{ replay.phase }}</div>
+                  <div style="font-size:10.5px; color:#8b98a9; margin-top:3px; line-height:1.45;">{{ replay.phaseNote }}</div>
+                </div>
+              </div>
+              <div style="background:#0d121b; border:1px solid rgba(255,255,255,0.06); border-radius:10px; padding:12px 14px;">
+                <div style="font-size:10.5px; color:#c2ccd8; line-height:1.5;">{{ replay.insight }}</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- transport -->
+          <div style="background:#0d121b; border:1px solid rgba(255,255,255,0.06); border-radius:10px; margin-top:12px; padding:12px 16px; display:flex; align-items:center; gap:16px;">
+            <div onClick="{{ replay.togglePlay }}" style="width:38px; height:38px; border-radius:50%; background:#58c4dd; color:#04121a; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:15px; flex:0 0 auto;">{{ replay.playGlyph }}</div>
+            <div style="flex:1;">
+              <input type="range" min="0" max="{{ replay.maxScrub }}" value="{{ replay.scrub }}" onInput="{{ replay.onScrub }}" style="width:100%;">
+              <div style="display:flex; justify-content:space-between; font-family:'Geist Mono'; font-size:9.5px; color:#5a6675; margin-top:6px;">
+                <span>{{ replay.startDate }}</span>
+                <span style="color:#8b98a9;">day {{ replay.dayIdx }} / {{ replay.maxScrub }}</span>
+                <span>{{ replay.endDate }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- ================= HEATMAP ================= -->
+        <sc-if value="{{ showHeatmap }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <div style="display:flex; align-items:center; gap:14px; margin-bottom:14px; flex-wrap:wrap;">
+            <div style="display:flex; gap:16px; align-items:center; font-size:10px; color:#8b98a9;">
+              <span style="display:flex; align-items:center; gap:6px;"><span style="width:44px; height:11px; border-radius:3px; background:linear-gradient(90deg,#f85149,#5a2b30);"></span>net sell</span>
+              <span style="display:flex; align-items:center; gap:6px;"><span style="width:44px; height:11px; border-radius:3px; background:linear-gradient(90deg,#2b4a34,#3fb950);"></span>net buy</span>
+              <span style="color:#5a6675;">intensity = flow as % of cap</span>
+            </div>
+            <div style="flex:1;"></div>
+            <div style="display:flex; align-items:center; gap:6px; font-size:10px; color:#bc8cff;"><span style="width:9px; height:9px; border:1.5px solid #bc8cff; border-radius:2px;"></span>divergence: local buy + foreign sell</div>
+          </div>
+          {{ heatmapGrid }}
+          <div style="margin-top:14px; background:#0d121b; border:1px solid rgba(255,255,255,0.06); border-radius:10px; padding:13px 16px;">
+            <div style="font-size:11px; font-weight:600; color:#bc8cff; margin-bottom:9px;">◆ DIVERGENCE ALERTS <span style="color:#5a6675; font-weight:400;">— observation, not a recommendation</span></div>
+            <sc-for list="{{ divergenceAlerts }}" as="a" hint-placeholder-count="3">
+              <div style="display:flex; align-items:center; gap:10px; padding:5px 0; font-size:11px;">
+                <span style="font-family:'Geist Mono'; font-weight:600; width:52px;">{{ a.ticker }}</span>
+                <span style="color:#8b98a9; flex:1;">{{ a.text }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- ================= FOREIGN FLOW ================= -->
+        <sc-if value="{{ showForeign }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <div style="display:flex; align-items:center; gap:14px; margin-bottom:14px; flex-wrap:wrap;">
+            <span style="font-family:'Geist'; font-weight:700; font-size:22px;">{{ stock.ticker }}</span>
+            <span style="font-size:11px; color:#8b98a9;">{{ stock.name }}</span>
+            <span style="font-size:10px; padding:3px 8px; border-radius:5px; background:rgba(88,166,255,0.12); color:#58a6ff; border:1px solid rgba(88,166,255,0.25);">FOREIGN-INST LENS</span>
+            <div style="flex:1;"></div>
+            <span style="font-size:11px; color:#8b98a9; font-family:'Geist Mono';">{{ foreign.marketTide }}</span>
+          </div>
+          <div style="display:grid; grid-template-columns:minmax(0,1fr) minmax(220px,296px); gap:14px; align-items:start;">
+            <div style="display:flex; flex-direction:column; gap:12px;">
+              <div style="background:#0d121b; border:1px solid rgba(255,255,255,0.06); border-radius:10px; padding:10px 12px 4px;">{{ foreign.chart }}</div>
+              <div style="background:#0d121b; border:1px solid rgba(88,166,255,0.2); border-radius:10px; padding:13px 15px; display:flex; align-items:center; gap:12px;">
+                <span style="width:9px; height:9px; border-radius:50%; background:{{ foreign.reversal.color }}; flex:0 0 auto;"></span>
+                <div>
+                  <div style="font-size:10px; color:#5a6675; letter-spacing:0.06em;">FLOW-REVERSAL DETECTION</div>
+                  <div style="font-size:12px; color:#c2ccd8; margin-top:3px;">{{ foreign.reversal.text }}</div>
+                </div>
+              </div>
+              <div style="background:#0d121b; border:1px solid rgba(255,255,255,0.06); border-radius:10px; padding:14px;">
+                <div style="font-size:11px; font-weight:600; margin-bottom:11px;">FOREIGN vs DOMESTIC — today</div>
+                <div style="display:flex; height:26px; border-radius:6px; overflow:hidden; background:rgba(255,255,255,0.04);">
+                  <div style="width:{{ foreign.fW }}; background:#58a6ff; display:flex; align-items:center; padding-left:9px; font-family:'Geist Mono'; font-size:10px; color:#04121a; font-weight:600;">FGN {{ foreign.splitForeign }}</div>
+                  <div style="width:{{ foreign.dW }}; background:#a371f7; display:flex; align-items:center; justify-content:flex-end; padding-right:9px; font-family:'Geist Mono'; font-size:10px; color:#0a0e14; font-weight:600;">DOM {{ foreign.splitDomestic }}</div>
+                </div>
+              </div>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:12px;">
+              <div style="background:#0d121b; border:1px solid rgba(255,255,255,0.06); border-radius:10px; padding:14px;">
+                <div style="font-size:10px; color:#5a6675; letter-spacing:0.06em; margin-bottom:8px;">FOREIGN FLOW STATS</div>
+                <sc-for list="{{ foreign.stats }}" as="s" hint-placeholder-count="4">
+                  <div style="display:flex; align-items:center; justify-content:space-between; padding:6px 0; border-bottom:1px solid rgba(255,255,255,0.04);">
+                    <span style="font-size:11px; color:#8b98a9;">{{ s.label }}</span>
+                    <span style="font-family:'Geist Mono'; font-size:12.5px; font-weight:600; color:{{ s.color }};">{{ s.val }}</span>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="background:#0d121b; border:1px solid rgba(255,255,255,0.06); border-radius:10px; padding:14px;">
+                <div style="font-size:10px; color:#5a6675; letter-spacing:0.06em; margin-bottom:9px;">FOREIGN OWN vs FREE-FLOAT</div>
+                <div style="display:flex; align-items:baseline; gap:6px;"><span style="font-family:'Geist Mono'; font-size:24px; font-weight:600; color:#58a6ff;">{{ foreign.ownPct }}%</span><span style="font-size:10px; color:#8b98a9;">of {{ foreign.floatPct }}% free-float</span></div>
+                <div style="height:6px; border-radius:4px; background:rgba(255,255,255,0.07); margin-top:9px; overflow:hidden;"><div style="height:100%; width:{{ foreign.ownW }}; background:#58a6ff;"></div></div>
+              </div>
+              <div style="background:#0d121b; border:1px solid rgba(255,255,255,0.06); border-radius:10px; padding:14px;">
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;"><span style="font-size:10px; color:#5a6675; letter-spacing:0.06em;">KSEI OWNERSHIP · 6mo</span><span style="font-size:10px; color:#58a6ff;">{{ foreign.kseiDir }}</span></div>
+                <svg viewBox="0 0 160 50" width="100%" style="display:block;"><polyline points="{{ foreign.kseiPts }}" fill="none" stroke="#58a6ff" stroke-width="2"></polyline></svg>
+              </div>
+            </div>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- ================= ACCUMULATION DETECTOR ================= -->
+        <sc-if value="{{ showAccum }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <div style="display:flex; align-items:center; gap:14px; margin-bottom:14px; flex-wrap:wrap;">
+            <span style="font-family:'Geist'; font-weight:700; font-size:22px;">{{ stock.ticker }}</span>
+            <span style="font-size:11px; color:#8b98a9;">{{ stock.name }}</span>
+            <div style="flex:1;"></div>
+            <div style="display:flex; align-items:center; gap:9px; padding:6px 12px; border-radius:8px; background:rgba(227,179,65,0.08); border:1px solid rgba(227,179,65,0.28);">
+              <span style="width:8px; height:8px; border-radius:50%; background:{{ accum.verdictColor }};"></span>
+              <span style="font-size:12px; font-weight:600; color:{{ accum.verdictColor }};">{{ accum.verdict }}</span>
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:minmax(0,1fr) minmax(220px,296px); gap:14px; align-items:start;">
+            <div style="display:flex; flex-direction:column; gap:12px;">
+              <div style="background:#0d121b; border:1px solid rgba(255,255,255,0.06); border-radius:10px; padding:10px 12px 4px;">{{ accum.chart }}</div>
+              <div style="background:#0d121b; border:1px solid rgba(255,255,255,0.06); border-radius:10px; padding:13px 15px;">
+                <div style="font-size:11px; color:#c2ccd8; line-height:1.55;">{{ accum.verdictNote }}</div>
+              </div>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:12px;">
+              <div style="background:#0d121b; border:1px solid rgba(255,255,255,0.06); border-radius:10px; padding:14px;">
+                <div style="font-size:10px; color:#5a6675; letter-spacing:0.06em; margin-bottom:12px;">STEALTH METRICS <span style="color:#3d4654;">· measured, not scored</span></div>
+                <sc-for list="{{ accum.metrics }}" as="mt" hint-placeholder-count="3">
+                  <div style="margin-bottom:13px;">
+                    <div style="display:flex; align-items:baseline; justify-content:space-between;">
+                      <span style="font-size:11px; color:#8b98a9;">{{ mt.label }}</span>
+                      <span style="font-family:'Geist Mono'; font-size:13px; font-weight:600; color:{{ mt.color }};">{{ mt.val }}</span>
+                    </div>
+                    <div style="height:5px; border-radius:3px; background:rgba(255,255,255,0.07); margin-top:6px; overflow:hidden;"><div style="height:100%; width:{{ mt.w }}; background:{{ mt.wc }};"></div></div>
+                    <div style="font-size:9.5px; color:#5a6675; margin-top:3px;">{{ mt.sub }}</div>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="background:#0d121b; border:1px solid rgba(255,255,255,0.06); border-radius:10px; padding:14px;">
+                <div style="font-size:10px; color:#5a6675; letter-spacing:0.06em; margin-bottom:8px;">ACCUMULATOR VWAP</div>
+                <div style="display:flex; align-items:baseline; gap:8px;"><span style="font-family:'Geist Mono'; font-size:22px; font-weight:600;">{{ accum.vwap }}</span><span style="font-size:11px; color:#8b98a9;">last {{ accum.curPrice }}</span><span style="font-family:'Geist Mono'; font-size:12px; color:{{ accum.vsVwapColor }};">{{ accum.vsVwap }}</span></div>
+                <div style="font-size:9.5px; color:#5a6675; margin-top:9px; line-height:1.4;">Absorption: {{ accum.absorption }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- ================= RISK MONITOR ================= -->
+        <sc-if value="{{ showRisk }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:14px;">
+            <sc-for list="{{ risk.metrics }}" as="mt" hint-placeholder-count="4">
+              <div style="background:#0d121b; border:1px solid rgba(255,255,255,0.06); border-radius:10px; padding:13px 15px;">
+                <div style="font-size:10px; color:#5a6675;">{{ mt.label }}</div>
+                <div style="font-family:'Geist Mono'; font-size:20px; font-weight:600; margin-top:5px;">{{ mt.val }}</div>
+                <div style="font-size:9.5px; color:#8b98a9; margin-top:3px;">{{ mt.note }}</div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display:grid; grid-template-columns:1.35fr 1fr; gap:14px; align-items:start;">
+            <div style="display:flex; flex-direction:column; gap:12px;">
+              <div style="background:#0d121b; border:1px solid rgba(255,255,255,0.06); border-radius:10px; overflow:hidden;">
+                <div style="padding:11px 14px; border-bottom:1px solid rgba(255,255,255,0.06); font-size:12px; font-weight:600;">OPEN PAPER POSITIONS <span style="color:#5a6675; font-weight:400;">· long-only, 1% risk / name</span></div>
+                <div style="display:grid; grid-template-columns:56px 1fr 88px 52px 56px 64px; padding:7px 14px; font-size:9.5px; color:#5a6675; letter-spacing:0.04em; border-bottom:1px solid rgba(255,255,255,0.05);">
+                  <div>NAME</div><div>SECTOR</div><div>% EQUITY</div><div>β</div><div>DTE</div><div style="text-align:right;">P&L</div>
+                </div>
+                <sc-for list="{{ risk.posRows }}" as="p" hint-placeholder-count="5">
+                  <div style="display:grid; grid-template-columns:56px 1fr 88px 52px 56px 64px; align-items:center; padding:9px 14px; border-bottom:1px solid rgba(255,255,255,0.035);">
+                    <div style="font-family:'Geist Mono'; font-weight:600; font-size:12px;">{{ p.t }}</div>
+                    <div style="font-size:10.5px; color:#8b98a9;">{{ p.sector }}</div>
+                    <div>
+                      <div style="font-family:'Geist Mono'; font-size:11px; color:{{ p.pctColor }};">{{ p.pctStr }}</div>
+                      <div style="height:3px; border-radius:2px; background:rgba(255,255,255,0.07); margin-top:3px; overflow:hidden;"><div style="height:100%; width:{{ p.pctW }}; background:{{ p.pctColor }};"></div></div>
+                    </div>
+                    <div style="font-family:'Geist Mono'; font-size:11px; color:#c2ccd8;">{{ p.beta }}</div>
+                    <div style="font-family:'Geist Mono'; font-size:11px; color:#c2ccd8;">{{ p.dte }}</div>
+                    <div style="text-align:right; font-family:'Geist Mono'; font-size:12px; font-weight:600; color:{{ p.pnlColor }};">{{ p.pnlStr }}</div>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="background:#0d121b; border:1px solid rgba(255,255,255,0.06); border-radius:10px; padding:14px;">
+                <div style="font-size:11px; font-weight:600; margin-bottom:12px;">EXPOSURE CAPS <span style="color:#5a6675; font-weight:400;">· §6 · sector ≤ 30%</span></div>
+                <sc-for list="{{ risk.sectorCaps }}" as="sc" hint-placeholder-count="3">
+                  <div style="margin-bottom:11px;">
+                    <div style="display:flex; justify-content:space-between; font-size:11px;"><span style="color:#c2ccd8;">{{ sc.name }}</span><span style="font-family:'Geist Mono'; color:{{ sc.color }};">{{ sc.pct }}</span></div>
+                    <div style="height:6px; border-radius:4px; background:rgba(255,255,255,0.07); margin-top:5px; overflow:hidden;"><div style="height:100%; width:{{ sc.w }}; background:{{ sc.color }};"></div></div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:12px;">
+              <div style="background:#0d121b; border:1px solid rgba(255,255,255,0.06); border-radius:10px; padding:14px;">
+                <div style="font-size:11px; font-weight:600; margin-bottom:12px;">CROWDING MATRIX <span style="color:#5a6675; font-weight:400;">· same-bandar ρ</span></div>
+                {{ risk.crowdMatrix }}
+                <div style="font-size:10px; color:#8b98a9; margin-top:11px; line-height:1.5; padding-top:10px; border-top:1px solid rgba(255,255,255,0.05);">{{ risk.crowdNote }}</div>
+              </div>
+              <div style="background:#0d121b; border:1px solid rgba(255,255,255,0.06); border-radius:10px; padding:14px;">
+                <div style="font-size:11px; font-weight:600; margin-bottom:12px;">CIRCUIT BREAKERS <span style="color:#5a6675; font-weight:400;">· §6</span></div>
+                <sc-for list="{{ risk.breakers }}" as="b" hint-placeholder-count="2">
+                  <div style="margin-bottom:12px;">
+                    <div style="display:flex; justify-content:space-between; font-size:11px;"><span style="color:#c2ccd8;">{{ b.label }}</span><span style="font-family:'Geist Mono'; font-weight:600; color:{{ b.color }};">{{ b.val }}</span></div>
+                    <div style="height:6px; border-radius:4px; background:rgba(255,255,255,0.07); margin-top:5px; overflow:hidden;"><div style="height:100%; width:{{ b.pct }}%; background:{{ b.color }};"></div></div>
+                    <div style="font-size:9px; color:#5a6675; margin-top:3px;">{{ b.thresh }}</div>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="background:#0d121b; border:1px solid rgba(255,255,255,0.06); border-radius:10px; padding:14px;">
+                <div style="font-size:11px; font-weight:600; margin-bottom:10px;">SCENARIO STRESS</div>
+                <sc-for list="{{ risk.stress }}" as="st" hint-placeholder-count="4">
+                  <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:6px 0; border-bottom:1px solid rgba(255,255,255,0.04);">
+                    <span style="font-size:10.5px; color:#8b98a9;">{{ st.sc }}</span>
+                    <span style="font-family:'Geist Mono'; font-size:11px; font-weight:600; color:{{ st.color }}; white-space:nowrap;">{{ st.impact }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- ================= SMS / RANK ================= -->
+        <sc-if value="{{ showSms }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <div style="background:#0d121b; border:1px solid {{ smsProgressBorder }}; border-radius:10px; padding:13px 16px; margin-bottom:14px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+              <span style="font-size:11px; color:#8b98a9; letter-spacing:0.04em;">PER-MODULE VALIDATION STATE <span style="color:#5a6675;">· PAPER_VALIDATION_MONTHS = 3</span></span>
+              <span style="font-family:'Geist Mono'; font-size:11px; color:{{ sms.progressColor }};">{{ sms.progressLabel }}</span>
+            </div>
+            <div style="height:7px; border-radius:5px; background:rgba(255,255,255,0.07); overflow:hidden;"><div style="height:100%; width:{{ sms.progressPct }}; background:{{ sms.progressColor }};"></div></div>
+            <div style="font-size:10.5px; color:#c2ccd8; margin-top:11px; line-height:1.5;">{{ sms.threshNote }}</div>
+          </div>
+          <div style="display:grid; grid-template-columns:minmax(0,1fr) minmax(220px,296px); gap:14px; align-items:start;">
+            <div style="background:#0d121b; border:1px solid rgba(255,255,255,0.06); border-radius:10px; overflow:hidden;">
+              <div style="display:grid; grid-template-columns:26px 58px minmax(48px,1fr) 66px; gap:8px; padding:9px 12px; font-size:9px; color:#5a6675; letter-spacing:0.03em; border-bottom:1px solid rgba(255,255,255,0.05);">
+                <div>#</div><div>NAME</div><div>COMPONENTS · obs</div><div style="text-align:right;">{{ smsColHead }}</div>
+              </div>
+              <sc-for list="{{ sms.rankRows }}" as="row" hint-placeholder-count="7">
+                <div style="{{ row.rowStyle }}">
+                  <div style="font-family:'Geist Mono'; font-size:13px; color:#8b98a9;">{{ row.rank }}</div>
+                  <div><div style="font-family:'Geist Mono'; font-weight:600; font-size:13px;">{{ row.t }}</div></div>
+                  <div style="display:flex; align-items:flex-end; gap:4px; height:30px;">
+                    <sc-for list="{{ row.bars }}" as="bar" hint-placeholder-count="4">
+                      <div title="{{ bar.label }}" style="flex:1; height:{{ bar.w }}; border-radius:2px 2px 0 0; background:{{ bar.color }};"></div>
+                    </sc-for>
+                  </div>
+                  <div style="text-align:right;">
+                    <div style="font-family:'Geist Mono'; font-size:16px; font-weight:600; color:{{ row.smsColor }};">{{ row.smsStr }}</div>
+                    <div style="font-family:'Geist Mono'; font-size:9px; letter-spacing:0.05em; color:{{ row.stateColor }};">{{ row.state }}</div>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+            <div style="background:#0d121b; border:1px solid rgba(255,255,255,0.06); border-radius:10px; padding:14px;">
+              <div style="font-size:11px; font-weight:600; color:#e8c168; letter-spacing:0.03em;">{{ sms.digestTitle }}</div>
+              <div style="font-size:9.5px; color:#5a6675; margin-top:3px; margin-bottom:12px;">{{ sms.digestFrame }}</div>
+              <sc-for list="{{ sms.topOpps }}" as="o" hint-placeholder-count="3">
+                <div style="padding:11px 0; border-bottom:1px solid rgba(255,255,255,0.05);">
+                  <div style="display:flex; align-items:center; justify-content:space-between;">
+                    <span style="font-family:'Geist Mono'; font-weight:600; font-size:13px;">{{ o.t }}</span>
+                    <span style="font-family:'Geist Mono'; font-size:11px; color:#e8c168;">{{ o.smsStr }}</span>
+                  </div>
+                  <div style="font-size:10.5px; color:#8b98a9; margin-top:5px; line-height:1.45;">{{ o.text }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- ================= SECTOR ROTATION ================= -->
+        <sc-if value="{{ showSector }}" hint-placeholder-val="{{ false }}">
+        <div style="display:grid; grid-template-columns:1fr 300px; gap:14px; align-items:start;">
+          <div style="background:#0d121b; border:1px solid rgba(255,255,255,0.06); border-radius:10px; padding:14px;">
+            {{ sectorScatter }}
+          </div>
+          <div style="display:flex; flex-direction:column; gap:10px;">
+            <sc-for list="{{ sectorRows }}" as="s" hint-placeholder-count="4">
+              <div style="background:#0d121b; border:1px solid rgba(255,255,255,0.06); border-left:3px solid {{ s.color }}; border-radius:8px; padding:11px 13px;">
+                <div style="display:flex; align-items:center; justify-content:space-between;">
+                  <span style="font-size:12px; font-weight:600;">{{ s.name }}</span>
+                  <span style="font-size:9.5px; padding:2px 7px; border-radius:4px; background:{{ s.quadBg }}; color:{{ s.color }};">{{ s.quadrant }}</span>
+                </div>
+                <div style="font-size:10.5px; color:#8b98a9; margin-top:5px; line-height:1.45;">{{ s.note }}</div>
+                <div style="display:flex; gap:12px; margin-top:8px; font-family:'Geist Mono'; font-size:10px; color:#5a6675;">
+                  <span>flow <span style="color:{{ s.flowColor }};">{{ s.flowStr }}</span></span>
+                  <span>RS <span style="color:#c2ccd8;">{{ s.rsStr }}</span></span>
+                  <span>{{ s.tide }}</span>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        </sc-if>
+
+      </div>
+    </div>
+
+    <!-- RIGHT RAIL: ARMED WATCHLIST -->
+    <div style="width:296px; flex:0 0 296px; background:#0a0e14; border-left:1px solid rgba(255,255,255,0.06); display:flex; flex-direction:column;">
+      <div style="padding:14px 16px 10px; border-bottom:1px solid rgba(255,255,255,0.06);">
+        <div style="font-size:12px; font-weight:600; letter-spacing:0.03em;">ARMED WATCHLIST</div>
+        <div style="font-size:10px; color:#8b98a9; margin-top:4px; line-height:1.45;">Highest flow-signal names today — <span style="color:#e8c168;">observation, not a recommendation.</span> {{ watchNote }}</div>
+      </div>
+      <div style="flex:1; overflow:auto; padding:8px;">
+        <sc-for list="{{ watchRows }}" as="w" hint-placeholder-count="7">
+          <div onClick="{{ w.onClick }}" style="{{ w.wrapStyle }}">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="width:7px; height:7px; border-radius:50%; background:{{ w.dotColor }}; {{ w.dotAnim }}"></span>
+              <span style="font-family:'Geist Mono'; font-weight:600; font-size:13px;">{{ w.ticker }}</span>
+              <span style="font-size:9px; padding:1px 5px; border-radius:3px; background:rgba(255,255,255,0.06); color:#8b98a9;">{{ w.track }}</span>
+              <div style="flex:1;"></div>
+              <span style="font-size:9.5px; color:{{ w.stateColor }}; letter-spacing:0.05em; font-family:'Geist Mono';">{{ w.state }}</span>
+            </div>
+            <div style="display:flex; align-items:flex-end; gap:3px; height:26px; margin-top:9px;">
+              <sc-for list="{{ w.components }}" as="cmp" hint-placeholder-count="5">
+                <div title="{{ cmp.tip }}" style="flex:1; height:{{ cmp.h }}; border-radius:2px 2px 0 0; background:{{ cmp.color }};"></div>
+              </sc-for>
+            </div>
+            <div style="display:flex; justify-content:space-between; font-size:8.5px; color:#5a6675; margin-top:4px; letter-spacing:0.02em;">
+              <span>DIV</span><span>BRK</span><span>FF</span><span>RVOL</span><span>BLK</span>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="padding:11px 14px; border-top:1px solid rgba(255,255,255,0.06); font-size:9px; color:#5a6675; line-height:1.5;">
+        {{ watchFooter }}
+      </div>
+    </div>
+  </div>
+
+  <!-- STATUS / DISCLAIMER BAR -->
+  <div style="height:26px; flex:0 0 26px; background:#0a0e14; border-top:1px solid rgba(255,255,255,0.06); display:flex; align-items:center; overflow:hidden;">
+    <div style="flex:0 0 auto; padding:0 14px; font-size:9.5px; color:#5a6675; letter-spacing:0.08em; border-right:1px solid rgba(255,255,255,0.06); height:100%; display:flex; align-items:center; font-family:'Geist Mono';">LOCAL · SINGLE-USER · PAPER</div>
+    <div style="flex:1; overflow:hidden; white-space:nowrap;">
+      <div style="display:inline-block; animation:tickscroll 42s linear infinite; font-size:10px; color:#6b7787;">
+        <span style="padding:0 26px;">Private personal-use analytics tool — not a product, not a service, not for redistribution.</span>
+        <span style="padding:0 26px; color:#5a6675;">•</span>
+        <span style="padding:0 26px;">Not investment advice. All outputs are observations for the operator's own decisions.</span>
+        <span style="padding:0 26px; color:#5a6675;">•</span>
+        <span style="padding:0 26px;">Data consumed from operator's own session; used at own risk; not republished.</span>
+        <span style="padding:0 26px; color:#5a6675;">•</span>
+        <span style="padding:0 26px;">No live execution. Paper trading only. Paper results do not guarantee live performance.</span>
+        <span style="padding:0 26px; color:#5a6675;">•</span>
+        <span style="padding:0 26px;">Private personal-use analytics tool — not a product, not a service, not for redistribution.</span>
+        <span style="padding:0 26px; color:#5a6675;">•</span>
+        <span style="padding:0 26px;">Not investment advice. All outputs are observations for the operator's own decisions.</span>
+        <span style="padding:0 26px; color:#5a6675;">•</span>
+        <span style="padding:0 26px;">Data consumed from operator's own session; used at own risk; not republished.</span>
+        <span style="padding:0 26px; color:#5a6675;">•</span>
+        <span style="padding:0 26px;">No live execution. Paper trading only. Paper results do not guarantee live performance.</span>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:800},&quot;defaultModule&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;broker&quot;,&quot;replay&quot;,&quot;heatmap&quot;,&quot;sector&quot;],&quot;default&quot;:&quot;broker&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Terminal&quot;},&quot;paperValidated&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;RULE B&quot;,&quot;unit&quot;:&quot;&quot;},&quot;replaySpeedMs&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:220,&quot;min&quot;:60,&quot;max&quot;:400,&quot;step&quot;:20,&quot;unit&quot;:&quot;ms&quot;,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Terminal&quot;}}">
+class Component extends DCLogic {
+  state = { activeModule: null, selectedStock: 'BRMS', scrub: 43, playing: false };
+  get activeMod(){ return this.state.activeModule || this.props.defaultModule || 'broker'; }
+
+  // ---------- palette ----------
+  C = {
+    buy:'#3fb950', sell:'#f85149', armed:'#d29922', accent:'#58c4dd',
+    div:'#bc8cff', text:'#e6edf3', muted:'#8b98a9', faint:'#5a6675'
+  };
+  DNA = {
+    'Foreign Inst':'#58a6ff', 'Local Inst':'#a371f7', 'Smart Money':'#e3b341',
+    'Retail':'#6e7681', 'Prop':'#56d4bd'
+  };
+
+  BROKERS = [
+    {code:'KZ', name:'CLSA Sekuritas',      dna:'Foreign Inst'},
+    {code:'AK', name:'UBS Sekuritas',       dna:'Foreign Inst'},
+    {code:'RX', name:'Macquarie',           dna:'Foreign Inst'},
+    {code:'ZP', name:'Maybank Sekuritas',   dna:'Foreign Inst'},
+    {code:'YU', name:'CGS Intl',            dna:'Foreign Inst'},
+    {code:'CC', name:'Mandiri Sekuritas',   dna:'Local Inst'},
+    {code:'NI', name:'BNI Sekuritas',       dna:'Local Inst'},
+    {code:'OD', name:'BRI Danareksa',       dna:'Local Inst'},
+    {code:'DR', name:'RHB Sekuritas',       dna:'Local Inst'},
+    {code:'DX', name:'Bahana Sekuritas',    dna:'Smart Money'},
+    {code:'AI', name:'UOB Kay Hian',        dna:'Smart Money'},
+    {code:'KI', name:'Ciptadana',           dna:'Smart Money'},
+    {code:'BQ', name:'Danpac Sekuritas',    dna:'Prop'},
+    {code:'YP', name:'Mirae Asset',         dna:'Retail'},
+    {code:'PD', name:'Indo Premier',        dna:'Retail'},
+    {code:'CP', name:'Valbury',             dna:'Retail'},
+    {code:'GR', name:'Panin Sekuritas',     dna:'Retail'}
+  ];
+
+  TICKERS = [
+    {t:'BRMS', name:'Bumi Resources Minerals', sector:'Basic Materials', price:412,  chg: 2.74, adv:38},
+    {t:'PTRO', name:'Petrosea',                sector:'Energy',          price:4180, chg: 1.21, adv:29},
+    {t:'RAJA', name:'Rukun Raharja',           sector:'Energy',          price:2960, chg:-0.67, adv:22},
+    {t:'CUAN', name:'Petrindo Jaya Kreasi',    sector:'Energy',          price:8125, chg: 3.18, adv:41},
+    {t:'DEWA', name:'Darma Henwa',             sector:'Energy',          price:214,  chg: 0.94, adv:18},
+    {t:'NCKL', name:'Trimegah Bangun Persada', sector:'Basic Materials', price:865,  chg:-1.14, adv:33},
+    {t:'MBMA', name:'Merdeka Battery',         sector:'Basic Materials', price:396,  chg: 0.51, adv:27}
+  ];
+
+  rng(seed){ let s = seed>>>0; return ()=>{ s = (s + 0x6D2B79F5)>>>0; let t = Math.imul(s ^ (s>>>15), 1|s); t = (t + Math.imul(t ^ (t>>>7), 61|t)) ^ t; return ((t ^ (t>>>14))>>>0)/4294967296; }; }
+  seedFor(t){ let h=0; for(let i=0;i<t.length;i++) h=(h*131 + t.charCodeAt(i))>>>0; return h||7; }
+
+  // net flow per broker for a ticker (IDR bn)
+  brokerNet(t){
+    const r = this.rng(this.seedFor(t)*13+3);
+    const codes = this.BROKERS.map(b=>b.code);
+    // pick 2 accumulators from non-retail (smart money / foreign inst / local inst)
+    const nonRetail = this.BROKERS.filter(b=>b.dna!=='Retail').map(b=>b.code);
+    const a1 = nonRetail[Math.floor(r()*nonRetail.length)];
+    let a2 = nonRetail[Math.floor(r()*nonRetail.length)];
+    let guard=0; while(a2===a1 && guard++<20){ a2 = nonRetail[Math.floor(r()*nonRetail.length)]; }
+    const out = {};
+    this.BROKERS.forEach(b=>{
+      let v = (r()-0.5)*9;                                   // base
+      if(b.dna==='Retail') v -= (2 + r()*9);                 // retail distributing
+      if(b.code===a1) v = 22 + r()*16;                       // dominant accumulator
+      if(b.code===a2) v = 12 + r()*11;                       // secondary accumulator
+      out[b.code] = Math.round(v*10)/10;
+    });
+    return out;
+  }
+
+  // 44-day accumulation replay series for a ticker
+  replaySeries(t){
+    const base = this.TICKERS.find(x=>x.t===t);
+    const r = this.rng(this.seedFor(t)*7+11);
+    const N = 44; const arr = [];
+    const p0 = base.price;
+    for(let i=0;i<N;i++){
+      let phaseF, trend;
+      if(i<12){ trend = 1 - (i/12)*0.28; }                    // selling climax / decline
+      else if(i<30){ trend = 0.72 + Math.sin(i*0.9)*0.012; }  // accumulation range
+      else if(i<33){ trend = 0.70 + (i===31? -0.03:0); }      // spring dip
+      else if(i<38){ trend = 0.75 + (i-33)*0.006; }           // test / LPS
+      else { trend = 0.79 + (i-38)*0.045; }                   // SOS markup
+      const close = Math.round(p0*trend*(1 + (r()-0.5)*0.012));
+      // volume: high at climax, dry in range, spike at spring & SOS
+      let vol;
+      if(i<10) vol = 70 + r()*40;
+      else if(i<30) vol = 22 + r()*20;
+      else if(i<33) vol = 55 + r()*35;
+      else if(i>=38) vol = 60 + (i-38)*10 + r()*25;
+      else vol = 30 + r()*22;
+      // foreign flow: negative early, turning positive ~day 26
+      const foreign = Math.round(((i<26? -1:1) * (0.4 + r()*0.9) * (i<26? (26-i)/26 : (i-24)/20) )*10)/10;
+      // broker (smart money) net: accumulating from ~day 16, positive even while price flat
+      const broker = Math.round(((i<16? (r()-0.6): (0.5 + r()*0.9)) )*10)/10;
+      let phase = 'A'; if(i>=12&&i<30) phase='B'; if(i>=30&&i<36) phase='C'; if(i>=36) phase='D';
+      let marker=null;
+      if(i===31) marker='Spring';
+      if(i===35) marker='LPS';
+      if(i===38) marker='SOS';
+      arr.push({i, close, vol, foreign, broker, phase, marker});
+    }
+    return arr;
+  }
+
+  componentWillUnmount(){ if(this._iv) clearInterval(this._iv); }
+
+  selectStock(t){ if(this._iv){clearInterval(this._iv); this._iv=null;} this.setState({selectedStock:t, scrub:43, playing:false}); }
+  setModule(m){ if(this._iv){clearInterval(this._iv); this._iv=null;} this.setState({activeModule:m, playing:false}); }
+  togglePlay(){
+    if(this.state.playing){ clearInterval(this._iv); this._iv=null; this.setState({playing:false}); return; }
+    let start = this.state.scrub >= 43 ? 0 : this.state.scrub;
+    this.setState({playing:true, scrub:start});
+    this._iv = setInterval(()=>{
+      this.setState(s=>{ const n = s.scrub+1; if(n>=43){ clearInterval(this._iv); this._iv=null; return {scrub:43, playing:false}; } return {scrub:n}; });
+    }, this.props.replaySpeedMs || 180);
+  }
+  onScrub(e){ if(this._iv){clearInterval(this._iv); this._iv=null;} this.setState({scrub:+e.target.value, playing:false}); }
+
+  fmtSigned(v, dp){ dp = dp==null?1:dp; const s = v>=0?'+':'−'; return s + Math.abs(v).toFixed(dp); }
+  fmtPrice(p){ return p.toLocaleString('en-US'); }
+
+  // ---------------- charts ----------------
+  buildReplayChart(days, k){
+    const h = React.createElement; const C = this.C;
+    const W=1000, PAD=42;
+    const xOf = i => PAD + (i/(days.length-1))*(W-PAD-14);
+    // price lane 14..214
+    const closes = days.map(d=>d.close); const pmin=Math.min(...closes), pmax=Math.max(...closes);
+    const pyOf = v => 200 - ((v-pmin)/(pmax-pmin||1))*168;
+    // vol lane 236..316
+    const vmax = Math.max(...days.map(d=>d.vol));
+    // flow lane 340..430 baseline 385
+    const flowMax = Math.max(...days.map(d=>Math.max(Math.abs(d.foreign),Math.abs(d.broker)))) || 1;
+    const fyOf = v => 385 - (v/flowMax)*44;
+
+    const vis = days.filter(d=>d.i<=k);
+    const els = [];
+    // gridlines
+    for(let g=0; g<=3; g++){ const y=14+g*62; els.push(h('line',{key:'g'+g, x1:PAD, x2:W-14, y1:y, y2:y, stroke:'rgba(255,255,255,0.045)'})); }
+    // future shade
+    if(k < days.length-1){ els.push(h('rect',{key:'fut', x:xOf(k), y:10, width:W-14-xOf(k), height:424, fill:'rgba(10,14,20,0.6)'})); els.push(h('line',{key:'ph', x1:xOf(k), x2:xOf(k), y1:10, y2:434, stroke:C.accent, strokeWidth:1.5, strokeDasharray:'2 3', opacity:0.8})); }
+    // lane labels
+    els.push(h('text',{key:'l1', x:PAD, y:24, fill:C.faint, fontSize:11, fontFamily:'Geist Mono'},'PRICE'));
+    els.push(h('text',{key:'l2', x:PAD, y:250, fill:C.faint, fontSize:11, fontFamily:'Geist Mono'},'VOLUME'));
+    els.push(h('text',{key:'l3', x:PAD, y:354, fill:C.faint, fontSize:11, fontFamily:'Geist Mono'},'FLOW'));
+    els.push(h('line',{key:'zl', x1:PAD, x2:W-14, y1:385, y2:385, stroke:'rgba(255,255,255,0.12)'}));
+    // price area + line
+    if(vis.length>1){
+      let d='M '+xOf(vis[0].i)+' '+pyOf(vis[0].close);
+      vis.forEach(v=>{ d+=' L '+xOf(v.i)+' '+pyOf(v.close); });
+      let area = d + ' L '+xOf(vis[vis.length-1].i)+' 200 L '+xOf(vis[0].i)+' 200 Z';
+      els.push(h('path',{key:'parea', d:area, fill:'rgba(88,196,221,0.10)'}));
+      els.push(h('path',{key:'pline', d:d, fill:'none', stroke:C.accent, strokeWidth:2}));
+      const last=vis[vis.length-1];
+      els.push(h('circle',{key:'pdot', cx:xOf(last.i), cy:pyOf(last.close), r:3.5, fill:C.accent}));
+    }
+    // volume bars
+    vis.forEach(v=>{ const bh=(v.vol/vmax)*70; els.push(h('rect',{key:'v'+v.i, x:xOf(v.i)-3, y:316-bh, width:6, height:bh, fill: v.close>=(days[Math.max(0,v.i-1)].close)? 'rgba(63,185,80,0.5)':'rgba(248,81,73,0.5)'})); });
+    // flow lines: foreign (blue) & broker (gold)
+    const flowLine = (key,accessor,color)=>{ if(vis.length<2) return; let d='M '+xOf(vis[0].i)+' '+fyOf(accessor(vis[0])); vis.forEach(v=>{ d+=' L '+xOf(v.i)+' '+fyOf(accessor(v)); }); els.push(h('path',{key, d, fill:'none', stroke:color, strokeWidth:1.8})); };
+    flowLine('ff', v=>v.foreign, this.DNA['Foreign Inst']);
+    flowLine('bk', v=>v.broker, this.DNA['Smart Money']);
+    // markers
+    vis.forEach(v=>{ if(v.marker){ els.push(h('line',{key:'m'+v.i, x1:xOf(v.i), x2:xOf(v.i), y1:14, y2:200, stroke:C.armed, strokeWidth:1, strokeDasharray:'3 3', opacity:0.55})); els.push(h('rect',{key:'mb'+v.i, x:xOf(v.i)-16, y:pyOf(v.close)-24, width:34, height:14, rx:3, fill:'rgba(210,153,34,0.9)'})); els.push(h('text',{key:'mt'+v.i, x:xOf(v.i), y:pyOf(v.close)-14, fill:'#0a0e14', fontSize:9, fontWeight:600, textAnchor:'middle', fontFamily:'Geist Mono'}, v.marker)); } });
+    // flow legend
+    els.push(h('circle',{key:'lgf', cx:W-150, cy:352, r:4, fill:this.DNA['Foreign Inst']}));
+    els.push(h('text',{key:'lgft', x:W-142, y:356, fill:C.muted, fontSize:10}, 'foreign'));
+    els.push(h('circle',{key:'lgb', cx:W-90, cy:352, r:4, fill:this.DNA['Smart Money']}));
+    els.push(h('text',{key:'lgbt', x:W-82, y:356, fill:C.muted, fontSize:10}, 'broker'));
+
+    return h('svg',{viewBox:'0 0 1000 442', width:'100%', style:{display:'block'}}, els);
+  }
+
+  buildHeatmap(){
+    const h = React.createElement; const C=this.C;
+    const sectors = [
+      {name:'Energy',           stocks:[['PTRO',0.7],['RAJA',-0.3],['CUAN',0.85],['DEWA',0.35],['ADRO',0.2],['ITMG',-0.15]]},
+      {name:'Basic Materials',  stocks:[['BRMS',0.9,true],['NCKL',-0.45],['MBMA',0.4],['INCO',0.15],['ANTM',0.55],['MDKA',-0.2]]},
+      {name:'Industrials',      stocks:[['UNTR',0.3],['ASII',-0.1],['ARNA',0.45,true],['MARK',0.6],['IMPC',-0.25],['SCMA',0.05]]},
+      {name:'Infrastructure',   stocks:[['JSMR',0.25],['ISAT',0.5],['TOWR',-0.35],['EXCL',0.15],['MTEL',0.4],['PGEO',0.7]]},
+      {name:'Consumer',         stocks:[['MYOR',0.2],['ICBP',-0.3],['CMRY',0.55],['AMRT',0.35],['MAPI',-0.15,true],['ACES',0.45]]},
+      {name:'Technology',       stocks:[['GOTO',-0.5],['BUKA',-0.65],['EMTK',0.3],['DCII',0.75],['MTDL',0.4],['WIFI',0.6]]},
+      {name:'Financials',       stocks:[['BBRI',-0.2],['BBCA',0.1],['BBNI',-0.35],['BRIS',0.4],['BTPS',0.25],['ARTO',-0.55]]}
+    ];
+    const colorFor = (v)=>{ const a = Math.min(1, Math.abs(v)); if(v>=0){ return `rgba(63,185,80,${0.12+a*0.72})`; } return `rgba(248,81,73,${0.12+a*0.72})`; };
+    const rows = sectors.map(sec => h('div',{key:sec.name, style:{display:'grid', gridTemplateColumns:'132px repeat(6,1fr)', gap:'4px', alignItems:'stretch', marginBottom:'4px'}}, [
+      h('div',{key:'lab', style:{display:'flex', alignItems:'center', fontSize:'11px', color:C.muted, fontWeight:500}}, sec.name),
+      ...sec.stocks.map((st,idx)=>{ const [t,v,div]=st; return h('div',{key:t, title:`${t} · flow ${this.fmtSigned(v*100,0)}% of cap`, style:{position:'relative', height:'46px', borderRadius:'6px', background:colorFor(v), border: div? '1.5px solid #bc8cff':'1px solid rgba(255,255,255,0.05)', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', cursor:'default'}}, [
+        h('div',{key:'t', style:{fontFamily:'Geist Mono', fontSize:'11px', fontWeight:600, color:'#eef3f8'}}, t),
+        h('div',{key:'v', style:{fontFamily:'Geist Mono', fontSize:'9px', color:'rgba(255,255,255,0.6)', marginTop:'1px'}}, this.fmtSigned(v*100,0)+'%'),
+        div? h('div',{key:'d', style:{position:'absolute', top:'3px', right:'4px', color:'#bc8cff', fontSize:'8px'}}, '◆') : null
+      ]); })
+    ]));
+    return h('div',{style:{background:'#0d121b', border:'1px solid rgba(255,255,255,0.06)', borderRadius:'10px', padding:'14px'}}, rows);
+  }
+
+  buildSectorScatter(sectors){
+    const h = React.createElement; const C=this.C;
+    const S=460, PAD=44;
+    const xOf = rs => PAD + ((rs+1)/2)*(S-PAD*2);
+    const yOf = fl => (S-PAD) - ((fl+1)/2)*(S-PAD*2);
+    const els=[];
+    // quadrant fills
+    const cx=xOf(0), cy=yOf(0);
+    els.push(h('rect',{key:'q1', x:cx, y:PAD, width:S-PAD-cx, height:cy-PAD, fill:'rgba(63,185,80,0.05)'}));
+    els.push(h('rect',{key:'q2', x:PAD, y:PAD, width:cx-PAD, height:cy-PAD, fill:'rgba(88,196,221,0.05)'}));
+    els.push(h('rect',{key:'q3', x:PAD, y:cy, width:cx-PAD, height:(S-PAD)-cy, fill:'rgba(110,118,129,0.05)'}));
+    els.push(h('rect',{key:'q4', x:cx, y:cy, width:S-PAD-cx, height:(S-PAD)-cy, fill:'rgba(248,81,73,0.05)'}));
+    els.push(h('line',{key:'ax', x1:PAD, x2:S-PAD, y1:cy, y2:cy, stroke:'rgba(255,255,255,0.14)'}));
+    els.push(h('line',{key:'ay', x1:cx, x2:cx, y1:PAD, y2:S-PAD, stroke:'rgba(255,255,255,0.14)'}));
+    // quadrant labels
+    const ql=(x,y,txt,col,anchor)=>els.push(h('text',{key:'ql'+txt, x, y, fill:col, fontSize:11, fontWeight:600, textAnchor:anchor, fontFamily:'Geist'}, txt));
+    ql(S-PAD-4, PAD+16, 'LEADERS', C.buy, 'end');
+    ql(PAD+4, PAD+16, 'EARLY RECOVERY', C.accent, 'start');
+    ql(PAD+4, S-PAD-8, 'AVOID', C.faint, 'start');
+    ql(S-PAD-4, S-PAD-8, 'DISTRIBUTION WARN', C.sell, 'end');
+    // axis captions
+    els.push(h('text',{key:'axl', x:S-PAD, y:cy+16, fill:C.faint, fontSize:9, textAnchor:'end', fontFamily:'Geist Mono'}, 'RS →'));
+    els.push(h('text',{key:'ayl', x:cx+6, y:PAD+2, fill:C.faint, fontSize:9, fontFamily:'Geist Mono'}, 'FLOW ↑'));
+    // bubbles
+    sectors.forEach(s=>{ const x=xOf(s.rs), y=yOf(s.flow); const rad=10+s.mag*16; els.push(h('circle',{key:'b'+s.name, cx:x, cy:y, r:rad, fill:s.color, fillOpacity:0.22, stroke:s.color, strokeWidth:1.6})); els.push(h('text',{key:'bt'+s.name, x, y:y+3, fill:'#e6edf3', fontSize:9.5, fontWeight:600, textAnchor:'middle', fontFamily:'Geist Mono'}, s.abbr)); });
+    return h('svg',{viewBox:`0 0 ${S} ${S}`, width:'100%', style:{display:'block', maxHeight:'520px', margin:'0 auto'}}, els);
+  }
+
+  // ---------------- feature-module builders ----------------
+  buildForeignModule(t){
+    const h=React.createElement; const C=this.C; const DNA=this.DNA;
+    const days=this.replaySeries(t).slice(-30);
+    const r=this.rng(this.seedFor(t)*17+5);
+    // chart
+    const W=1000, PAD=44;
+    const xOf=i=>PAD+(i/(days.length-1))*(W-PAD-16);
+    let cum=0; const cums=days.map(d=>{cum+=d.foreign; return cum;});
+    const cmin=Math.min(...cums,0), cmax=Math.max(...cums,0);
+    const cyOf=v=>150-((v-cmin)/((cmax-cmin)||1))*120;
+    const fmax=Math.max(...days.map(d=>Math.abs(d.foreign)))||1;
+    const BASE=252; const byOf=v=>BASE-(v/fmax)*66;
+    const els=[];
+    for(let g=0;g<=3;g++){const y=30+g*40; els.push(h('line',{key:'g'+g,x1:PAD,x2:W-16,y1:y,y2:y,stroke:'rgba(255,255,255,0.045)'}));}
+    // cumulative area+line
+    let d='M '+xOf(0)+' '+cyOf(cums[0]); cums.forEach((v,i)=>{d+=' L '+xOf(i)+' '+cyOf(v);});
+    els.push(h('path',{key:'ca',d:d+' L '+xOf(cums.length-1)+' 150 L '+xOf(0)+' 150 Z',fill:'rgba(88,166,255,0.10)'}));
+    els.push(h('path',{key:'cl',d,fill:'none',stroke:DNA['Foreign Inst'],strokeWidth:2}));
+    els.push(h('text',{key:'cll',x:PAD,y:22,fill:C.faint,fontSize:11,fontFamily:'Geist Mono'},'CUMULATIVE FOREIGN NET'));
+    // per-day bars
+    els.push(h('line',{key:'zl',x1:PAD,x2:W-16,y1:BASE,y2:BASE,stroke:'rgba(255,255,255,0.12)'}));
+    els.push(h('text',{key:'bl',x:PAD,y:BASE-74,fill:C.faint,fontSize:11,fontFamily:'Geist Mono'},'DAILY FOREIGN NET (IDR bn)'));
+    days.forEach((day,i)=>{const y=byOf(day.foreign); els.push(h('rect',{key:'b'+i,x:xOf(i)-4,y:Math.min(BASE,y),width:8,height:Math.abs(BASE-y),rx:1,fill:day.foreign>=0?DNA['Foreign Inst']:C.sell,opacity:0.8}));});
+    const chart=h('svg',{viewBox:'0 0 1000 300',width:'100%',style:{display:'block'}},els);
+    // reversal detection
+    let revIdx=-1; for(let i=days.length-1;i>0;i--){ if((days[i].foreign>=0)!==(days[i-1].foreign>=0)){revIdx=i;break;} }
+    const dateFor=(off)=>{const dt=new Date(2026,4,1); dt.setDate(dt.getDate()+14+off); return dt.toLocaleDateString('en-GB',{day:'2-digit',month:'short'});};
+    const nowPos=days[days.length-1].foreign>=0;
+    const reversal={
+      flipped: revIdx>=0,
+      color: nowPos?DNA['Foreign Inst']:C.sell,
+      text: revIdx>=0 ? `Foreign flow reversed to net ${nowPos?'BUY':'SELL'} on ${dateFor(revIdx)} — ${days.length-revIdx}-day persistence since.` : 'No reversal in window; foreign flow directionally stable.'
+    };
+    // ownership vs float
+    const ownPct=Math.round(22+r()*20), floatPct=Math.round(35+r()*20);
+    const persist=days.slice(-6).filter(x=>x.foreign>=0).length;
+    const cum5=cums[cums.length-1]-cums[cums.length-6];
+    const stats=[
+      {label:'Foreign net · today', val:this.fmtSigned(days[days.length-1].foreign,1)+' bn', color: days[days.length-1].foreign>=0?DNA['Foreign Inst']:C.sell},
+      {label:'5-day cumulative', val:this.fmtSigned(cum5,1)+' bn', color: cum5>=0?C.buy:C.sell},
+      {label:'Net-buy persistence', val:persist+' / 6 d', color:C.text},
+      {label:'vs 20-day avg', val:(1+r()*1.8).toFixed(1)+'×', color:C.armed}
+    ];
+    // KSEI trend (6 mo)
+    const ksei=[]; let base=ownPct-6; for(let i=0;i<6;i++){ base+= (r()-0.35)*3; ksei.push(Math.max(5,Math.round(base))); }
+    const kmin=Math.min(...ksei), kmax=Math.max(...ksei);
+    const kpts=ksei.map((v,i)=>`${8+i*(150/5)},${44-((v-kmin)/((kmax-kmin)||1))*36}`).join(' ');
+    // domestic split (today)
+    const fToday=days[days.length-1].foreign; const dToday=-fToday*(0.6+r()*0.8);
+    return {chart, reversal, ownPct, floatPct, ownW:Math.min(100,ownPct/floatPct*100).toFixed(0)+'%', stats,
+      kseiPts:kpts, kseiNow:ownPct, kseiDir: ksei[5]>=ksei[0]?'rising':'easing',
+      splitForeign:this.fmtSigned(fToday,1), splitDomestic:this.fmtSigned(dToday,1),
+      fW:(Math.abs(fToday)/(Math.abs(fToday)+Math.abs(dToday))*100).toFixed(0)+'%',
+      dW:(Math.abs(dToday)/(Math.abs(fToday)+Math.abs(dToday))*100).toFixed(0)+'%',
+      marketTide:'Foreign '+(fToday>=0?'net buyers':'net sellers')+' on this name; IDX-wide foreign '+ (r()>0.5?'+IDR 486 bn':'−IDR 312 bn')+' today.'
+    };
+  }
+
+  buildAccumModule(t){
+    const h=React.createElement; const C=this.C; const DNA=this.DNA;
+    const days=this.replaySeries(t);
+    const W=1000, PAD=46;
+    const xOf=i=>PAD+(i/(days.length-1))*(W-PAD-52);
+    const closes=days.map(d=>d.close); const pmin=Math.min(...closes),pmax=Math.max(...closes);
+    const pyOf=v=>210-((v-pmin)/((pmax-pmin)||1))*168;
+    let acc=0; const accs=days.map(d=>{acc+=d.broker; return acc;});
+    const amin=Math.min(...accs,0),amax=Math.max(...accs,0);
+    const ayOf=v=>210-((v-amin)/((amax-amin)||1))*168;
+    // vwap over accumulation range (12..30)
+    let pv=0,vv=0; for(let i=12;i<30;i++){pv+=days[i].close*days[i].vol; vv+=days[i].vol;}
+    const vwap=pv/vv;
+    const els=[];
+    for(let g=0;g<=3;g++){const y=30+g*60; els.push(h('line',{key:'g'+g,x1:PAD,x2:W-52,y1:y,y2:y,stroke:'rgba(255,255,255,0.045)'}));}
+    // stealth zone shade (14..30)
+    els.push(h('rect',{key:'sz',x:xOf(14),y:30,width:xOf(30)-xOf(14),height:180,fill:'rgba(227,179,65,0.07)'}));
+    els.push(h('text',{key:'szt',x:(xOf(14)+xOf(30))/2,y:46,fill:C.armed,fontSize:10,textAnchor:'middle',fontFamily:'Geist Mono'},'STEALTH ZONE'));
+    // vwap line
+    els.push(h('line',{key:'vw',x1:PAD,x2:W-52,y1:pyOf(vwap),y2:pyOf(vwap),stroke:C.armed,strokeWidth:1,strokeDasharray:'4 4',opacity:0.7}));
+    els.push(h('text',{key:'vwt',x:W-50,y:pyOf(vwap)-4,fill:C.armed,fontSize:9,fontFamily:'Geist Mono'},'VWAP '+Math.round(vwap)));
+    // price line
+    let dp='M '+xOf(0)+' '+pyOf(closes[0]); closes.forEach((v,i)=>{dp+=' L '+xOf(i)+' '+pyOf(v);});
+    els.push(h('path',{key:'pl',d:dp,fill:'none',stroke:C.accent,strokeWidth:2}));
+    // accumulation line
+    let da='M '+xOf(0)+' '+ayOf(accs[0]); accs.forEach((v,i)=>{da+=' L '+xOf(i)+' '+ayOf(v);});
+    els.push(h('path',{key:'al',d:da,fill:'none',stroke:DNA['Smart Money'],strokeWidth:2}));
+    // legend
+    els.push(h('circle',{key:'l1',cx:PAD+70,cy:24,r:4,fill:C.accent})); els.push(h('text',{key:'l1t',x:PAD+78,y:28,fill:C.muted,fontSize:10},'price'));
+    els.push(h('circle',{key:'l2',cx:PAD+140,cy:24,r:4,fill:DNA['Smart Money']})); els.push(h('text',{key:'l2t',x:PAD+148,y:28,fill:C.muted,fontSize:10},'cumulative accumulation'));
+    const chart=h('svg',{viewBox:'0 0 1000 230',width:'100%',style:{display:'block'}},els);
+    // metrics over window
+    const win=days.slice(12,32);
+    const pr=win.map(d=>d.close), ac=win.map((d,i)=>ac_helper(win,i));
+    function ac_helper(arr,i){let s=0;for(let j=0;j<=i;j++)s+=arr[j].broker;return s;}
+    // correlation price vs accumulation
+    const mean=a=>a.reduce((x,y)=>x+y,0)/a.length;
+    const mp=mean(pr),ma=mean(ac); let cov=0,vp=0,va=0;
+    for(let i=0;i<pr.length;i++){cov+=(pr[i]-mp)*(ac[i]-ma); vp+=(pr[i]-mp)**2; va+=(ac[i]-ma)**2;}
+    const corr=cov/Math.sqrt((vp*va)||1);
+    const rvol=(days[days.length-1].vol)/ (mean(win.map(d=>d.vol)));
+    const last10=days.slice(-10).map(d=>d.close); const tight=(Math.max(...last10)-Math.min(...last10))/mean(last10)*100;
+    const cur=days[days.length-1].close;
+    const stealth = corr<0.1;
+    return {chart,
+      verdict: stealth?'STEALTH ACCUMULATION DETECTED':'NO STEALTH DIVERGENCE',
+      verdictColor: stealth?C.armed:C.muted,
+      verdictNote: stealth?'Cumulative accumulation rose while price stayed flat/down across the window — classic Phase-B behaviour. Observation only.':'Price and accumulation are moving together — no hidden divergence to flag.',
+      metrics:[
+        {label:'Price ↔ accumulation corr', val:corr.toFixed(2), sub: corr<0.1?'divergent (stealth)':'aligned', color: corr<0.1?C.armed:C.muted, w:((1-Math.abs(corr))*100).toFixed(0)+'%', wc:C.armed},
+        {label:'Volume dry-up (RVOL)', val:rvol.toFixed(2)+'×', sub: rvol<0.8?'dried up':'active', color: rvol<0.8?C.buy:C.text, w:(Math.min(1,rvol/2)*100).toFixed(0)+'%', wc:C.accent},
+        {label:'Consolidation tightness', val:tight.toFixed(1)+'%', sub: tight<12?'tight range':'wide', color: tight<12?C.buy:C.text, w:(Math.min(1,tight/30)*100).toFixed(0)+'%', wc:C.buy}
+      ],
+      vwap:Math.round(vwap), curPrice:cur, vsVwap: this.fmtSigned((cur/vwap-1)*100,1)+'%', vsVwapColor: cur>=vwap?C.buy:C.sell,
+      absorption:'depth feed off — module degrades gracefully (§10)'
+    };
+  }
+
+  buildRiskModule(){
+    const C=this.C; const DNA=this.DNA;
+    const positions=[
+      {t:'BRMS', sector:'Basic Materials', pct:8.2, beta:1.32, dte:2.1, pnl:6.2, crowd:'high', lead:'DX'},
+      {t:'CUAN', sector:'Energy',          pct:9.1, beta:1.48, dte:3.2, pnl:-1.4, crowd:'high', lead:'DX'},
+      {t:'PTRO', sector:'Energy',          pct:6.5, beta:1.11, dte:1.4, pnl:2.1, crowd:'med',  lead:'KZ'},
+      {t:'NCKL', sector:'Basic Materials', pct:5.0, beta:1.20, dte:1.0, pnl:3.3, crowd:'low',  lead:'AI'},
+      {t:'ARNA', sector:'Industrials',     pct:4.3, beta:0.92, dte:0.8, pnl:0.6, crowd:'low',  lead:'CC'}
+    ];
+    const crowdColor={high:C.sell,med:C.armed,low:C.buy};
+    const posRows=positions.map(p=>({
+      t:p.t, sector:p.sector, pctStr:p.pct.toFixed(1)+'%', beta:p.beta.toFixed(2), dte:p.dte.toFixed(1)+'d',
+      pnlStr:this.fmtSigned(p.pnl,1)+'%', pnlColor:p.pnl>=0?C.buy:C.sell,
+      crowd:p.crowd.toUpperCase(), crowdStyle:`font-size:9px; padding:2px 7px; border-radius:4px; background:${crowdColor[p.crowd]}1e; color:${crowdColor[p.crowd]};`,
+      lead:p.lead, near: p.pct>8.5, pctW:(p.pct/10*100).toFixed(0)+'%', pctColor: p.pct>8.5?C.armed:C.accent
+    }));
+    // sector caps
+    const sectors={}; positions.forEach(p=>{sectors[p.sector]=(sectors[p.sector]||0)+p.pct;});
+    const sectorCaps=Object.keys(sectors).map(s=>({name:s, pct:sectors[s].toFixed(1)+'%', w:(sectors[s]/30*100).toFixed(0)+'%', near:sectors[s]>25, color: sectors[s]>25?C.armed:C.buy}));
+    const invested=positions.reduce((a,b)=>a+b.pct,0);
+    // crowding matrix (shared lead broker → correlation)
+    const h=React.createElement;
+    const crowdCells=[];
+    const header=[h('div',{key:'ch',style:{}})].concat(positions.map(p=>h('div',{key:'ch'+p.t,style:{textAlign:'center',fontFamily:'Geist Mono',fontSize:'10px',color:C.muted}},p.t)));
+    const rows=positions.map(pi=>{
+      const cells=positions.map(pj=>{
+        let v; if(pi.t===pj.t) v=1; else v=(pi.lead===pj.lead?0.72:0.15)+(pi.sector===pj.sector?0.2:0);
+        v=Math.min(1,v);
+        const bg=`rgba(248,81,73,${0.08+v*0.55})`;
+        return h('div',{key:pi.t+pj.t,title:`${pi.t}·${pj.t} ρ≈${v.toFixed(2)}`,style:{height:'28px',borderRadius:'4px',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Geist Mono',fontSize:'9px',color:'rgba(255,255,255,0.75)',background: pi.t===pj.t?'rgba(255,255,255,0.06)':bg}}, v.toFixed(2));
+      });
+      return [h('div',{key:'rl'+pi.t,style:{display:'flex',alignItems:'center',fontFamily:'Geist Mono',fontSize:'10px',color:C.muted}},pi.t)].concat(cells);
+    });
+    const crowdMatrix=h('div',{style:{display:'grid',gridTemplateColumns:'46px repeat(5,1fr)',gap:'4px'}},[].concat(header,...rows));
+    const metrics=[
+      {label:'Portfolio β vs IHSG', val:'1.24', note:'high-beta tilt'},
+      {label:'VaR (95% · 1d)', val:'−3.4%', note:'IDR 1% risk / name'},
+      {label:'Sector HHI', val:'0.41', note:'concentrated'},
+      {label:'Invested / cash', val:invested.toFixed(0)+'% / '+(100-invested).toFixed(0)+'%', note:'headroom ok'}
+    ];
+    const breakers=[
+      {label:'Daily P&L', val:'+1.2%', thresh:'halt new entries @ −3%', pct:((1.2+3)/6*100), color:C.buy, safe:true},
+      {label:'Peak-to-trough drawdown', val:'−2.1%', thresh:'pause system @ −10%', pct:((10-2.1)/10*100), color:C.armed, safe:true}
+    ];
+    const stress=[
+      {sc:'IHSG −5% gap-down', impact:'−6.4%', color:C.sell},
+      {sc:'Foreign exodus (LQ45 −3% · small-cap −8%)', impact:'−7.1%', color:C.sell},
+      {sc:'CUAN ARB-lock (no fillable band)', impact:'−0.9% + liquidity trap', color:C.armed},
+      {sc:'Rupiah shock (USD/IDR +3%)', impact:'−4.2%', color:C.sell}
+    ];
+    return {posRows, sectorCaps, crowdMatrix, metrics, breakers, stress,
+      crowdNote:'BRMS & CUAN share lead broker DX — ρ≈0.72. Same-bandar crowding: a DX exit would hit both. §6 correlated-pair check flags this.'};
+  }
+
+  buildSmsModule(validated){
+    const C=this.C; const DNA=this.DNA;
+    const W_B=[30,35,0,15,10]; // Track B: DIV, BRK, FF, RVOL, BLK
+    const compLabels=['Divergence','Broker conc.','Foreign flow','RVOL','Block trades'];
+    const rows=this.TICKERS.map(tk=>{
+      const r=this.rng(this.seedFor(tk.t)*3+9);
+      const comps=[0.45+r()*0.5, 0.5+r()*0.5, (r()-0.2)*0.9, 0.3+r()*0.6, 0.25+r()*0.6].map(v=>Math.max(0.05,Math.min(1,v)));
+      const phaseBonus=Math.round(r()*10);
+      const sms=Math.min(100,Math.round(comps[0]*30+comps[1]*35+comps[3]*15+comps[4]*10+phaseBonus));
+      const armed=sms>=70;
+      return {t:tk.t, name:tk.name, sms, armed, comps, phaseBonus};
+    }).sort((a,b)=>b.sms-a.sms);
+    const maxComp=(ci)=>Math.max(...rows.map(r=>r.comps[ci]));
+    const rankRows=rows.map((row,i)=>({
+      rank:i+1, t:row.t, name:row.name,
+      state: row.armed?'ARMED':(row.sms>=55?'WATCH':'—'),
+      stateColor: row.armed?C.armed:(row.sms>=55?C.accent:C.faint),
+      smsStr: validated? String(row.sms) : '•••',
+      smsColor: validated? (row.armed?C.armed:C.text) : C.faint,
+      dotAnim: row.armed&&validated?'animation:armedpulse 1.8s infinite;':'',
+      bars:[0,1,3,4].map(ci=>({ // show weighted components (skip FF, weight 0 for Track B)
+        label:compLabels[ci], w:(row.comps[ci]*100).toFixed(0)+'%',
+        color: ci===1?DNA['Smart Money']:(ci===0?C.accent:'rgba(139,152,169,0.7)')
+      })),
+      rowStyle:`display:grid; grid-template-columns:26px 58px minmax(48px,1fr) 66px; align-items:center; gap:8px; padding:11px 12px; border-bottom:1px solid rgba(255,255,255,0.04); background:${row.armed&&validated?'rgba(210,153,34,0.05)':'transparent'};`
+    }));
+    const armedCount=rows.filter(r=>r.armed).length;
+    const top=rows.slice(0,3);
+    return {
+      validated,
+      progressPct: validated? '100%' : '47%',
+      progressLabel: validated? '3.0 / 3 months forward-paper — CLAIM ENABLED' : '1.4 / 3 months forward-paper — number withheld',
+      progressColor: validated? C.buy : C.armed,
+      rankRows,
+      threshNote: validated? `SMS ≥ 70 = ARMED. ${armedCount} name(s) armed today. Weights: Track-B DIV 30 · Broker 35 · RVOL 15 · Block 10 · phase bonus 10 (§4).`
+        : 'Score computed with locked Track-B weights but withheld. Ranking below is flow-derived ordering — observation, not a recommendation (RULE B).',
+      topOpps: top.map(o=>({t:o.t, name:o.name, smsStr: validated?('SMS '+o.sms):'flow-ranked', armed:o.armed,
+        text: validated
+          ? (o.armed?`ARMED — divergence + broker concentration cleared threshold; awaiting Spring/LPS trigger (§6).`:`Elevated flow, below ARMED threshold.`)
+          : `High flow signal — strong divergence & broker concentration. Number withheld pending validation.`})),
+      digestTitle: validated? 'DAILY TOP OPPORTUNITIES' : 'HIGHEST FLOW-SIGNAL NAMES TODAY',
+      digestFrame: validated? 'ranked by validated SMS' : 'observation, not a recommendation'
+    };
+  }
+
+  // ---------------- render ----------------
+  renderVals(){
+    const C=this.C, DNA=this.DNA;
+    const m = this.activeMod;
+    const validated = !!this.props.paperValidated;
+    const stock = this.TICKERS.find(x=>x.t===this.state.selectedStock);
+
+    const modDefs = [
+      {id:'broker',  label:'Broker\nFlow',   glyph:'⇄'},
+      {id:'foreign', label:'Foreign\nFlow',  glyph:'⌖'},
+      {id:'accum',   label:'Accum.\nDetect', glyph:'◱'},
+      {id:'replay',  label:'Money\nReplay',  glyph:'⟲'},
+      {id:'heatmap', label:'Smart\nHeatmap', glyph:'▦'},
+      {id:'sector',  label:'Sector\nRotate', glyph:'✦'},
+      {id:'risk',    label:'Risk\nMonitor',  glyph:'◈'},
+      {id:'sms',     label:'SMS /\nRank',    glyph:'∑', gated:true}
+    ];
+    const modules = modDefs.map(d=>{
+      const active = d.id===m;
+      const showLock = d.gated && !validated;
+      return {
+        glyph:d.glyph, label:d.label, locked:showLock,
+        tip: d.gated ? (validated?'SMS / Rank — validated (claim enabled)':'Gated — number withheld until paper-validated (RULE B)') : 'Open '+d.label.replace('\n',' '),
+        onClick: ()=> this.setModule(d.id),
+        wrapStyle: `position:relative; display:flex; flex-direction:column; align-items:center; gap:4px; padding:11px 4px; margin:0 8px; border-radius:9px; cursor:pointer; color:${active?C.text:C.muted}; background:${active?'rgba(88,196,221,0.10)':'transparent'}; border:1px solid ${active?'rgba(88,196,221,0.25)':'transparent'}; white-space:pre-line;`,
+        iconStyle: `font-size:18px; line-height:1; color:${active?C.accent:C.muted};`
+      };
+    });
+
+    // module header content
+    const headerMap = {
+      broker:  {title:'Broker Flow Analyzer', sub:'Per-stock broker net buy/sell · DNA classification · concentration & persistence. The differentiator — pure observation, ships now.', badge:'obs'},
+      foreign: {title:'Foreign Flow Dashboard', sub:'Foreign net-buy magnitude & persistence vs float · foreign/domestic split · KSEI ownership trend · flow-reversal detection.', badge:'obs'},
+      accum:   {title:'Institutional Accumulation Detector', sub:'Stealth divergence: price flat/down while net accumulation rises · accumulator VWAP · absorption · volume dry-up in consolidation.', badge:'obs'},
+      replay:  {title:'Money Flow Replay', sub:'Scrub the historical flow/price evolution for any name — the audit tool for every signal. Reconstructed from stored as_of data.', badge:'obs'},
+      heatmap: {title:'Smart Money Heatmap', sub:'Aggregate flow across the universe. Colour = direction, intensity = flow as % of cap. Sector → stock drill-down with divergence alerts.', badge:'derived'},
+      sector:  {title:'Sector Rotation Map', sub:'Flow aggregated by sector on a relative-strength × flow quadrant. Leaders / Early Recovery / Distribution Warning / Avoid.', badge:'derived'},
+      risk:    {title:'Portfolio Risk Monitor', sub:'Crowding · beta vs IHSG · sector concentration · VaR · days-to-exit · circuit breakers. Risk observations that feed the §6 exposure caps.', badge:'obs'},
+      sms:     {title:'Smart Money Score / AI Ranking', sub: validated ? 'Module cleared PAPER_VALIDATION_MONTHS — SMS 0–100 and ranking shown as a claim (§4 post-validation).' : 'Pre-validation: score computed internally, number withheld. Components shown as observation; ranking framed as flow-derived, not a recommendation.', badge: validated?'claim':'gated'}
+    };
+    let hd = headerMap[m] || headerMap.broker;
+    const badgeStyles = {
+      obs:     {t:'OBSERVATION · ships now',            d:C.buy,    bg:'rgba(63,185,80,0.10)',  bd:'rgba(63,185,80,0.3)',  fg:'#7ee08a'},
+      derived: {t:'DERIVED VIEW · rendering, no new claim', d:C.accent, bg:'rgba(88,196,221,0.10)', bd:'rgba(88,196,221,0.3)', fg:'#8fdcec'}
+    };
+    let bs = badgeStyles[hd.badge] || badgeStyles.obs;
+    if(hd.badge==='gated'){ bs = {t:'GATED · number withheld (RULE B)', d:C.armed, bg:'rgba(210,153,34,0.10)', bd:'rgba(210,153,34,0.32)', fg:'#e8c168'}; }
+    if(hd.badge==='claim'){ bs = {t:'CLAIM · paper-validated', d:C.buy, bg:'rgba(63,185,80,0.12)', bd:'rgba(63,185,80,0.32)', fg:'#7ee08a'}; }
+
+    // ---- feature-module data (built only for the active module) ----
+    const foreignM = m==='foreign' ? this.buildForeignModule(this.state.selectedStock) : null;
+    const accumM   = m==='accum'   ? this.buildAccumModule(this.state.selectedStock)   : null;
+    const riskM    = m==='risk'    ? this.buildRiskModule()                            : null;
+    const smsM     = m==='sms'     ? this.buildSmsModule(validated)                    : null;
+
+    // ---- broker module data ----
+    const net = this.brokerNet(this.state.selectedStock);
+    const sorted = this.BROKERS.map(b=>({...b, net:net[b.code]})).sort((a,b)=>b.net-a.net);
+    const maxAbs = Math.max(...sorted.map(x=>Math.abs(x.net)));
+    const dnaChip = (dna)=> `font-size:8.5px; padding:1.5px 6px; border-radius:4px; letter-spacing:0.02em; background:${DNA[dna]}22; color:${DNA[dna]}; border:1px solid ${DNA[dna]}44;`;
+    const rSeed = this.rng(this.seedFor(this.state.selectedStock)*5+1);
+    const brokerRows = sorted.map((b,i)=>{
+      const buy = b.net>=0;
+      const persist = buy ? (2+Math.floor(rSeed()*6)) : (1+Math.floor(rSeed()*3));
+      const dots = []; for(let d=0; d<7; d++){ dots.push({c: d<persist ? (buy?C.buy:C.sell) : 'rgba(255,255,255,0.08)'}); }
+      return {
+        rank:i+1, code:b.code, name:b.name, dna:b.dna, dnaStyle:dnaChip(b.dna),
+        netStr:this.fmtSigned(b.net,1), netColor: buy?C.buy:C.sell,
+        barW: (Math.abs(b.net)/maxAbs*54).toFixed(0)+'px',
+        persistDots: dots
+      };
+    });
+
+    // concentration
+    const buyers = sorted.filter(x=>x.net>0);
+    const buySum = buyers.reduce((a,b)=>a+b.net,0);
+    const top2 = buyers.slice(0,2).reduce((a,b)=>a+b.net,0);
+    const top2Share = buySum? top2/buySum : 0;
+    const hhi = buyers.reduce((a,b)=>a+Math.pow(b.net/buySum,2),0);
+    const topShare = buyers.length? buyers[0].net/buySum : 0;
+    const conc = {
+      top2Str:(top2Share*100).toFixed(0)+'%', top2W:(top2Share*100).toFixed(0)+'%',
+      hhiStr:hhi.toFixed(2), hhiLabel: hhi>0.4?'highly concentrated':(hhi>0.25?'concentrated':'dispersed'),
+      note:`Top-2 buyers are ${buyers[0]?.code} & ${buyers[1]?.code} (${buyers[0]?.dna}). Broker concentration is the Track-B lead signal (LD-1) — confirmed on flat/down bars.`
+    };
+
+    // veto checks
+    const retailShare = 0.30 + rSeed()*0.28;
+    const vetoDef = [
+      {label:'Single-bandar monopoly (>60% net-buy)', pass: topShare<0.6, val:(topShare*100).toFixed(0)+'%'},
+      {label:'Distribution-dressed-as-accumulation',  pass: true, val:'clear'},
+      {label:'Retail-FOMO (buy ratio >60%)',          pass: retailShare<0.6, val:(retailShare*100).toFixed(0)+'%'},
+      {label:'Event-driven (material news in window)', pass: true, val:'none'}
+    ];
+    const vetoChecks = vetoDef.map(v=>({
+      label:v.label, val:v.val,
+      mark: v.pass?'✓':'✕', bg: v.pass?'rgba(63,185,80,0.14)':'rgba(248,81,73,0.16)',
+      fg: v.pass?C.buy:C.sell
+    }));
+
+    // matrix
+    const matrixTickers = this.TICKERS.map(x=>x.t);
+    const matrixCols = matrixTickers.map(t=>({t, onClick:()=>this.selectStock(t)}));
+    const topFive = sorted.slice(0,3).concat(sorted.slice(-2)); // 3 top buyers + 2 top sellers
+    const matrixRows = topFive.map(b=>{
+      const cells = matrixTickers.map(t=>{
+        const nv = this.brokerNet(t)[b.code];
+        const a = Math.min(1, Math.abs(nv)/25);
+        const buy = nv>=0;
+        const bg = buy? `rgba(63,185,80,${0.10+a*0.6})` : `rgba(248,81,73,${0.10+a*0.6})`;
+        const sel = t===this.state.selectedStock;
+        return {
+          txt:this.fmtSigned(nv,0), tip:`${b.code} · ${t}: ${this.fmtSigned(nv,1)} bn`,
+          style:`height:30px; border-radius:5px; display:flex; align-items:center; justify-content:center; font-family:'Geist Mono'; font-size:10px; color:rgba(255,255,255,0.82); background:${bg}; border:1px solid ${sel?'rgba(88,196,221,0.55)':'rgba(255,255,255,0.04)'};`
+        };
+      });
+      return {code:b.code, dna:b.dna, dnaStyle:dnaChip(b.dna), cells};
+    });
+
+    // ---- replay data ----
+    const series = this.replaySeries(this.state.selectedStock);
+    const k = this.state.scrub;
+    const cur = series[k];
+    const prev = series[Math.max(0,k-1)];
+    const dateFor = (i)=>{ const dt = new Date(2026,4,1); dt.setDate(dt.getDate()+i); return dt.toLocaleDateString('en-GB',{day:'2-digit',month:'short'}); };
+    const phaseMeta = {A:{c:C.sell,n:'Selling climax / preliminary support — not tradeable.'},B:{c:C.muted,n:'Building cause. Range-bound accumulation. Not yet tradeable.'},C:{c:C.armed,n:'Spring / test. Tradeable window opens (RULE A).'},D:{c:C.buy,n:'Signs of strength / LPS → markup. Tradeable.'}};
+    const pm = phaseMeta[cur.phase];
+    const replay = {
+      asOf: dateFor(k)+' 2026',
+      togglePlay:()=>this.togglePlay(), playing:this.state.playing, playGlyph: this.state.playing?'❚❚':'▶',
+      maxScrub:43, scrub:k, dayIdx:k, onScrub:(e)=>this.onScrub(e),
+      startDate:dateFor(0), endDate:dateFor(43),
+      phase:'Phase '+cur.phase, phaseColor:pm.c, phaseNote:pm.n,
+      phaseBg: cur.phase==='C'||cur.phase==='D'?'rgba(210,153,34,0.08)':'rgba(255,255,255,0.03)',
+      phaseBorder: cur.phase==='C'||cur.phase==='D'?'rgba(210,153,34,0.3)':'rgba(255,255,255,0.07)',
+      readout:[
+        {label:'Close', val:this.fmtPrice(cur.close), color:C.text},
+        {label:'Δ vs prev', val:this.fmtSigned((cur.close/prev.close-1)*100,2)+'%', color: cur.close>=prev.close?C.buy:C.sell},
+        {label:'Volume (RVOL)', val:(cur.vol/28).toFixed(1)+'×', color: cur.vol>60?C.armed:C.text},
+        {label:'Foreign net', val:this.fmtSigned(cur.foreign,1)+' bn', color: cur.foreign>=0?DNA['Foreign Inst']:C.sell},
+        {label:'Broker net (SM)', val:this.fmtSigned(cur.broker,1)+' bn', color: cur.broker>=0?DNA['Smart Money']:C.sell}
+      ],
+      insight: k<16 ? 'Price falling on heavy volume — supply being absorbed. No confirmed accumulation yet.'
+             : k<30 ? 'Stealth divergence: price flat while broker net (Smart Money) turns positive — classic Phase-B accumulation. Foreign still net-out.'
+             : k<36 ? 'Spring & test printing. Foreign flow crosses positive; broker persistence building. RULE A gate open (Phase C).'
+             : 'SOS markup: price rising with foreign + broker aligned. Rising price + rising flow = confirmed, not divergent.'
+    };
+
+    // ---- sector rotation ----
+    const sectorsRaw = [
+      {name:'Energy',          abbr:'ENGY', rs:0.55, flow:0.62, mag:0.9,  tide:'foreign-led'},
+      {name:'Basic Materials', abbr:'MATL', rs:0.32, flow:0.78, mag:1.0,  tide:'local-led'},
+      {name:'Technology',      abbr:'TECH', rs:0.60, flow:-0.35, mag:0.7,  tide:'foreign-out'},
+      {name:'Infrastructure',  abbr:'INFR', rs:-0.30, flow:0.40, mag:0.5,  tide:'local-led'},
+      {name:'Financials',      abbr:'FIN',  rs:0.22, flow:-0.55, mag:0.85, tide:'foreign-out'},
+      {name:'Consumer',        abbr:'CONS', rs:-0.45, flow:-0.28, mag:0.45, tide:'mixed'}
+    ];
+    const quadOf = (rs,flow)=> flow>=0 ? (rs>=0?{q:'LEADERS',c:C.buy}:{q:'EARLY RECOVERY',c:C.accent}) : (rs>=0?{q:'DISTRIBUTION WARN',c:C.sell}:{q:'AVOID',c:C.faint});
+    const sectorsForChart = sectorsRaw.map(s=>({...s, color:quadOf(s.rs,s.flow).c}));
+    const sectorRows = sectorsRaw.map(s=>{ const q=quadOf(s.rs,s.flow); return {
+      name:s.name, quadrant:q.q, color:q.c, quadBg:q.c+'1e',
+      note: q.q==='LEADERS'?'Strong RS with sustained inflow — trend intact.':q.q==='EARLY RECOVERY'?'Inflow ahead of price — accumulation, watch for confirmation.':q.q==='DISTRIBUTION WARN'?'Price strong but flow leaving — divergence risk.':'Weak on both axes — no edge.',
+      flowStr:this.fmtSigned(s.flow,2), flowColor:s.flow>=0?C.buy:C.sell, rsStr:this.fmtSigned(s.rs,2), tide:s.tide
+    }; });
+
+    // ---- armed watchlist ----
+    const compLabels=['DIV','BRK','FF','RVOL','BLK'];
+    const watchRows = this.TICKERS.map((tk,idx)=>{
+      const r=this.rng(this.seedFor(tk.t)*3+9);
+      const comps=[0.45+r()*0.5, 0.5+r()*0.5, (r()-0.2)*0.9, 0.3+r()*0.6, 0.25+r()*0.6].map(v=>Math.max(0.05,Math.min(1,v)));
+      // ARMED if divergence + broker strong (proxy)
+      const armed = comps[0]>0.6 && comps[1]>0.6;
+      const watching = !armed && (comps[0]>0.45 || comps[1]>0.5);
+      const sel = tk.t===this.state.selectedStock;
+      const components = comps.map((v,ci)=>({
+        h:(v*100).toFixed(0)+'%',
+        color: ci===2 ? (v>0.45?DNA['Foreign Inst']:'rgba(248,81,73,0.5)') : (armed?C.armed:(watching?'rgba(88,196,221,0.7)':'rgba(139,152,169,0.5)')),
+        tip: compLabels[ci]
+      }));
+      return {
+        ticker:tk.t, track:'B', onClick:()=>this.selectStock(tk.t),
+        wrapStyle:`padding:11px 11px 9px; border-radius:9px; margin-bottom:7px; cursor:pointer; background:${sel?'rgba(88,196,221,0.08)':'#0d121b'}; border:1px solid ${sel?'rgba(88,196,221,0.3)':'rgba(255,255,255,0.05)'};`,
+        dotColor: armed?C.armed:(watching?C.accent:C.faint),
+        dotAnim: armed?'animation:armedpulse 1.8s infinite;':'',
+        state: validated ? ('SMS '+Math.round(48 + comps[0]*22 + comps[1]*20 + Math.max(0,comps[2])*10)) : (armed?'ARMED':(watching?'WATCH':'—')),
+        stateColor: armed?C.armed:(watching?C.accent:C.faint),
+        components
+      };
+    });
+
+    return {
+      headerAsOf: dateFor(43)+' · 16:32',
+      modules,
+      moduleTitle:hd.title, moduleSubtitle:hd.sub,
+      moduleBadgeText:bs.t, moduleBadgeDot:bs.d,
+      moduleBadgeStyle:`display:flex; align-items:center; gap:8px; padding:6px 11px; border-radius:7px; font-size:10.5px; letter-spacing:0.03em; background:${bs.bg}; border:1px solid ${bs.bd}; color:${bs.fg}; white-space:nowrap;`,
+      showBroker: m==='broker', showReplay: m==='replay', showHeatmap: m==='heatmap', showSector: m==='sector',
+      showForeign: m==='foreign', foreign:foreignM,
+      showAccum: m==='accum', accum:accumM,
+      showRisk: m==='risk', risk:riskM,
+      showSms: m==='sms', sms:smsM,
+      smsColHead: validated ? 'SMS' : 'withheld',
+      smsProgressBorder: validated ? 'rgba(63,185,80,0.3)' : 'rgba(210,153,34,0.28)',
+      stock:{
+        ticker:stock.t, name:stock.name, sector:stock.sector, trackLabel:'TRACK B · lapis-2',
+        priceStr:this.fmtPrice(stock.price), chgStr:this.fmtSigned(stock.chg,2)+'%', chgColor: stock.chg>=0?C.buy:C.sell,
+        advStr:'IDR '+stock.adv+' bn'
+      },
+      brokerRows, conc, vetoChecks, matrixCols, matrixRows,
+      replay, replayChart:this.buildReplayChart(series,k),
+      heatmapGrid:this.buildHeatmap(),
+      divergenceAlerts:[
+        {ticker:'BRMS', text:'local inst accumulating while foreign net-sells 3d — stealth absorption'},
+        {ticker:'ARNA', text:'broker concentration rising on flat price; foreign flat — watch spring'},
+        {ticker:'MAPI', text:'price holding, foreign exiting into strength — distribution risk'}
+      ],
+      sectorScatter:this.buildSectorScatter(sectorsForChart), sectorRows,
+      watchRows,
+      watchNote: validated
+        ? 'Module cleared PAPER_VALIDATION_MONTHS — SMS now shown as a claim for these names.'
+        : 'Internal ARMED state; score withheld (RULE B).',
+      watchFooter: validated
+        ? 'SMS promoted from observation → claim by the paper-trade engine (LD-9). This is a demo of the validated state.'
+        : 'Components shown as raw observation. No probability, no buy/sell verb until the module clears PAPER_VALIDATION_MONTHS.'
+    };
+  }
+}
+</script>
+</body>
+</html>
