@@ -35,7 +35,8 @@ sole authority that promotes observation → claim.
 
 - **Language:** Python 3.11+.
 - **Analytics/signals:** Pandas / Polars, TA-Lib.
-- **Store:** DuckDB (or SQLite) — local time-series, no cloud. Keyed `(symbol, date, as_of)`.
+- **Store:** DuckDB — local time-series, no cloud. Keyed `(symbol, date, as_of)`. (Pinned from
+  the spec's SQLite/DuckDB allowance; see PROGRESS.md decisions log.)
 - **UI:** Streamlit (prototype; richer later). Keyboard-driven, dark, paned.
 - **Data:** Stockbit `exodus` API is the **primary DAL source**, consumed from the operator's
   **own authenticated session** (Bearer token). Local persistence only — nothing leaves the

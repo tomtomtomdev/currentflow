@@ -71,3 +71,4 @@ Record any spec deviation here with a reason and the spec version bump it trigge
 | 2026-07-01 | Initial companion files created | Spec §14 requires PLAN/CLAUDE/PROGRESS | v1.1 (no bump) |
 | 2026-07-01 | UI design handoff added under `design/` | Operator-provided hifi design target for §9 modules | v1.1 (no bump) |
 | 2026-07-01 | Front-end stack = Streamlit (chose over React/hybrid) | Stay faithful to spec §10; single-user local tool; accept approximate fidelity | v1.1 (no bump) |
+| 2026-07-01 | Store pinned = DuckDB (chose over SQLite) | Analytical (OLAP) workload — backtest, window-function aggregations (persistence/Herfindahl/NBSA), Replay range-scans over `(symbol, date, as_of)`; native Pandas/Polars/Arrow integration; nightly-batch single-writer ingest makes SQLite's OLTP/concurrency edge irrelevant. Within spec §10's SQLite/DuckDB allowance — pin, not a deviation. | v1.1 (no bump) |
