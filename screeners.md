@@ -22,7 +22,7 @@ IHSG universe (~900)
 
 | Field | Meaning |
 |---|---|
-| `universe` | JSON string `{"scope":"IHSG","scopeID":"0","name":"IHSG"}`. Scope to an index by name/scopeID (e.g. LQ45) for Track A; else IHSG and split tracks in-engine via `emitten/{sym}/info.indexes`. |
+| `universe` | JSON string. All: `{"scope":"IHSG","scopeID":"0","name":"IHSG"}`. Index scope: `{"scope":"idx","scopeID":"550","name":"LQ45"}`. **scopeIDs (from `screener/universe`):** LQ45 `550`, IDX80 `1000003288`, IDX30 `559`, KOMPAS100 `555`, **IDXSMC-LIQ `1000003583`** (small-mid liquid → Track B), IDXSMC-COM `1000003584`. |
 | `filters` | JSON string — array of filter objects (see below). AND-combined. |
 | `sequence` | comma-separated `fitem_id`s → result columns. |
 | `ordercol` / `ordertype` | sort column index (into `sequence`) / `ASC`\|`DESC`. |
@@ -67,10 +67,15 @@ Operators: `>`, `<` (also `>=`,`<=`,`=`). Results return in `calcs[].results[]` 
 | 15396 | Frequency Spike | 15395 | Frequency Analyzer MA 50 |
 | 13650 | 1 Day Volume Change | 20892/20893 | Low / High Price |
 | 21536 | RSI (14) | 21539/21540 | Bollinger Upper/Lower (20) |
+| **21552** | **VWAP** (screenable — closes §3/§6 residual) | **21559** | **ATR 14** (stop sizing, §6) |
+| **21562** | **ADX 14** (trend strength) | 21563/21564 | ADX DI+ / DI- |
+| 21537 | MACD (12,26) | 21538 | Stochastic (14,1,3) |
+| 21575 | Parabolic SAR | 21576 | SuperTrend |
+| 21553–21558 | EMA 5/10/20/50/100/200 | 21561 | CCI 20 |
 
 **Price performance / RS:** 1564 1M · 1565 3M · 1566 6M return · 1570 52wk High · 13371/13373/13374 RS Line 1Y/3M/1M · 13412 Near 52-Wk High.
 
-**Fundamental tilt (§7) / size:** 2892 Market Cap · 2895 EV · 21535 Free Float · 2897 EV/EBIT (EY=1/2897) · 13411 ROC Greenblatt · 13424 Rank(Earnings Yield) · 13425 Rank(ROC Greenblatt) · 1461 ROE (bank proxy).
+**Fundamental tilt (§7) / size:** 2892 Market Cap · 2895 EV · 21535 Free Float · 2897 EV/EBIT (EY=1/2897) · 13411 ROC Greenblatt · **13474 Rank(Magic Formula)(%)** *(combined Greenblatt rank — prefer over summing)* · 13424 Rank(Earnings Yield) · 13425 Rank(ROC Greenblatt) · 15276 Rank ROIC · 1461 ROE (bank proxy).
 
 ---
 
@@ -97,7 +102,7 @@ Cuts ~900 → ~100–150. Run first; all other screeners inherit these two liqui
 ---
 
 ### SCR-1B · Bandar Accumulation — Track B lead (spec §4 broker-concentration; SMS wt 35)
-Big-broker net value rising above its own 20-day trend, net positive, in an accumulation regime.
+Big-broker net value rising above its own 20-day trend, net positive, in an accumulation regime. **Scoped to IDXSMC-LIQ (`1000003583`)** — the small-mid-cap liquid index, the natural lapis-2 universe.
 
 | Filter | fitem | rule |
 |---|---|---|
@@ -108,15 +113,15 @@ Big-broker net value rising above its own 20-day trend, net positive, in an accu
 
 ```json
 {"name":"scr1b-bandar-accum","type":"TEMPLATE_TYPE_CUSTOM","ordercol":0,"ordertype":"DESC","sequence":"14399,14426,14400,16454",
- "universe":"{\"scope\":\"IHSG\",\"scopeID\":\"0\",\"name\":\"IHSG\"}",
+ "universe":"{\"scope\":\"idx\",\"scopeID\":\"1000003583\",\"name\":\"IDXSMC-LIQ\"}",
  "filters":"[{\"item1\":14399,\"item1_name\":\"Bandar Value\",\"item2\":\"14426\",\"item2_name\":\"Bandar Value MA 20\",\"multiplier\":\"1\",\"operator\":\">\",\"type\":\"compare\"},{\"item1\":14399,\"item1_name\":\"Bandar Value\",\"item2\":\"0\",\"item2_name\":\"\",\"multiplier\":\"0\",\"operator\":\">\",\"type\":\"basic\"},{\"item1\":14400,\"item1_name\":\"Bandar Accum/Dist\",\"item2\":\"0\",\"item2_name\":\"\",\"multiplier\":\"0\",\"operator\":\">\",\"type\":\"basic\"},{\"item1\":16454,\"item1_name\":\"Value MA 20\",\"item2\":\"10000000000\",\"item2_name\":\"\",\"multiplier\":\"0\",\"operator\":\">\",\"type\":\"basic\"}]"}
 ```
 **Engine residual:** top-2 broker net-buy share + Herfindahl concentration, persistence over N consecutive days on flat/down bars, single-bandar-monopoly veto (>60% one broker), accumulator VWAP vs price (spec §5 veto, §4).
 
 ---
 
-### SCR-1A · Foreign Accumulation — Track A lead (spec §4 NBSA; SMS wt 25). Scope: LQ45/IDX80.
-Foreign net buy spiking above 2× its 20-day average, with a positive persistence streak.
+### SCR-1A · Foreign Accumulation — Track A lead (spec §4 NBSA; SMS wt 25). **Scoped to LQ45 (`550`).**
+Foreign net buy spiking above 2× its 20-day average, with a positive persistence streak. Swap scopeID to IDX80 (`1000003288`) to widen Track A.
 
 | Filter | fitem | rule |
 |---|---|---|
@@ -127,7 +132,7 @@ Foreign net buy spiking above 2× its 20-day average, with a positive persistenc
 
 ```json
 {"name":"scr1a-foreign-accum","type":"TEMPLATE_TYPE_CUSTOM","ordercol":0,"ordertype":"DESC","sequence":"3194,13540,13561,13521",
- "universe":"{\"scope\":\"IHSG\",\"scopeID\":\"0\",\"name\":\"IHSG\"}",
+ "universe":"{\"scope\":\"idx\",\"scopeID\":\"550\",\"name\":\"LQ45\"}",
  "filters":"[{\"item1\":3194,\"item1_name\":\"Net Foreign Buy / Sell\",\"item2\":\"13540\",\"item2_name\":\"Net Foreign Buy / Sell MA20\",\"multiplier\":\"2\",\"operator\":\">\",\"type\":\"compare\"},{\"item1\":13561,\"item1_name\":\"Net Foreign Buy Streak\",\"item2\":\"2\",\"item2_name\":\"\",\"multiplier\":\"0\",\"operator\":\">\",\"type\":\"basic\"},{\"item1\":13521,\"item1_name\":\"Foreign Flow MA 20\",\"item2\":\"0\",\"item2_name\":\"\",\"multiplier\":\"0\",\"operator\":\">\",\"type\":\"basic\"},{\"item1\":16454,\"item1_name\":\"Value MA 20\",\"item2\":\"10000000000\",\"item2_name\":\"\",\"multiplier\":\"0\",\"operator\":\">\",\"type\":\"basic\"}]"}
 ```
 **Engine residual:** foreign net-buy Z-score, KSEI ownership Δ overlay (`shareholders/{sym}/chart`), Track-A-only weighting.
@@ -177,23 +182,25 @@ Close > 20MA > 50MA with positive relative strength. Run on ARMED-candidate name
 |---|---|---|
 | Above 20MA | 2661 Price `>` 12458 Price MA20 ×1 | compare |
 | 20MA > 50MA | 12458 Price MA20 `>` 12460 Price MA50 ×1 | compare |
+| **Above VWAP** | 2661 Price `>` 21552 VWAP ×1 | compare |
+| **Trend strength** | 21562 ADX 14 | `> 20` |
 | RS positive | 13373 3-Month RS Line | `> 0` |
 
 ```json
-{"name":"scr3-trend-confirm","type":"TEMPLATE_TYPE_CUSTOM","ordercol":2,"ordertype":"DESC","sequence":"2661,12458,12460,13373",
+{"name":"scr3-trend-confirm","type":"TEMPLATE_TYPE_CUSTOM","ordercol":4,"ordertype":"DESC","sequence":"2661,12458,12460,21552,21562,21559,13373",
  "universe":"{\"scope\":\"IHSG\",\"scopeID\":\"0\",\"name\":\"IHSG\"}",
- "filters":"[{\"item1\":2661,\"item1_name\":\"Price\",\"item2\":\"12458\",\"item2_name\":\"Price MA 20\",\"multiplier\":\"1\",\"operator\":\">\",\"type\":\"compare\"},{\"item1\":12458,\"item1_name\":\"Price MA 20\",\"item2\":\"12460\",\"item2_name\":\"Price MA 50\",\"multiplier\":\"1\",\"operator\":\">\",\"type\":\"compare\"},{\"item1\":13373,\"item1_name\":\"3 Month RS Line\",\"item2\":\"0\",\"item2_name\":\"\",\"multiplier\":\"0\",\"operator\":\">\",\"type\":\"basic\"}]"}
+ "filters":"[{\"item1\":2661,\"item1_name\":\"Price\",\"item2\":\"12458\",\"item2_name\":\"Price MA 20\",\"multiplier\":\"1\",\"operator\":\">\",\"type\":\"compare\"},{\"item1\":12458,\"item1_name\":\"Price MA 20\",\"item2\":\"12460\",\"item2_name\":\"Price MA 50\",\"multiplier\":\"1\",\"operator\":\">\",\"type\":\"compare\"},{\"item1\":2661,\"item1_name\":\"Price\",\"item2\":\"21552\",\"item2_name\":\"VWAP\",\"multiplier\":\"1\",\"operator\":\">\",\"type\":\"compare\"},{\"item1\":21562,\"item1_name\":\"Average Directional Index 14\",\"item2\":\"20\",\"item2_name\":\"\",\"multiplier\":\"0\",\"operator\":\">\",\"type\":\"basic\"},{\"item1\":13373,\"item1_name\":\"3 Month RS Line\",\"item2\":\"0\",\"item2_name\":\"\",\"multiplier\":\"0\",\"operator\":\">\",\"type\":\"basic\"}]"}
 ```
-**Engine residual:** Spring-test / LPS detection, stop placement, R:R ≥ 2:1 computation, VWAP positioning, 9-day exhaustion cap (spec §6).
+**Note:** VWAP (21552) and ADX (21562) are now screened server-side; ATR 14 (21559) is pulled in `sequence` to seed stop sizing. **Engine residual:** Spring-test / LPS detection, exact stop placement, R:R ≥ 2:1 computation, 9-day exhaustion cap (spec §6).
 
 ---
 
 ### SCR-4 · Fundamental Tilt reference — NOT a gate (spec §7)
 Ranking pull, not a filter. Sort survivors by Magic Formula inputs to set conviction multiplier / hold horizon. Fundamentals never block entry.
 
-Sequence: `13424` Rank(Earnings Yield), `13425` Rank(ROC Greenblatt), `13411` ROC Greenblatt, `2897` EV/EBIT, `1461` ROE (bank proxy), `2892` Market Cap. Combined MF rank = `13424 + 13425` (lower = better), tercile → COMPOUNDER / NEUTRAL / SPECULATIVE.
+Sequence leads with **`13474` Rank(Magic Formula)(%)** — Stockbit's combined Greenblatt rank, used directly (no manual summing). Tercile → COMPOUNDER / NEUTRAL / SPECULATIVE. Supporting columns: `13411` ROC Greenblatt, `2897` EV/EBIT, `15276` Rank ROIC, `1461` ROE (bank proxy), `2892` Market Cap. Guru preset alternative: Stockbit ships `Greenblatt's Magic Formula` (`screener/preset` id 6, `TEMPLATE_TYPE_GURU`).
 ```json
-{"name":"scr4-fundamental-tilt","type":"TEMPLATE_TYPE_CUSTOM","ordercol":0,"ordertype":"ASC","sequence":"13424,13425,13411,2897,1461,2892",
+{"name":"scr4-fundamental-tilt","type":"TEMPLATE_TYPE_CUSTOM","ordercol":0,"ordertype":"DESC","sequence":"13474,13411,2897,15276,1461,2892",
  "universe":"{\"scope\":\"IHSG\",\"scopeID\":\"0\",\"name\":\"IHSG\"}",
  "filters":"[]"}
 ```
@@ -243,12 +250,12 @@ Fires on broker-summary publication (spec LD-5), nightly:
 | Foreign flow | ✅ SCR-1A | Z-score, KSEI Δ |
 | Price-volume divergence | proxy (SCR-1C) | true corr, absorption, VSA, Wyckoff phase |
 | Volume anomaly / RVOL | ✅ SCR-2 | block trades, avg-ticket, retail-FOMO veto |
-| Trend / RS | ✅ SCR-3 | Spring/LPS trigger, stop, R:R |
-| Fundamental tilt | ✅ SCR-4 (ranks served) | FLOW_ONLY proxy, point-in-time backtest |
+| Trend / RS / VWAP / ADX | ✅ SCR-3 (VWAP+ADX now screened) | Spring/LPS trigger, exact stop, R:R |
+| Fundamental tilt | ✅ SCR-4 (combined MF rank 13474) | FLOW_ONLY proxy, point-in-time backtest |
 | Distribution / exit | ✅ SCR-EXIT | UTAD/no-demand, broker flip, divergence exit |
 
 **Bottom line:** the screeners fill the entire *universe + candidate + component-input* layer server-side, leaving the engine to do only the un-screenable statistical/structural compute on a small shortlist. That is exactly the data the system needs to function through the ARMED state; the entry decision and any displayed number remain gated by RULE A and RULE B.
 
 ---
 
-*Metric IDs verified against `screener/metric` (556 metrics) + captured `screener/templates` POST payloads. Filter schema confirmed from the operator's own `bandar-accumulating` template.*
+*Metric IDs verified against `screener/metric` (515 leaf metrics, 15 categories) + captured `screener/templates` POST payloads. Universe scopeIDs from `screener/universe`; Guru presets from `screener/preset`. Filter schema confirmed from the operator's own `bandar-accumulating` template.*
