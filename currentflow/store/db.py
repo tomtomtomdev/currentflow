@@ -24,9 +24,15 @@ from currentflow.dal.models import (
     DailyBar,
     InvestorType,
     RowStatus,
+    Scr0Row,
     Side,
 )
-from currentflow.store.schema import BROKER_NET_COLUMNS, DAILY_BAR_COLUMNS, DDL
+from currentflow.store.schema import (
+    BROKER_NET_COLUMNS,
+    DAILY_BAR_COLUMNS,
+    DDL,
+    SCR0_COLUMNS,
+)
 
 
 def _cols(names: Sequence[str]) -> str:
@@ -70,6 +76,13 @@ class Store:
             for r in rows_in
         ]
         return self._insert("broker_net", BROKER_NET_COLUMNS, rows)
+
+    def write_scr0_eligible(self, rows_in: Iterable[Scr0Row]) -> int:
+        rows = [
+            (r.symbol, r.date, r.as_of, r.adv20, r.price, r.free_float, r.market_cap)
+            for r in rows_in
+        ]
+        return self._insert("scr0_eligible", SCR0_COLUMNS, rows)
 
     def _insert(self, table: str, columns: Sequence[str], rows: list[tuple]) -> int:
         if not rows:
@@ -132,6 +145,23 @@ class Store:
                 symbol=r[0], date=r[1], as_of=r[2], broker_code=r[3], side=Side(r[4]),
                 investor_type=InvestorType(r[5]), avg_price=r[6], value=r[7],
                 lot=r[8], frequency=r[9],
+            )
+            for r in rows
+        ]
+
+    def read_scr0_eligible(self, day: Date, decision_ts: datetime) -> list[Scr0Row]:
+        """Eligible set for `day` as visible at `decision_ts` (latest as_of per symbol)."""
+        sql = (
+            f"SELECT {_cols(SCR0_COLUMNS)} FROM scr0_eligible "
+            'WHERE "date" = ? AND "as_of" < ? '
+            'QUALIFY row_number() OVER (PARTITION BY "symbol" ORDER BY "as_of" DESC) = 1 '
+            'ORDER BY "symbol"'
+        )
+        rows = self._con.execute(sql, [day, decision_ts]).fetchall()
+        return [
+            Scr0Row(
+                symbol=r[0], date=r[1], as_of=r[2], adv20=r[3],
+                price=r[4], free_float=r[5], market_cap=r[6],
             )
             for r in rows
         ]

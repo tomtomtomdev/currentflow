@@ -13,11 +13,14 @@ from datetime import datetime
 from typing import Any
 
 from currentflow.dal.models import (
+    BoardType,
     BrokerNet,
+    CorpAction,
     DailyBar,
     InvestorType,
     RowStatus,
     Side,
+    SymbolInfo,
 )
 from currentflow.dal.timing import broker_as_of, ohlcv_as_of
 
@@ -187,4 +190,150 @@ def parse_broker_summary(symbol: str, payload: Any) -> list[BrokerNet]:
         for r in rows:
             day = _parse_date(r.get("netbs_date") or bs.get("netbs_date"))
             out.append(_broker_row(symbol, day, broker_as_of(day, data_last_updated), side, r))
+    return out
+
+
+# --- symbol info (universe-gate flags + index membership) ---------------------------
+
+
+def _unwrap(payload: Any) -> Any:
+    node: Any = payload
+    for wrap in ("data", "result", "results"):
+        if isinstance(node, dict) and wrap in node:
+            node = node[wrap]
+    return node
+
+
+def _truthy_flag(v: Any) -> bool:
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, (int, float)):
+        return bool(v)
+    return str(v).strip().lower() in ("true", "1", "yes", "suspend", "suspended", "active")
+
+
+def parse_symbol_info(symbol: str, payload: Any, *, fetched_at: datetime) -> SymbolInfo:
+    """emitten/{sym}/info → SymbolInfo (status, suspend, notation[], indexes[])."""
+    node = _unwrap(payload)
+    if not isinstance(node, dict):
+        node = {}
+
+    status = str(node.get("status") or "").strip().lower()
+    suspend_info = (node.get("market_hour") or {}).get("suspend_info") if isinstance(
+        node.get("market_hour"), dict
+    ) else None
+    suspended = status == "suspended" or bool(suspend_info)
+
+    tradeable_raw = node.get("tradeable")
+    tradeable = None if tradeable_raw is None else _truthy_flag(tradeable_raw)
+
+    notations = tuple(
+        str(n.get("code") if isinstance(n, dict) else n).strip()
+        for n in node.get("notation") or []
+    )
+    uma = bool(node.get("uma")) or "UMA" in notations
+
+    indexes = tuple(
+        str(i.get("name") if isinstance(i, dict) else i).strip()
+        for i in node.get("indexes") or []
+    )
+
+    return SymbolInfo(
+        symbol=symbol,
+        as_of=fetched_at,
+        suspended=suspended,
+        tradeable=tradeable,
+        uma=uma,
+        notations=notations,
+        indexes=indexes,
+    )
+
+
+# --- corporate actions ---------------------------------------------------------------
+
+
+def parse_corp_actions(symbol: str, payload: Any, *, fetched_at: datetime) -> list[CorpAction]:
+    """corpaction/{sym} → list[CorpAction]. Tolerates flat lists or per-type dicts."""
+    node = _unwrap(payload)
+    rows: list[tuple[str, dict]] = []
+    if isinstance(node, list):
+        rows = [(str(r.get("type") or r.get("action_type") or ""), r) for r in node if isinstance(r, dict)]
+    elif isinstance(node, dict):
+        for action_type, v in node.items():
+            for r in v if isinstance(v, list) else [v]:
+                if isinstance(r, dict):
+                    rows.append((str(r.get("type") or action_type), r))
+
+    out: list[CorpAction] = []
+    for action_type, r in rows:
+        ex = r.get("ex_date") or r.get("exDate") or r.get("date")
+        rec = r.get("recording_date") or r.get("recordingDate")
+        out.append(
+            CorpAction(
+                symbol=symbol,
+                as_of=fetched_at,
+                action_type=action_type.strip().lower(),
+                ex_date=_parse_date(ex) if ex else None,
+                recording_date=_parse_date(rec) if rec else None,
+            )
+        )
+    return out
+
+
+# --- special / development board membership ------------------------------------------
+
+
+def parse_special_board(payload: Any) -> dict[str, BoardType]:
+    """emitten/indexes/special-board → {symbol: BoardType.DEVELOPMENT}.
+
+    Symbols absent from the mapping are MAIN by default (the feed lists only the
+    special/development boards).
+    """
+    node = _unwrap(payload)
+    out: dict[str, BoardType] = {}
+    rows: list[Any] = []
+    if isinstance(node, list):
+        rows = node
+    elif isinstance(node, dict):
+        for v in node.values():
+            rows.extend(v if isinstance(v, list) else [v])
+    for r in rows:
+        sym = str(r.get("symbol") or r.get("code") or "").strip() if isinstance(r, dict) else str(r).strip()
+        if sym:
+            out[sym] = BoardType.DEVELOPMENT
+    return out
+
+
+# --- screener results ------------------------------------------------------------------
+
+
+def parse_screener_results(payload: Any) -> list[dict[str, Any]]:
+    """screener/templates response → [{symbol, values: {fitem_id: raw}}].
+
+    Results arrive as `calcs[].results[]` per company: {id, item, raw, display}.
+    Tolerant to the company list living under `calcs` or a flat `companies` key.
+    """
+    node = _unwrap(payload)
+    companies: list[dict] = []
+    if isinstance(node, dict):
+        for key in ("calcs", "companies", "stocks"):
+            if isinstance(node.get(key), list):
+                companies = [c for c in node[key] if isinstance(c, dict)]
+                break
+    elif isinstance(node, list):
+        companies = [c for c in node if isinstance(c, dict)]
+
+    out: list[dict[str, Any]] = []
+    for c in companies:
+        sym = str(c.get("symbol") or c.get("code") or c.get("company", {}).get("symbol") or "").strip()
+        if not sym:
+            continue
+        values: dict[int, float | None] = {}
+        for res in c.get("results") or []:
+            if not isinstance(res, dict):
+                continue
+            fid = _int(res.get("item") or res.get("id"))
+            if fid is not None:
+                values[fid] = _num(res.get("raw"))
+        out.append({"symbol": sym, "values": values})
     return out

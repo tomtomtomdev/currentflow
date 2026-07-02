@@ -30,18 +30,24 @@ Legend: ⬜ not started · 🟡 in progress · ✅ done. Keep the box in sync wi
 - [x] **Tests (23 passing):** look-ahead (`as_of < decision_ts`, strict, latest-visible); gap-vs-zero; cache-idempotency; + parser/client/pipeline.
 - [~] **Live transport not wired:** `login/v6` + MFA Bearer capture and the real httpx transport need operator credentials (out of scope for CI). The client is transport-agnostic and ready to accept it.
 
-## Slice 2 — Universe gate (§3) + Broker Flow Analyzer  ⬜
+## Slice 2 — Universe gate (§3) + Broker Flow Analyzer  ✅
 **Goal:** first end-to-end vertical; proves the pipeline.
-- [ ] Hard floor: ADV ≥ IDR 10bn (20d), price ≥ 100, not suspended, no IPO<60d, no ARA/ARB-pinned close, complete broker summary, no corp action ±5d.
-- [ ] Track A/B assignment from `emitten/{sym}/info.indexes` (A = LQ45/IDX80 & ADV≥25bn; B = rest).
-- [ ] Index-rebalancing filter: down-weight pure-beta moves 30% (don't reject).
-- [ ] ARA/ARB band derivation (`DATA_SOURCES.md` §3.2): board type + prev close → pinned check.
-- [ ] **Broker Flow Analyzer** (observation, no gate): per-stock broker net buy/sell, broker DNA
+- [x] Hard floor: ADV ≥ IDR 10bn (20d), price ≥ 100, not suspended, no IPO<60d, no ARA/ARB-pinned close, complete broker summary, no corp action ±5d (`universe/gate.py`; every reject carries reasons — no silent caps).
+- [x] Track A/B assignment from `emitten/{sym}/info.indexes` (A = LQ45/IDX80 & ADV≥25bn; B = rest).
+- [x] Index-rebalancing filter: down-weight pure-beta moves 30% (don't reject) — `universe/rebalance.py`; multiplier consumed by SMS at slice 4.
+- [x] ARA/ARB band derivation (`DATA_SOURCES.md` §3.2): board type + prev close → pinned check (`universe/bands.py`; dev-board 10–25% resolved by price tier, see PROGRESS decisions).
+- [x] **Broker Flow Analyzer** (observation, no gate): per-stock broker net buy/sell, broker DNA
       (Foreign/Local Inst / Smart Money / Retail / Prop), top-N share + Herfindahl, persistence,
-      custom syndicate grouping, buyer-vs-seller matrix.
-- [ ] SCR-0 eligibility screener wired (server-side pre-filter → ~100–150 names).
+      custom syndicate grouping, buyer-vs-seller matrix (`signals/broker_flow.py`; Streamlit view
+      `ui/app.py` + `ui/broker_flow_view.py`). DNA registry seeded from design handoff — illustrative,
+      operator-verified over time.
+- [x] SCR-0 eligibility screener wired (server-side pre-filter → ~100–150 names): `screeners/scr0.py`,
+      POST via `ExodusClient.run_screener`, cached to DuckDB `scr0_eligible` with `as_of`.
+- [x] New DAL feeds: `symbol_info`, `corp_actions`, `special_board` + tolerant parsers.
 - **Manual armed-list alerts; validate signal quality 2–4 weeks before automating.**
-- **Tests:** universe-gate unit tests; ARA/ARB math; broker concentration/Herfindahl.
+- [x] **Tests (60 new, 83 total passing):** universe-gate unit tests (each rule + multi-failure);
+      ARA/ARB hand-checked math; broker concentration/Herfindahl hand-checked; persistence;
+      look-ahead through the analyzer; SCR-0 template fidelity + ingest-once cache.
 
 ## Slice 3 — Foreign Flow Dashboard + Money Flow Replay  ⬜
 **Goal:** build the audit tool early.

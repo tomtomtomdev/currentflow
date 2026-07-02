@@ -58,6 +58,54 @@ class DailyBar:
     change_percentage: float | None
 
 
+class BoardType(str, Enum):
+    """IDX listing board — selects the ARA/ARB band (spec §12)."""
+
+    MAIN = "MAIN"
+    DEVELOPMENT = "DEVELOPMENT"
+    UNKNOWN = "UNKNOWN"
+
+
+@dataclass(frozen=True, slots=True)
+class SymbolInfo:
+    """Universe-gate state flags + index membership from emitten/{sym}/info.
+
+    A *live* snapshot — `as_of` is the fetch time; it is not historically replayable.
+    """
+
+    symbol: str
+    as_of: datetime
+    suspended: bool
+    tradeable: bool | None      # feed `tradeable`; None if absent
+    uma: bool
+    notations: tuple[str, ...]
+    indexes: tuple[str, ...]    # LQ45 / IDX80 / IDXSMC-LIQ / …
+
+
+@dataclass(frozen=True, slots=True)
+class CorpAction:
+    """One corporate action from corpaction/{sym} — drives the ±5d exclusion (§3)."""
+
+    symbol: str
+    as_of: datetime
+    action_type: str            # dividend / stocksplit / rightissue / …
+    ex_date: Date | None        # primary exclusion anchor
+    recording_date: Date | None
+
+
+@dataclass(frozen=True, slots=True)
+class Scr0Row:
+    """One SCR-0 eligibility survivor (screeners.md) for a trading day."""
+
+    symbol: str
+    date: Date
+    as_of: datetime
+    adv20: float | None         # fitem 16454 Value MA 20
+    price: float | None         # fitem 2661
+    free_float: float | None    # fitem 21535 (%)
+    market_cap: float | None    # fitem 2892
+
+
 @dataclass(frozen=True, slots=True)
 class BrokerNet:
     """One broker's buy or sell side for a (symbol, date) from marketdetectors."""

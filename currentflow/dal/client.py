@@ -7,7 +7,8 @@ mockable in tests and swappable in prod. Behavior contract:
   * 429 / 5xx / network → exponential backoff (2,4,8,16s), up to `max_retries`.
   * Paywall counter (402/403) → PaywallError, retried with backoff (throttle intent).
 
-Slice-1 methods: broker_summary, ohlcv_foreign. Later feeds raise NotImplementedError.
+Slice-1 methods: broker_summary, ohlcv_foreign.
+Slice-2 methods: symbol_info, corp_actions, special_board, run_screener (POST).
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from datetime import date as Date
+from datetime import datetime
 from typing import Any, Protocol
 
 from currentflow import config
@@ -25,8 +27,15 @@ from currentflow.dal.errors import (
     RateLimitError,
     TransportError,
 )
-from currentflow.dal.models import BrokerNet, DailyBar
-from currentflow.dal.parse import parse_broker_summary, parse_ohlcv
+from currentflow.dal.models import BoardType, BrokerNet, CorpAction, DailyBar, SymbolInfo
+from currentflow.dal.parse import (
+    parse_broker_summary,
+    parse_corp_actions,
+    parse_ohlcv,
+    parse_screener_results,
+    parse_special_board,
+    parse_symbol_info,
+)
 
 log = logging.getLogger(__name__)
 
@@ -38,6 +47,9 @@ class Response(Protocol):
 
 
 Transport = Callable[[str, dict], Awaitable[Response]]
+# POST transport: (path, json_body) -> Response. Injected separately so slice-1
+# GET-only transports keep working unchanged.
+PostTransport = Callable[[str, dict], Awaitable[Response]]
 
 
 class ExodusClient:
@@ -45,18 +57,23 @@ class ExodusClient:
         self,
         transport: Transport,
         *,
+        post_transport: PostTransport | None = None,
         token_provider: Callable[[], str] | None = None,
         refresh: Callable[[], Awaitable[None]] | Callable[[], None] | None = None,
         max_retries: int = config.MAX_RETRIES,
         backoff_base: float = config.BACKOFF_BASE_SECONDS,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+        now: Callable[[], datetime] = datetime.now,
     ) -> None:
         self._transport = transport
+        self._post_transport = post_transport
         self._token_provider = token_provider
         self._refresh = refresh
         self._max_retries = max_retries
         self._backoff_base = backoff_base
         self._sleep = sleep
+        # injectable clock for live-snapshot `as_of` stamps (tests pin it)
+        self._now = now
 
     # --- feeds (Slice 1) ----------------------------------------------------------
 
@@ -88,22 +105,50 @@ class ExodusClient:
         )
         return parse_ohlcv(symbol, payload)
 
-    # --- later slices -------------------------------------------------------------
+    # --- feeds (Slice 2: universe gate + screeners) ---------------------------------
 
-    async def corp_actions(self, symbol: str) -> Any:  # pragma: no cover - slice 2+
-        raise NotImplementedError("corp_actions lands in Slice 2 (universe gate)")
+    async def symbol_info(self, symbol: str) -> SymbolInfo:
+        """emitten/{sym}/info — suspend/UMA/notation flags + index membership (§3).
 
-    async def status_flags(self, symbol: str) -> Any:  # pragma: no cover - slice 2+
-        raise NotImplementedError("status_flags lands in Slice 2 (universe gate)")
+        Live snapshot: `as_of` = fetch time; not historically replayable.
+        """
+        payload = await self._get(f"emitten/{symbol}/info", {})
+        return parse_symbol_info(symbol, payload, fetched_at=self._now())
+
+    async def corp_actions(self, symbol: str) -> list[CorpAction]:
+        """corpaction/{sym} — drives the ±5-day exclusion window (§3)."""
+        payload = await self._get(f"corpaction/{symbol}", {})
+        return parse_corp_actions(symbol, payload, fetched_at=self._now())
+
+    async def special_board(self) -> dict[str, BoardType]:
+        """emitten/indexes/special-board — dev-board membership for ARA/ARB bands."""
+        payload = await self._get("emitten/indexes/special-board", {})
+        return parse_special_board(payload)
+
+    async def run_screener(self, template: dict) -> list[dict[str, Any]]:
+        """POST screener/templates — server-side pre-filter (screeners.md §1).
+
+        Returns [{symbol, values: {fitem_id: raw}}] per surviving company.
+        """
+        payload = await self._post("screener/templates", template)
+        return parse_screener_results(payload)
 
     # --- request core -------------------------------------------------------------
 
     async def _get(self, path: str, params: dict) -> Any:
+        return await self._request(lambda: self._transport(path, params), path)
+
+    async def _post(self, path: str, body: dict) -> Any:
+        if self._post_transport is None:
+            raise TransportError(f"POST {path}: no post_transport configured")
+        return await self._request(lambda: self._post_transport(path, body), path)
+
+    async def _request(self, send: Callable[[], Awaitable[Response]], path: str) -> Any:
         attempt = 0
         refreshed = False
         while True:
             try:
-                resp = await self._transport(path, params)
+                resp = await send()
             except (RateLimitError, TransportError) as exc:
                 attempt = await self._maybe_backoff(attempt, path, repr(exc))
                 continue

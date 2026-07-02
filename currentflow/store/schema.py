@@ -39,6 +39,17 @@ BROKER_NET_COLUMNS: tuple[str, ...] = (
     "frequency",
 )
 
+# SCR-0 eligibility results (screeners.md §4: "cache to DuckDB with as_of").
+SCR0_COLUMNS: tuple[str, ...] = (
+    "symbol",
+    "date",
+    "as_of",
+    "adv20",
+    "price",
+    "free_float",
+    "market_cap",
+)
+
 DDL = """
 CREATE TABLE IF NOT EXISTS daily_bar (
     "symbol"            VARCHAR   NOT NULL,
@@ -72,5 +83,16 @@ CREATE TABLE IF NOT EXISTS broker_net (
     "lot"           BIGINT,
     "frequency"     BIGINT,
     PRIMARY KEY ("symbol", "date", "as_of", "broker_code", "side")
+);
+
+CREATE TABLE IF NOT EXISTS scr0_eligible (
+    "symbol"     VARCHAR   NOT NULL,
+    "date"       DATE      NOT NULL,
+    "as_of"      TIMESTAMP NOT NULL,
+    "adv20"      DOUBLE,
+    "price"      DOUBLE,
+    "free_float" DOUBLE,
+    "market_cap" DOUBLE,
+    PRIMARY KEY ("symbol", "date", "as_of")
 );
 """

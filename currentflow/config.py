@@ -32,3 +32,31 @@ OHLCV_AVAILABLE_TIME = time(16, 15)
 # --- Retry / backoff --------------------------------------------------------------
 MAX_RETRIES = 4
 BACKOFF_BASE_SECONDS = 2.0  # 2, 4, 8, 16 …
+
+# --- Universe gate (spec §3, LOCKED) ----------------------------------------------
+ADV_FLOOR_IDR = 10_000_000_000.0        # 20-day avg daily value traded ≥ IDR 10 bn
+ADV_TRACK_A_IDR = 25_000_000_000.0      # Track A additionally requires ADV ≥ IDR 25 bn
+PRICE_FLOOR_IDR = 100.0                 # last price ≥ IDR 100
+MIN_HISTORY_TRADING_DAYS = 60           # IPO with < 60 trading days of history → reject
+CORP_ACTION_WINDOW_DAYS = 5             # exclude ±5 calendar days around a corp action
+ADV_WINDOW_DAYS = 20
+TRACK_A_INDEXES = frozenset({"LQ45", "IDX80"})
+
+# --- ARA/ARB bands (spec §12; derivation DATA_SOURCES §3.2) ------------------------
+# Spec pins: main ±7% / dev board ±10–25% / first 15 trading days post-IPO ±35%.
+# The dev-board 10–25% range is resolved by price tier (higher-priced names get the
+# tighter band) — implementation choice logged in PROGRESS.md decisions.
+BAND_MAIN = 0.07
+BAND_DEV_TIGHT = 0.10          # development board, prev close ≥ DEV_TIGHT_PRICE
+BAND_DEV_WIDE = 0.25           # development board, prev close <  DEV_TIGHT_PRICE
+DEV_TIGHT_PRICE_IDR = 5_000.0
+BAND_IPO = 0.35                # first 15 trading days post-IPO
+IPO_BAND_TRADING_DAYS = 15
+# `pinned = |close − prev| / prev ≥ band − ε` — ε absorbs tick rounding at the band.
+PIN_EPSILON = 0.005
+
+# --- Index-rebalancing filter (spec §3) --------------------------------------------
+# Pure-beta moves near rebalance dates are down-weighted 30% — never rejected.
+REBALANCE_DOWNWEIGHT = 0.7
+REBALANCE_RESIDUAL_THRESHOLD = 0.01     # |β-adjusted residual| ≤ 1% ≈ "explained by beta"
+REBALANCE_TRACKER_SHARE = 0.5           # ≥ 50% of net flow on index-tracker brokers

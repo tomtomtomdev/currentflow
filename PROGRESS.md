@@ -16,7 +16,7 @@ whenever a slice lands or a module changes validation state. Pairs with `PLAN.md
 | Companion scaffolding (PLAN, CLAUDE, PROGRESS) | ✅ | 2026-07-01 | This file + PLAN.md + CLAUDE.md created per spec §14. |
 | UI design handoff (hifi) | ✅ | 2026-07-01 | `design/` — README + `.dc.html` prototype; all 8 modules, RULE A/B enforced, seeded mock. Spec in bundle verified identical to root. Reference only, not shipped. |
 | 1 · Data layer + integrity checks | ✅ | 2026-07-01 | `ExodusClient` (broker_summary + ohlcv_foreign; 401 fail-loud, refresh, exponential backoff); DuckDB store keyed `(symbol,date,as_of)`, ingest-once; integrity TRADED/NO_TRADES/NOT_PUBLISHED/GAP; look-ahead-safe reads. 23 tests pass. Pending live: `login/v6`+MFA transport & empirical broker publish-latency pinning (LD-5, conservative next-day fallback in force). |
-| 2 · Universe gate + Broker Flow Analyzer | ⬜ | — | Not started. |
+| 2 · Universe gate + Broker Flow Analyzer | ✅ | 2026-07-02 | §3 hard floor + Track A/B + ARA/ARB derivation + rebalance down-weight (`universe/`); Broker Flow Analyzer observation module (`signals/broker_flow.py`) + Streamlit view (`ui/`); SCR-0 wired via screener POST, cached to `scr0_eligible` with `as_of`; DAL adds `symbol_info`/`corp_actions`/`special_board`. 60 new tests (83 total). Armed-list alerts stay manual pending 2–4 wks signal-quality validation. |
 | 3 · Foreign Flow Dashboard + Money Flow Replay | ⬜ | — | Not started. |
 | 4 · Phase classifier + SMS (internal) + veto | ⬜ | — | Not started. |
 | 5 · Stage-2 distribution / trap layer | ⬜ | — | Not started. |
@@ -35,7 +35,7 @@ positive walk-forward) → `VALIDATED`. Only `VALIDATED` modules may show a numb
 ### Ships-now — observation modules (no gate; never show a predictive number)
 | Module | State | Notes |
 |---|---|---|
-| Broker Flow Analyzer | ⬜ not built | Pure observation. |
+| Broker Flow Analyzer | ✅ built (2026-07-02) | Pure observation — net flow, DNA, top-N/HHI, persistence, syndicates, matrix. No score, no verb. |
 | Foreign Flow Dashboard | ⬜ not built | Pure observation. |
 | Institutional Accumulation Detector | ⬜ not built | Pure observation. |
 | Money Flow Replay | ⬜ not built | Audit tool — build early. |
@@ -73,3 +73,6 @@ Record any spec deviation here with a reason and the spec version bump it trigge
 | 2026-07-01 | Front-end stack = Streamlit (chose over React/hybrid) | Stay faithful to spec §10; single-user local tool; accept approximate fidelity | v1.1 (no bump) |
 | 2026-07-01 | Store pinned = DuckDB (chose over SQLite) | Analytical (OLAP) workload — backtest, window-function aggregations (persistence/Herfindahl/NBSA), Replay range-scans over `(symbol, date, as_of)`; native Pandas/Polars/Arrow integration; nightly-batch single-writer ingest makes SQLite's OLTP/concurrency edge irrelevant. Within spec §10's SQLite/DuckDB allowance — pin, not a deviation. | v1.1 (no bump) |
 | 2026-07-01 | Slice 1 impl choices: async DAL (injectable transport); timestamps WIB-local tz-naive; broker `as_of` = feed `data_last_updated` else conservative next-day 09:00 (LD-5) | Async matches DATA_SOURCES §6 surface + enables throttled concurrent paywalled pulls; single-exchange tz needs no zone mixing; conservative fallback keeps look-ahead honest until latency measured. Implementation detail within spec. | v1.1 (no bump) |
+| 2026-07-02 | Dev-board ARA/ARB band (spec's "±10–25%" range) resolved by price tier: prev close ≥ 5000 → 10%, else 25%; ε = 0.5% absorbs tick rounding at the band; unknown board falls back to the tightest (main 7%) band | Spec §12 pins a range, not a rule; tiering mirrors IDX's tighter-band-for-higher-price convention; conservative fallback never hides a pinned close. Constants in `config.py`, tunable when measured against real ARA/ARB days. | v1.1 (no bump) |
+| 2026-07-02 | Broker-DNA registry seeded from design handoff (KZ/AK/RX/ZP/YU foreign-inst, CC/NI/OD/DR local-inst, DX/AI/KI smart-money, BQ prop, YP/PD/CP/GR retail); fallback to feed's Asing/Lokal tag; unmapped local codes stay UNKNOWN | No served DNA feed; registry is operator knowledge, explicitly illustrative and overridable per call — never silently guessed. | v1.1 (no bump) |
+| 2026-07-02 | Rebalance down-weight fires only when ALL of: β-residual ≤ 1%, tracker-broker flow share ≥ 50%, within ±7d of an MSCI review date (operator-maintained calendar in `universe/rebalance.py`) | §3 says down-weight pure-beta moves, not every move near a rebalance; conjunction keeps genuine alpha at full weight. Thresholds in `config.py`. | v1.1 (no bump) |
