@@ -27,6 +27,9 @@ from currentflow.dal.models import (
     RowStatus,
     Scr0Row,
     Scr1aRow,
+    Scr1bRow,
+    Scr1cRow,
+    Scr2Row,
     Side,
 )
 from currentflow.store.schema import (
@@ -36,6 +39,9 @@ from currentflow.store.schema import (
     KSEI_COLUMNS,
     SCR0_COLUMNS,
     SCR1A_COLUMNS,
+    SCR1B_COLUMNS,
+    SCR1C_COLUMNS,
+    SCR2_COLUMNS,
 )
 
 
@@ -97,6 +103,36 @@ class Store:
             for r in rows_in
         ]
         return self._insert("scr1a_foreign_accum", SCR1A_COLUMNS, rows)
+
+    def write_scr1b(self, rows_in: Iterable[Scr1bRow]) -> int:
+        rows = [
+            (
+                r.symbol, r.date, r.as_of, r.bandar_value,
+                r.bandar_value_ma20, r.bandar_accum_dist, r.adv20,
+            )
+            for r in rows_in
+        ]
+        return self._insert("scr1b_bandar_accum", SCR1B_COLUMNS, rows)
+
+    def write_scr1c(self, rows_in: Iterable[Scr1cRow]) -> int:
+        rows = [
+            (
+                r.symbol, r.date, r.as_of, r.bandar_value,
+                r.price_return_1m, r.volume, r.volume_ma20,
+            )
+            for r in rows_in
+        ]
+        return self._insert("scr1c_stealth_divergence", SCR1C_COLUMNS, rows)
+
+    def write_scr2(self, rows_in: Iterable[Scr2Row]) -> int:
+        rows = [
+            (
+                r.symbol, r.date, r.as_of, r.volume,
+                r.volume_ma20, r.frequency, r.frequency_spike,
+            )
+            for r in rows_in
+        ]
+        return self._insert("scr2_volume_anomaly", SCR2_COLUMNS, rows)
 
     def write_ksei_ownership(self, rows_in: Iterable[OwnershipSlice]) -> int:
         rows = [
@@ -202,6 +238,50 @@ class Store:
             )
             for r in rows
         ]
+
+    def read_scr1b(self, day: Date, decision_ts: datetime) -> list[Scr1bRow]:
+        """SCR-1B survivors for `day` as visible at `decision_ts` (latest as_of/symbol)."""
+        rows = self._read_screener("scr1b_bandar_accum", SCR1B_COLUMNS, day, decision_ts)
+        return [
+            Scr1bRow(
+                symbol=r[0], date=r[1], as_of=r[2], bandar_value=r[3],
+                bandar_value_ma20=r[4], bandar_accum_dist=r[5], adv20=r[6],
+            )
+            for r in rows
+        ]
+
+    def read_scr1c(self, day: Date, decision_ts: datetime) -> list[Scr1cRow]:
+        """SCR-1C survivors for `day` as visible at `decision_ts` (latest as_of/symbol)."""
+        rows = self._read_screener("scr1c_stealth_divergence", SCR1C_COLUMNS, day, decision_ts)
+        return [
+            Scr1cRow(
+                symbol=r[0], date=r[1], as_of=r[2], bandar_value=r[3],
+                price_return_1m=r[4], volume=r[5], volume_ma20=r[6],
+            )
+            for r in rows
+        ]
+
+    def read_scr2(self, day: Date, decision_ts: datetime) -> list[Scr2Row]:
+        """SCR-2 survivors for `day` as visible at `decision_ts` (latest as_of/symbol)."""
+        rows = self._read_screener("scr2_volume_anomaly", SCR2_COLUMNS, day, decision_ts)
+        return [
+            Scr2Row(
+                symbol=r[0], date=r[1], as_of=r[2], volume=r[3],
+                volume_ma20=r[4], frequency=r[5], frequency_spike=r[6],
+            )
+            for r in rows
+        ]
+
+    def _read_screener(
+        self, table: str, columns: Sequence[str], day: Date, decision_ts: datetime
+    ) -> list[tuple]:
+        sql = (
+            f"SELECT {_cols(columns)} FROM {table} "
+            'WHERE "date" = ? AND "as_of" < ? '
+            'QUALIFY row_number() OVER (PARTITION BY "symbol" ORDER BY "as_of" DESC) = 1 '
+            'ORDER BY "symbol"'
+        )
+        return self._con.execute(sql, [day, decision_ts]).fetchall()
 
     def read_ksei_ownership(
         self,

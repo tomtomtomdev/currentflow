@@ -71,17 +71,30 @@ Legend: ⬜ not started · 🟡 in progress · ✅ done. Keep the box in sync wi
       hand-checked NBSA stats; reversal/persistence; missing-≠-zero; SCR-1A template fidelity
       + ingest-once; KSEI parser shapes + look-ahead.
 
-## Slice 4 — Phase classifier + SMS (internal) + veto filters  ⬜
+## Slice 4 — Phase classifier + SMS (internal) + veto filters  ✅
 **Goal:** the core decision engine — internal only, gated by RULE B.
-- [ ] **Wyckoff phase classifier (RULE A HARD GATE):** PASS only if Phase C/D accumulation.
-- [ ] **SMS (§4)** track-specific weights → 0–100, **INTERNAL, no number displayed.**
-- [ ] Veto filters (§5): single-bandar monopoly (>60%), distribution-dressed-as-accum, retail-FOMO
-      (>60%), event-driven news, phase mismatch.
-- [ ] `ARMED` state: SMS≥70 AND phase∈{C,D} AND no veto → watchlist (no score shown).
-- [ ] **Institutional Accumulation Detector** + **Smart Money Heatmap** as observation over these.
-- [ ] Backtest 2+ yrs with full fees & look-ahead controls.
-- [ ] SCR-1B (bandar accum, IDXSMC-LIQ), SCR-1C (stealth divergence proxy), SCR-2 (RVOL) wired.
-- **Tests:** phase-gate rejects non-C/D on labeled charts; RULE B — SMS number hidden pre-validation.
+- [x] **Wyckoff phase classifier (RULE A HARD GATE):** detector-fed (selling climax →
+      trading range → spring / SOS+LPS / UTAD); PASS only Phase C/D (`signals/phase.py`).
+- [x] **SMS (§4)** track-specific weights (`config.SMS_WEIGHTS`, the only tunable surface)
+      → components + internal 0–100; **number GATED, never displayed** (`signals/sms.py`).
+- [x] Veto filters (§5) full v1.1 trap taxonomy: single-bandar monopoly (>60%),
+      distribution-dressed / dominant-buyer flip / UTAD, markup-on-thin-volume (up-spike),
+      wash/churn, broker rotation, retail-FOMO (>60%), event-driven, phase mismatch (`signals/veto.py`).
+- [x] `ARMED` state: SMS≥70 AND phase∈{C,D} AND no veto → watchlist, **no score shown**
+      (`signals/engine.py`; states GATE_REJECTED/VETOED/WATCH/ARMED).
+- [x] Per-module validation state drives the observation↔claim switch (`validation/state.py`);
+      SMS/Rank ships observation-only (components) — `ui/sms_view.py` withholds the number.
+- [x] **Institutional Accumulation Detector** (`signals/accumulation.py`) + **Smart Money
+      Heatmap** (`signals/heatmap.py`) as observation; wired into Streamlit; replay phase lane lit.
+- [~] **Backtest 2+ yrs** — DEFERRED to slice 7: a fee-realistic backtest must share the
+      IDX fill engine (§11/§13 "backtest and forward-paper share one fill engine"), which lands
+      in slice 7. Engine + phase are already look-ahead-safe and replay-auditable; running a
+      P&L backtest now (no fills/fees) would violate that discipline. Logged in PROGRESS decisions.
+- [x] SCR-1B (bandar accum, IDXSMC-LIQ), SCR-1C (stealth divergence proxy), SCR-2 (RVOL) wired
+      (`screeners/scr1b.py`, `scr1c.py`, `scr2.py`; cached to DuckDB with `as_of`).
+- [x] **Tests (45 new, 155 total):** phase-gate rejects non-C/D on labeled charts; RULE B — SMS
+      number hidden pre-validation and revealed only when VALIDATED; veto taxonomy per labeled case;
+      engine state machine + look-ahead; SMS component math; accumulation/heatmap; screener fidelity.
 
 ## Slice 5 — Stage-2 distribution / trap layer  ⬜
 **Goal:** the credibility layer.

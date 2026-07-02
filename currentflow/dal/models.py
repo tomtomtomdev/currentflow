@@ -136,6 +136,45 @@ class Scr1aRow:
 
 
 @dataclass(frozen=True, slots=True)
+class Scr1bRow:
+    """One SCR-1B bandar-accumulation survivor (screeners.md; Track B / IDXSMC-LIQ)."""
+
+    symbol: str
+    date: Date
+    as_of: datetime
+    bandar_value: float | None       # fitem 14399
+    bandar_value_ma20: float | None  # fitem 14426
+    bandar_accum_dist: float | None  # fitem 14400
+    adv20: float | None              # fitem 16454 (inherited SCR-0 liquidity)
+
+
+@dataclass(frozen=True, slots=True)
+class Scr1cRow:
+    """One SCR-1C stealth-divergence-proxy survivor (screeners.md; IHSG)."""
+
+    symbol: str
+    date: Date
+    as_of: datetime
+    bandar_value: float | None       # fitem 14399
+    price_return_1m: float | None    # fitem 1564 (%)
+    volume: float | None             # fitem 12469
+    volume_ma20: float | None        # fitem 12464
+
+
+@dataclass(frozen=True, slots=True)
+class Scr2Row:
+    """One SCR-2 volume/frequency-anomaly (RVOL) survivor (screeners.md; IHSG)."""
+
+    symbol: str
+    date: Date
+    as_of: datetime
+    volume: float | None             # fitem 12469
+    volume_ma20: float | None        # fitem 12464
+    frequency: float | None          # fitem 3229
+    frequency_spike: float | None    # fitem 15396
+
+
+@dataclass(frozen=True, slots=True)
 class BrokerNet:
     """One broker's buy or sell side for a (symbol, date) from marketdetectors."""
 

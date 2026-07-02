@@ -13,8 +13,9 @@ availability D+1 09:00, LD-5) are knowable. Injectable per call; revisit once
 BROKER_PUBLISH_LATENCY is measured.
 
 RULE B: frames carry raw measurements (close, volume, RVOL multiple, net flows).
-No score, no probability. The Wyckoff phase lane stays empty until the slice-4
-classifier exists (RULE A) — it is never fabricated here.
+No score, no probability. The Wyckoff phase lane carries the classifier's *label*
+(a gate verdict, not a number, RULE A) reconstructed at each frame's own decision_ts;
+`UNKNOWN` when there is not yet enough history — never fabricated.
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ from datetime import datetime, time, timedelta
 
 from currentflow import config
 from currentflow.dal.models import InvestorType
+from currentflow.signals import phase as phase_mod
 from currentflow.signals.broker_flow import BrokerDNA, classify_dna, daily_broker_net
 from currentflow.store.db import Store
 
@@ -52,8 +54,9 @@ class ReplayFrame:
     net_foreign: float | None
     broker_net_total: float | None  # sum of listed brokers' net that day (feed resolution)
     smart_money_net: float | None   # SMART_MONEY-DNA brokers' net within the listed set
-    # Wyckoff phase lands with the slice-4 classifier (RULE A) — never fabricated.
-    phase: None = None
+    # Wyckoff phase label at this frame's decision_ts (RULE A gate verdict, not a number);
+    # "UNKNOWN" until enough history — never fabricated.
+    phase: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,6 +109,12 @@ def build_frame(
             is BrokerDNA.SMART_MONEY
         )
 
+    # Wyckoff phase lane (RULE A) — reconstructed from a longer look-ahead-safe base.
+    phase_bars = store.read_daily_bars(
+        symbol, ts, start=day - timedelta(days=config.REPLAY_PHASE_LOOKBACK_DAYS), end=day
+    )
+    phase_label = phase_mod.classify(symbol, phase_bars, ts).phase.value
+
     return ReplayFrame(
         date=day,
         decision_ts=ts,
@@ -117,6 +126,7 @@ def build_frame(
         net_foreign=bar.net_foreign if bar else None,
         broker_net_total=broker_net_total,
         smart_money_net=smart_money_net,
+        phase=phase_label,
     )
 
 

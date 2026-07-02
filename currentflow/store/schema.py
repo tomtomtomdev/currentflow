@@ -61,6 +61,39 @@ SCR1A_COLUMNS: tuple[str, ...] = (
     "flow_ma20",
 )
 
+# SCR-1B bandar-accumulation results (screeners.md; Track B / IDXSMC-LIQ).
+SCR1B_COLUMNS: tuple[str, ...] = (
+    "symbol",
+    "date",
+    "as_of",
+    "bandar_value",
+    "bandar_value_ma20",
+    "bandar_accum_dist",
+    "adv20",
+)
+
+# SCR-1C stealth-divergence-proxy results (screeners.md; IHSG).
+SCR1C_COLUMNS: tuple[str, ...] = (
+    "symbol",
+    "date",
+    "as_of",
+    "bandar_value",
+    "price_return_1m",
+    "volume",
+    "volume_ma20",
+)
+
+# SCR-2 volume/frequency-anomaly (RVOL) results (screeners.md; IHSG).
+SCR2_COLUMNS: tuple[str, ...] = (
+    "symbol",
+    "date",
+    "as_of",
+    "volume",
+    "volume_ma20",
+    "frequency",
+    "frequency_spike",
+)
+
 # KSEI monthly ownership slices (foreign-ownership-trend overlay, spec §9).
 KSEI_COLUMNS: tuple[str, ...] = (
     "symbol",
@@ -124,6 +157,39 @@ CREATE TABLE IF NOT EXISTS scr1a_foreign_accum (
     "net_foreign_ma20" DOUBLE,
     "buy_streak"       DOUBLE,
     "flow_ma20"        DOUBLE,
+    PRIMARY KEY ("symbol", "date", "as_of")
+);
+
+CREATE TABLE IF NOT EXISTS scr1b_bandar_accum (
+    "symbol"            VARCHAR   NOT NULL,
+    "date"              DATE      NOT NULL,
+    "as_of"             TIMESTAMP NOT NULL,
+    "bandar_value"      DOUBLE,
+    "bandar_value_ma20" DOUBLE,
+    "bandar_accum_dist" DOUBLE,
+    "adv20"             DOUBLE,
+    PRIMARY KEY ("symbol", "date", "as_of")
+);
+
+CREATE TABLE IF NOT EXISTS scr1c_stealth_divergence (
+    "symbol"          VARCHAR   NOT NULL,
+    "date"            DATE      NOT NULL,
+    "as_of"           TIMESTAMP NOT NULL,
+    "bandar_value"    DOUBLE,
+    "price_return_1m" DOUBLE,
+    "volume"          DOUBLE,
+    "volume_ma20"     DOUBLE,
+    PRIMARY KEY ("symbol", "date", "as_of")
+);
+
+CREATE TABLE IF NOT EXISTS scr2_volume_anomaly (
+    "symbol"          VARCHAR   NOT NULL,
+    "date"            DATE      NOT NULL,
+    "as_of"           TIMESTAMP NOT NULL,
+    "volume"          DOUBLE,
+    "volume_ma20"     DOUBLE,
+    "frequency"       DOUBLE,
+    "frequency_spike" DOUBLE,
     PRIMARY KEY ("symbol", "date", "as_of")
 );
 

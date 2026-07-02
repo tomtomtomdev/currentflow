@@ -2,10 +2,12 @@
 
 Run:  streamlit run currentflow/ui/app.py -- --db <path.duckdb>
 
-Slice 2 shipped the Broker Flow Analyzer; slice 3 adds the Foreign Flow Dashboard
-and Money Flow Replay (the audit tool). Other modules render as locked
-placeholders. RULE B is enforced by construction: nothing here computes or
-displays a score, probability, or buy/sell verb.
+Slice 2 shipped the Broker Flow Analyzer; slice 3 added the Foreign Flow Dashboard
+and Money Flow Replay; slice 4 adds the Institutional Accumulation Detector, the
+Smart Money Heatmap, and the SMS/Rank module (components only — RULE B withholds the
+number). The remaining modules render as locked placeholders. RULE B is enforced by
+construction: the SMS number, probabilities, and buy/sell verbs are never displayed
+until the module is VALIDATED.
 """
 
 from __future__ import annotations
@@ -16,9 +18,10 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 
-from currentflow.signals import foreign_flow, replay
+from currentflow.signals import accumulation, engine, foreign_flow, heatmap, replay
 from currentflow.signals.broker_flow import analyze, buyer_seller_matrix
 from currentflow.store.db import Store
+from currentflow.ui.accumulation_view import accumulation_panel, stealth_callout
 from currentflow.ui.broker_flow_view import (
     DISCLAIMER,
     OBSERVATION_BADGE,
@@ -35,7 +38,9 @@ from currentflow.ui.foreign_flow_view import (
     stats_panel,
     tide_table,
 )
+from currentflow.ui.heatmap_view import divergence_alerts, heatmap_rows, sector_totals
 from currentflow.ui.replay_view import playhead_panel, visible_rows
+from currentflow.ui.sms_view import GATE_BANNER, WATCHLIST_FRAMING, component_rows, score_display, state_label
 
 MODULES = [
     "⇄ Broker Flow",
@@ -47,7 +52,7 @@ MODULES = [
     "◈ Risk Monitor",
     "∑ SMS / Rank 🔒",
 ]
-BUILT = {MODULES[0], MODULES[1], MODULES[3]}
+BUILT = {MODULES[0], MODULES[1], MODULES[2], MODULES[3], MODULES[4], MODULES[7]}
 
 
 def _db_path() -> str:
@@ -229,27 +234,91 @@ def _render_replay(store: Store) -> None:
         st.info(panel["phase"])
 
 
+def _render_accumulation(store: Store) -> None:
+    st.title("Institutional Accumulation Detector")
+    st.caption(f":green[{OBSERVATION_BADGE}] — stealth accumulation; here is the flow, you decide.")
+
+    symbols = _symbols(store, "daily_bar")
+    if not symbols:
+        st.warning("No data ingested yet — run the ingest pipeline first.")
+        return
+    symbol = st.sidebar.selectbox("Symbol", symbols)
+    snap = accumulation.analyze(store, symbol, datetime.now())
+
+    callout = stealth_callout(snap)
+    if callout:
+        st.info(callout)
+    panel = accumulation_panel(snap)
+    st.caption(f"{symbol} · {panel['window']}")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Price Δ over window", f"{panel['price_change_pct']}%" if panel['price_change_pct'] is not None else "—")
+    c2.metric("Accumulator", panel["accumulator"] or "—",
+              f"net {panel['net_accumulation_bn']} bn" if panel['net_accumulation_bn'] is not None else None)
+    c3.metric("Accum. VWAP", panel["accumulator_vwap"] or "—",
+              f"px vs vwap {panel['price_vs_vwap_pct']}%" if panel['price_vs_vwap_pct'] is not None else None)
+    st.write({k: panel[k] for k in ("accumulation_rising", "volume_dryup_ratio", "price_tightness_pct", "absorption")})
+
+
+def _render_heatmap(store: Store) -> None:
+    st.title("Smart Money Heatmap")
+    st.caption(f":green[{OBSERVATION_BADGE}] — direction & flow-as-%-of-cap; a rendering, not a score.")
+
+    symbols = _symbols(store, "daily_bar")
+    if not symbols:
+        st.warning("No data ingested yet — run the ingest pipeline first.")
+        return
+    cells = heatmap.heatmap(store, symbols, datetime.now())
+    for alert in divergence_alerts(cells):
+        st.warning("◆ " + alert)
+    st.subheader("By sector")
+    st.dataframe(pd.DataFrame(sector_totals(cells)), use_container_width=True)
+    st.subheader("By stock")
+    st.dataframe(pd.DataFrame(heatmap_rows(cells)), use_container_width=True)
+
+
+def _render_sms(store: Store) -> None:
+    st.title("SMS / Rank")
+    st.caption(f":orange[GATED · RULE B] — {WATCHLIST_FRAMING}.")
+    st.info(GATE_BANNER)
+
+    symbols = _symbols(store, "daily_bar")
+    if not symbols:
+        st.warning("No data ingested yet — run the ingest pipeline first.")
+        return
+    symbol = st.sidebar.selectbox("Symbol", symbols)
+    track = st.sidebar.radio("Track", ["A", "B"], index=1)
+    res = engine.evaluate(store, symbol, datetime.now(), track=track)
+
+    left, right = st.columns([1, 1.4])
+    with left:
+        st.metric("SMS (composite)", score_display(res.sms))   # •••  until VALIDATED
+        st.metric("State", state_label(res))
+        st.caption(f"Wyckoff phase: {res.phase.phase.value} · track {res.track}")
+        if res.veto.vetoes:
+            st.error("Vetoes: " + ", ".join(v.reason.value for v in res.veto.vetoes))
+    with right:
+        st.subheader("Score components — observation")
+        st.dataframe(pd.DataFrame(component_rows(res.sms)), use_container_width=True)
+
+
 def main() -> None:
     st.set_page_config(page_title="CurrentFlow", layout="wide")
     store = _store(_db_path())
 
     module = st.sidebar.radio("Module", MODULES, index=0)
-    if module not in BUILT:
-        st.subheader(module)
-        if "SMS" in module:
-            st.info(
-                "Locked (RULE B): no number until this module survives "
-                "PAPER_VALIDATION_MONTHS of fill-realistic forward paper trading. "
-                "Components ship as observation from slice 4."
-            )
-        else:
-            st.info("Not built yet — lands in a later slice (see PLAN.md).")
-    elif module == MODULES[0]:
-        _render_broker_flow(store)
-    elif module == MODULES[1]:
-        _render_foreign_flow(store)
+    renderers = {
+        MODULES[0]: _render_broker_flow,
+        MODULES[1]: _render_foreign_flow,
+        MODULES[2]: _render_accumulation,
+        MODULES[3]: _render_replay,
+        MODULES[4]: _render_heatmap,
+        MODULES[7]: _render_sms,
+    }
+    if module in renderers:
+        renderers[module](store)
     else:
-        _render_replay(store)
+        st.subheader(module)
+        st.info("Not built yet — lands in a later slice (see PLAN.md).")
 
     st.divider()
     st.caption(DISCLAIMER)

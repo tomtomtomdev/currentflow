@@ -20,8 +20,8 @@ from currentflow.dal.models import (
 )
 from currentflow.dal.timing import broker_as_of, ohlcv_as_of
 from currentflow.signals import broker_flow, foreign_flow
-from currentflow.signals.replay import build_frame, build_replay, frame_decision_ts
-from currentflow.ui.replay_view import PHASE_PLACEHOLDER, playhead_panel, visible_rows
+from currentflow.signals.replay import build_frame, build_replay
+from currentflow.ui.replay_view import phase_label, playhead_panel, visible_rows
 
 SYM = "TEST"
 D = [Date(2026, 6, 22) + timedelta(days=i) for i in range(5)]  # Mon–Fri
@@ -72,7 +72,7 @@ def test_frame_reconstructs_the_day(seeded):
     assert f.net_foreign == 3e9
     assert f.broker_net_total == pytest.approx(5e9 - 2e9 + 1e9)
     assert f.smart_money_net == pytest.approx(3e9)  # DX only; YP is retail
-    assert f.phase is None  # RULE A classifier absent — never fabricated
+    assert f.phase == "UNKNOWN"  # only 5 bars — classifier can't confirm a phase, never fabricated
 
 
 def test_frame_with_no_broker_rows_reports_none_not_zero(seeded):
@@ -158,10 +158,11 @@ def test_gap_day_yields_empty_frame_not_dropped(store):
 # --- view-model (RULE B framing) --------------------------------------------------------
 
 
-def test_playhead_panel_shows_measurements_and_phase_placeholder(seeded):
+def test_playhead_panel_shows_measurements_and_phase_label(seeded):
     panel = playhead_panel(build_frame(seeded, SYM, D[2]))
     assert panel["close"] == 121.0
     assert panel["net_foreign_bn"] == 3.0
     assert panel["smart_money_net_bn"] == 3.0
-    assert panel["phase"] == PHASE_PLACEHOLDER
-    assert "slice 4" in panel["phase"]
+    # phase lane now carries the classifier's verdict (UNKNOWN on 5 bars), no number
+    assert panel["phase"] == phase_label("UNKNOWN")
+    assert "insufficient history" in panel["phase"]

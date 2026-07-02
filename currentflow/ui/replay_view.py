@@ -2,24 +2,35 @@
 
 The replay is the audit surface: every value shown at a playhead position was
 computed from store reads at that day's historical `decision_ts`. RULE B: raw
-measurements only; the Wyckoff phase box stays a placeholder until the slice-4
-classifier exists (RULE A) — never fabricated here.
+measurements only. The Wyckoff phase box carries the slice-4 classifier's *label*
+(a RULE A gate verdict, not a number) reconstructed at that frame's decision moment.
 """
 
 from __future__ import annotations
 
 from currentflow.signals.replay import ReplayFrame, ReplaySeries
 
-PHASE_PLACEHOLDER = (
-    "Wyckoff phase — classifier lands in slice 4 (RULE A hard gate); "
-    "not shown until it exists."
-)
+# Human labels for the phase lane (RULE A gate verdict; C/D are the tradeable window).
+_PHASE_LABEL = {
+    "UNKNOWN": "Wyckoff phase — insufficient history to confirm",
+    "DOWNTREND": "Wyckoff — downtrend (no stopping action)",
+    "A": "Wyckoff Phase A — stopping action",
+    "B": "Wyckoff Phase B — building cause",
+    "C": "Wyckoff Phase C — spring/test (tradeable)",
+    "D": "Wyckoff Phase D — SOS/LPS markup (tradeable)",
+    "E": "Wyckoff Phase E — markup (too late)",
+    "DISTRIBUTION": "Wyckoff — distribution (avoid)",
+}
 
 _IDR_BN = 1e9
 
 
 def _bn(v: float | None) -> float | None:
     return None if v is None else round(v / _IDR_BN, 2)
+
+
+def phase_label(phase: str | None) -> str:
+    return _PHASE_LABEL.get(phase or "UNKNOWN", "Wyckoff phase — unavailable")
 
 
 def playhead_panel(frame: ReplayFrame) -> dict:
@@ -34,7 +45,7 @@ def playhead_panel(frame: ReplayFrame) -> dict:
         "net_foreign_bn": _bn(frame.net_foreign),
         "broker_net_bn": _bn(frame.broker_net_total),
         "smart_money_net_bn": _bn(frame.smart_money_net),
-        "phase": PHASE_PLACEHOLDER,
+        "phase": phase_label(frame.phase),
     }
 
 
