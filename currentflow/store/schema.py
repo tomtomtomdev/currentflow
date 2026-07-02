@@ -50,6 +50,26 @@ SCR0_COLUMNS: tuple[str, ...] = (
     "market_cap",
 )
 
+# SCR-1A foreign-accumulation results (screeners.md; Track A / LQ45).
+SCR1A_COLUMNS: tuple[str, ...] = (
+    "symbol",
+    "date",
+    "as_of",
+    "net_foreign",
+    "net_foreign_ma20",
+    "buy_streak",
+    "flow_ma20",
+)
+
+# KSEI monthly ownership slices (foreign-ownership-trend overlay, spec §9).
+KSEI_COLUMNS: tuple[str, ...] = (
+    "symbol",
+    "date",
+    "as_of",
+    "foreign_pct",
+    "local_pct",
+)
+
 DDL = """
 CREATE TABLE IF NOT EXISTS daily_bar (
     "symbol"            VARCHAR   NOT NULL,
@@ -93,6 +113,26 @@ CREATE TABLE IF NOT EXISTS scr0_eligible (
     "price"      DOUBLE,
     "free_float" DOUBLE,
     "market_cap" DOUBLE,
+    PRIMARY KEY ("symbol", "date", "as_of")
+);
+
+CREATE TABLE IF NOT EXISTS scr1a_foreign_accum (
+    "symbol"           VARCHAR   NOT NULL,
+    "date"             DATE      NOT NULL,
+    "as_of"            TIMESTAMP NOT NULL,
+    "net_foreign"      DOUBLE,
+    "net_foreign_ma20" DOUBLE,
+    "buy_streak"       DOUBLE,
+    "flow_ma20"        DOUBLE,
+    PRIMARY KEY ("symbol", "date", "as_of")
+);
+
+CREATE TABLE IF NOT EXISTS ksei_ownership (
+    "symbol"      VARCHAR   NOT NULL,
+    "date"        DATE      NOT NULL,
+    "as_of"       TIMESTAMP NOT NULL,
+    "foreign_pct" DOUBLE,
+    "local_pct"   DOUBLE,
     PRIMARY KEY ("symbol", "date", "as_of")
 );
 """

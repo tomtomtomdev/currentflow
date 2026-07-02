@@ -29,6 +29,17 @@ BROKER_CONSERVATIVE_AVAILABLE_TIME = time(9, 0)  # next trading morning
 # availability at 16:15 WIB same day (post-close), configurable if measured otherwise.
 OHLCV_AVAILABLE_TIME = time(16, 15)
 
+# --- Foreign flow / replay (slice 3) ------------------------------------------------
+FF_AVG_WINDOW_DAYS = 20   # trailing window for the vs-avg multiple and z-score (§4 NBSA)
+FF_CUM_DAYS = 5           # short cumulative NBSA stat (design: "5-day cumulative")
+
+# Replay frame for trading day D reconstructs the first actionable pre-open moment,
+# D+1 09:15 WIB: after D's EOD bar (~16:15, OHLCV_AVAILABLE_TIME) and after the
+# conservative broker-summary availability of D+1 09:00 (LD-5). Injectable per call;
+# revisit once BROKER_PUBLISH_LATENCY is measured.
+REPLAY_DECISION_TIME = time(9, 15)
+REPLAY_HISTORY_LOOKBACK_DAYS = 45  # calendar lookback read per frame for RVOL context
+
 # --- Retry / backoff --------------------------------------------------------------
 MAX_RETRIES = 4
 BACKOFF_BASE_SECONDS = 2.0  # 2, 4, 8, 16 …

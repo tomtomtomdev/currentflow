@@ -23,15 +23,19 @@ from currentflow.dal.models import (
     BrokerNet,
     DailyBar,
     InvestorType,
+    OwnershipSlice,
     RowStatus,
     Scr0Row,
+    Scr1aRow,
     Side,
 )
 from currentflow.store.schema import (
     BROKER_NET_COLUMNS,
     DAILY_BAR_COLUMNS,
     DDL,
+    KSEI_COLUMNS,
     SCR0_COLUMNS,
+    SCR1A_COLUMNS,
 )
 
 
@@ -83,6 +87,22 @@ class Store:
             for r in rows_in
         ]
         return self._insert("scr0_eligible", SCR0_COLUMNS, rows)
+
+    def write_scr1a(self, rows_in: Iterable[Scr1aRow]) -> int:
+        rows = [
+            (
+                r.symbol, r.date, r.as_of, r.net_foreign,
+                r.net_foreign_ma20, r.buy_streak, r.flow_ma20,
+            )
+            for r in rows_in
+        ]
+        return self._insert("scr1a_foreign_accum", SCR1A_COLUMNS, rows)
+
+    def write_ksei_ownership(self, rows_in: Iterable[OwnershipSlice]) -> int:
+        rows = [
+            (r.symbol, r.date, r.as_of, r.foreign_pct, r.local_pct) for r in rows_in
+        ]
+        return self._insert("ksei_ownership", KSEI_COLUMNS, rows)
 
     def _insert(self, table: str, columns: Sequence[str], rows: list[tuple]) -> int:
         if not rows:
@@ -165,6 +185,51 @@ class Store:
             )
             for r in rows
         ]
+
+    def read_scr1a(self, day: Date, decision_ts: datetime) -> list[Scr1aRow]:
+        """SCR-1A survivors for `day` as visible at `decision_ts` (latest as_of per symbol)."""
+        sql = (
+            f"SELECT {_cols(SCR1A_COLUMNS)} FROM scr1a_foreign_accum "
+            'WHERE "date" = ? AND "as_of" < ? '
+            'QUALIFY row_number() OVER (PARTITION BY "symbol" ORDER BY "as_of" DESC) = 1 '
+            'ORDER BY "symbol"'
+        )
+        rows = self._con.execute(sql, [day, decision_ts]).fetchall()
+        return [
+            Scr1aRow(
+                symbol=r[0], date=r[1], as_of=r[2], net_foreign=r[3],
+                net_foreign_ma20=r[4], buy_streak=r[5], flow_ma20=r[6],
+            )
+            for r in rows
+        ]
+
+    def read_ksei_ownership(
+        self,
+        symbol: str,
+        decision_ts: datetime,
+        start: Date | None = None,
+        end: Date | None = None,
+    ) -> list[OwnershipSlice]:
+        rows = self._read("ksei_ownership", KSEI_COLUMNS, symbol, decision_ts, start, end)
+        return [
+            OwnershipSlice(symbol=r[0], date=r[1], as_of=r[2], foreign_pct=r[3], local_pct=r[4])
+            for r in rows
+        ]
+
+    def read_scr0_latest(self, symbol: str, decision_ts: datetime) -> Scr0Row | None:
+        """Most recent SCR-0 row for `symbol` visible at `decision_ts` (float/mcap context)."""
+        sql = (
+            f"SELECT {_cols(SCR0_COLUMNS)} FROM scr0_eligible "
+            'WHERE "symbol" = ? AND "as_of" < ? '
+            'ORDER BY "date" DESC, "as_of" DESC LIMIT 1'
+        )
+        r = self._con.execute(sql, [symbol, decision_ts]).fetchone()
+        if r is None:
+            return None
+        return Scr0Row(
+            symbol=r[0], date=r[1], as_of=r[2], adv20=r[3],
+            price=r[4], free_float=r[5], market_cap=r[6],
+        )
 
     def _read(
         self,

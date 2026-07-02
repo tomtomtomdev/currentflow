@@ -107,6 +107,35 @@ class Scr0Row:
 
 
 @dataclass(frozen=True, slots=True)
+class OwnershipSlice:
+    """One monthly KSEI local-vs-foreign ownership point from
+    emitten-metadata/shareholders/{sym}/chart.
+
+    KSEI publishes monthly with a lag the feed does not disclose, so `as_of` is the
+    fetch time — the only availability we can honestly claim is when we pulled it.
+    """
+
+    symbol: str
+    date: Date                  # month bucket (feed's period date)
+    as_of: datetime
+    foreign_pct: float | None
+    local_pct: float | None
+
+
+@dataclass(frozen=True, slots=True)
+class Scr1aRow:
+    """One SCR-1A foreign-accumulation survivor (screeners.md) for a trading day."""
+
+    symbol: str
+    date: Date
+    as_of: datetime
+    net_foreign: float | None       # fitem 3194 Net Foreign Buy/Sell
+    net_foreign_ma20: float | None  # fitem 13540
+    buy_streak: float | None        # fitem 13561 Net Foreign Buy Streak
+    flow_ma20: float | None         # fitem 13521 Foreign Flow MA 20
+
+
+@dataclass(frozen=True, slots=True)
 class BrokerNet:
     """One broker's buy or sell side for a (symbol, date) from marketdetectors."""
 

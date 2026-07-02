@@ -9,6 +9,7 @@ mockable in tests and swappable in prod. Behavior contract:
 
 Slice-1 methods: broker_summary, ohlcv_foreign.
 Slice-2 methods: symbol_info, corp_actions, special_board, run_screener (POST).
+Slice-3 methods: ksei_ownership.
 """
 
 from __future__ import annotations
@@ -27,10 +28,18 @@ from currentflow.dal.errors import (
     RateLimitError,
     TransportError,
 )
-from currentflow.dal.models import BoardType, BrokerNet, CorpAction, DailyBar, SymbolInfo
+from currentflow.dal.models import (
+    BoardType,
+    BrokerNet,
+    CorpAction,
+    DailyBar,
+    OwnershipSlice,
+    SymbolInfo,
+)
 from currentflow.dal.parse import (
     parse_broker_summary,
     parse_corp_actions,
+    parse_ksei_ownership,
     parse_ohlcv,
     parse_screener_results,
     parse_special_board,
@@ -124,6 +133,23 @@ class ExodusClient:
         """emitten/indexes/special-board — dev-board membership for ARA/ARB bands."""
         payload = await self._get("emitten/indexes/special-board", {})
         return parse_special_board(payload)
+
+    # --- feeds (Slice 3: foreign flow + replay) --------------------------------------
+
+    async def ksei_ownership(
+        self, symbol: str, *, value_year: int | None = None, shareholder_type: str = ""
+    ) -> list[OwnershipSlice]:
+        """emitten-metadata/shareholders/{sym}/chart — monthly Local vs Foreign %
+        (KSEI, lagged). `as_of` = fetch time: KSEI's publish lag is undisclosed, so
+        the only availability we can honestly claim is when we pulled it.
+        """
+        params: dict = {}
+        if value_year is not None:
+            params["value_year"] = value_year
+        if shareholder_type:
+            params["shareholder_type"] = shareholder_type
+        payload = await self._get(f"emitten-metadata/shareholders/{symbol}/chart", params)
+        return parse_ksei_ownership(symbol, payload, fetched_at=self._now())
 
     async def run_screener(self, template: dict) -> list[dict[str, Any]]:
         """POST screener/templates — server-side pre-filter (screeners.md §1).

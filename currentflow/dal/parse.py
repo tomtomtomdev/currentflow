@@ -18,6 +18,7 @@ from currentflow.dal.models import (
     CorpAction,
     DailyBar,
     InvestorType,
+    OwnershipSlice,
     RowStatus,
     Side,
     SymbolInfo,
@@ -302,6 +303,63 @@ def parse_special_board(payload: Any) -> dict[str, BoardType]:
         if sym:
             out[sym] = BoardType.DEVELOPMENT
     return out
+
+
+# --- KSEI ownership (shareholders chart) ----------------------------------------------
+
+_FOREIGN_KEYS = ("foreign", "foreign_percentage", "asing")
+_LOCAL_KEYS = ("local", "local_percentage", "lokal", "domestic")
+
+
+def _pct_from(r: dict, keys: tuple[str, ...]) -> float | None:
+    for k in keys:
+        if k in r:
+            v = r[k]
+            return _num(v.get("value") if isinstance(v, dict) else v)
+    return None
+
+
+def parse_ksei_ownership(
+    symbol: str, payload: Any, *, fetched_at: datetime
+) -> list[OwnershipSlice]:
+    """emitten-metadata/shareholders/{sym}/chart → monthly Local vs Foreign % series.
+
+    Tolerates two envelope shapes: a flat list of per-month rows carrying both
+    percentages, or parallel `foreign`/`local` series of {date, value} merged by date.
+    """
+    node = _unwrap(payload)
+
+    merged: dict[Date, dict[str, float | None]] = {}
+    if isinstance(node, dict) and any(
+        isinstance(node.get(k), list) for k in (*_FOREIGN_KEYS, *_LOCAL_KEYS)
+    ):
+        for field, keys in (("foreign_pct", _FOREIGN_KEYS), ("local_pct", _LOCAL_KEYS)):
+            for k in keys:
+                for r in node.get(k) or []:
+                    if not isinstance(r, dict):
+                        continue
+                    day = _parse_date(r.get("date") or r.get("period") or r.get("month"))
+                    merged.setdefault(day, {})[field] = _num(r.get("value") or r.get("percentage"))
+    else:
+        for r in _rows(payload, "chart", "data"):
+            raw_day = r.get("date") or r.get("period") or r.get("month")
+            if raw_day is None:
+                continue
+            merged.setdefault(_parse_date(raw_day), {}).update(
+                foreign_pct=_pct_from(r, _FOREIGN_KEYS),
+                local_pct=_pct_from(r, _LOCAL_KEYS),
+            )
+
+    return [
+        OwnershipSlice(
+            symbol=symbol,
+            date=day,
+            as_of=fetched_at,
+            foreign_pct=vals.get("foreign_pct"),
+            local_pct=vals.get("local_pct"),
+        )
+        for day, vals in sorted(merged.items())
+    ]
 
 
 # --- screener results ------------------------------------------------------------------

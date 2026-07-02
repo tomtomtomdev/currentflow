@@ -49,14 +49,27 @@ Legend: ⬜ not started · 🟡 in progress · ✅ done. Keep the box in sync wi
       ARA/ARB hand-checked math; broker concentration/Herfindahl hand-checked; persistence;
       look-ahead through the analyzer; SCR-0 template fidelity + ingest-once cache.
 
-## Slice 3 — Foreign Flow Dashboard + Money Flow Replay  ⬜
+## Slice 3 — Foreign Flow Dashboard + Money Flow Replay  ✅
 **Goal:** build the audit tool early.
-- [ ] **Foreign Flow Dashboard** (observation): NBSA magnitude & persistence vs float,
-      foreign-vs-domestic split (market/stock/sector), flow-reversal detection, KSEI overlay.
-- [ ] **Money Flow Replay** (timeline): scrub historical flow/price for any name; price/volume/
-      foreign/broker on one axis. **The audit tool for every downstream signal.**
-- [ ] SCR-1A foreign-accumulation screener (Track A, LQ45 scope).
-- **Tests:** replay/audit test — reconstruct any past signal from stored `as_of` data.
+- [x] **Foreign Flow Dashboard** (observation): NBSA magnitude (vs-20d multiple + z-score,
+      both measurements), persistence & flow-reversal detection, NBSA-as-%-of-float (from
+      latest visible SCR-0 row), foreign-vs-domestic split (net + turnover share),
+      market/sector tide aggregate (operator sector map; skips logged, never zeroed),
+      KSEI monthly ownership overlay (`signals/foreign_flow.py`; view `ui/foreign_flow_view.py`).
+- [x] **Money Flow Replay** (timeline): one frame per trading day, each reconstructed by
+      re-reading the store at that day's historical `decision_ts` (D+1 09:15 WIB — after
+      D's EOD bar and the LD-5 conservative broker publish); price/volume/foreign/broker
+      lanes; gaps render as empty frames; Wyckoff phase lane stays a placeholder until the
+      slice-4 classifier exists (`signals/replay.py`; view `ui/replay_view.py`).
+- [x] SCR-1A foreign-accumulation screener (Track A, LQ45 scope; IDX80 scope constant
+      provided): `screeners/scr1a.py`, cached to DuckDB `scr1a_foreign_accum` with `as_of`.
+- [x] New DAL feed: `ksei_ownership` (`emitten-metadata/shareholders/{sym}/chart`),
+      `as_of` = fetch time (KSEI publish lag undisclosed — conservative by construction).
+- [x] **Tests (27 new, 110 total passing):** replay/audit acceptance test — future invisible,
+      revisions respect `as_of`, LD-5 broker availability honored, frames reconcile exactly
+      with live `foreign_flow`/`broker_flow` signals at the same historical `decision_ts`;
+      hand-checked NBSA stats; reversal/persistence; missing-≠-zero; SCR-1A template fidelity
+      + ingest-once; KSEI parser shapes + look-ahead.
 
 ## Slice 4 — Phase classifier + SMS (internal) + veto filters  ⬜
 **Goal:** the core decision engine — internal only, gated by RULE B.
