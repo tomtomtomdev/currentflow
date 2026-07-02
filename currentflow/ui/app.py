@@ -18,8 +18,18 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 
-from currentflow.signals import accumulation, distribution, engine, foreign_flow, heatmap, replay
+from currentflow.signals import (
+    accumulation,
+    distribution,
+    engine,
+    foreign_flow,
+    heatmap,
+    replay,
+    risk_monitor,
+    sector_rotation,
+)
 from currentflow.signals.broker_flow import analyze, buyer_seller_matrix
+from currentflow.signals.risk_monitor import Portfolio, Position
 from currentflow.store.db import Store
 from currentflow.ui.trap_view import ribbon_banner, ribbon_rows
 from currentflow.ui.accumulation_view import accumulation_panel, stealth_callout
@@ -41,6 +51,16 @@ from currentflow.ui.foreign_flow_view import (
 )
 from currentflow.ui.heatmap_view import divergence_alerts, heatmap_rows, sector_totals
 from currentflow.ui.replay_view import playhead_panel, visible_rows
+from currentflow.ui.risk_view import (
+    FRAMING as RISK_FRAMING,
+    crowding_rows,
+    liquidity_rows,
+    metric_cards,
+    name_exposure_rows,
+    scenario_rows,
+    sector_exposure_rows,
+)
+from currentflow.ui.sector_view import scatter_points, sector_rows
 from currentflow.ui.sms_view import GATE_BANNER, WATCHLIST_FRAMING, component_rows, score_display, state_label
 
 MODULES = [
@@ -53,7 +73,14 @@ MODULES = [
     "◈ Risk Monitor",
     "∑ SMS / Rank 🔒",
 ]
-BUILT = {MODULES[0], MODULES[1], MODULES[2], MODULES[3], MODULES[4], MODULES[7]}
+
+# Operator sector map — ILLUSTRATIVE, seeded from the design handoff ticker reference
+# (design/README.md). Like the broker-DNA registry, it is operator knowledge to verify
+# and extend; unmapped symbols fall back to UNKNOWN (never silently grouped).
+OPERATOR_SECTOR_MAP = {
+    "BRMS": "Basic Materials", "NCKL": "Basic Materials", "MBMA": "Basic Materials",
+    "PTRO": "Energy", "RAJA": "Energy", "CUAN": "Energy", "DEWA": "Energy",
+}
 
 
 def _db_path() -> str:
@@ -333,6 +360,94 @@ def _render_sms(store: Store) -> None:
         st.dataframe(pd.DataFrame(component_rows(res.sms)), use_container_width=True)
 
 
+def _render_sector(store: Store) -> None:
+    st.title("Sector Rotation Map")
+    st.caption(":blue[DERIVED VIEW] — flow by sector on the RS-vs-flow quadrant; a rendering, not a score.")
+
+    symbols = _symbols(store, "daily_bar")
+    if not symbols:
+        st.warning("No data ingested yet — run the ingest pipeline first.")
+        return
+    decision_ts = datetime.now()
+    max_date = store._con.execute('SELECT max("date") FROM daily_bar').fetchone()[0]
+    start = sector_rotation.window_start(max_date) if max_date else None
+    rotations = sector_rotation.build_sector_rotation(
+        store, symbols, decision_ts, sector_map=OPERATOR_SECTOR_MAP, start=start
+    )
+    st.caption(
+        f"{start} → {max_date} · sectors from operator map (illustrative); RS vs the universe (proxy), not IHSG."
+    )
+
+    pts = pd.DataFrame(scatter_points(rotations))
+    if not pts.empty:
+        st.scatter_chart(
+            pts, x="x_relative_strength_pct", y="y_net_flow_bn",
+            size="radius_flow_bn", color="quadrant",
+        )
+    st.subheader("By sector")
+    st.dataframe(pd.DataFrame(sector_rows(rotations)), use_container_width=True)
+
+
+def _render_risk(store: Store) -> None:
+    st.title("Portfolio Risk Monitor")
+    st.caption(f":green[OBSERVATION] — {RISK_FRAMING}.")
+
+    symbols = _symbols(store, "daily_bar")
+    if not symbols:
+        st.warning("No data ingested yet — run the ingest pipeline first.")
+        return
+    decision_ts = datetime.now()
+
+    # No paper fills exist yet (the fill engine lands in slice 7). Preview the §6
+    # exposure / crowding / β / VaR observations over an equal-lot book of the
+    # ingested names, marked at the latest visible close. P&L stays withheld (no entry).
+    st.info(
+        "No paper positions yet — the IDX fill engine lands in slice 7. Previewing risk "
+        "observations over an equal-lot book of ingested names (P&L withheld, no entry price)."
+    )
+    positions = []
+    for sym in symbols:
+        bars = store.read_daily_bars(sym, decision_ts)
+        closes = [b.close for b in bars if b.close]
+        if closes:
+            positions.append(
+                Position(sym, OPERATOR_SECTOR_MAP.get(sym, "UNKNOWN"), qty=100, last_price=closes[-1])
+            )
+    if not positions:
+        st.warning("No priced names to build a preview book.")
+        return
+
+    portfolio = Portfolio(tuple(positions), cash=0.0)
+    benchmark = risk_monitor.market_proxy_returns(store, symbols, decision_ts)  # proxy, not IHSG
+    report = risk_monitor.build_risk_report(store, portfolio, decision_ts, benchmark_returns=benchmark)
+
+    cards = metric_cards(report)
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Portfolio β (universe proxy)", cards["portfolio_beta"] if cards["portfolio_beta"] is not None else "—")
+    c2.metric("VaR (95% · 1d)", f"{cards['var_1d_pct']}%" if cards["var_1d_pct"] is not None else "—",
+              f"{cards['var_1d_bn']} bn" if cards["var_1d_bn"] is not None else None)
+    c3.metric("Sector HHI", cards["sector_hhi"] if cards["sector_hhi"] is not None else "—", cards["sector_hhi_label"])
+    c4.metric("Invested / cash (bn)", f"{cards['invested_bn']} / {cards['cash_bn']}")
+
+    left, right = st.columns(2)
+    with left:
+        st.subheader("Name exposure vs 10% cap (§6)")
+        st.dataframe(pd.DataFrame(name_exposure_rows(report)), use_container_width=True)
+        st.subheader("Sector exposure vs 30% cap (§6)")
+        st.dataframe(pd.DataFrame(sector_exposure_rows(report)), use_container_width=True)
+    with right:
+        st.subheader("Crowding — same-bandar correlated pairs (§6)")
+        crowd = crowding_rows(report)
+        st.dataframe(pd.DataFrame(crowd), use_container_width=True) if crowd else st.caption(
+            ":green[✓ no correlated pairs above threshold]"
+        )
+        st.subheader("Liquidity — days to exit")
+        st.dataframe(pd.DataFrame(liquidity_rows(report)), use_container_width=True)
+
+    st.subheader("Scenario stress (hypothetical shocks, not forecasts)")
+    st.dataframe(pd.DataFrame(scenario_rows(report)), use_container_width=True)
+
+
 def main() -> None:
     st.set_page_config(page_title="CurrentFlow", layout="wide")
     store = _store(_db_path())
@@ -344,6 +459,8 @@ def main() -> None:
         MODULES[2]: _render_accumulation,
         MODULES[3]: _render_replay,
         MODULES[4]: _render_heatmap,
+        MODULES[5]: _render_sector,
+        MODULES[6]: _render_risk,
         MODULES[7]: _render_sms,
     }
     if module in renderers:

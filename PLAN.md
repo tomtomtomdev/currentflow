@@ -114,12 +114,25 @@ Legend: ⬜ not started · 🟡 in progress · ✅ done. Keep the box in sync wi
       accumulation stays clean (no false alarms); look-ahead-safe monitor; missing≠zero; SCR-EXIT
       template fidelity + ingest-once + watchlist intersection; ribbon severity ordering + RULE B.
 
-## Slice 6 — Sector Rotation Map + Portfolio Risk Monitor  ⬜
+## Slice 6 — Sector Rotation Map + Portfolio Risk Monitor  ✅
 **Goal:** Stage-4 gates surfaced as risk observations (not return predictions).
-- [ ] **Sector Rotation Map:** flow by sector, RS-vs-flow quadrant, foreign/domestic tide.
-- [ ] **Portfolio Risk Monitor:** crowding ("same bandar" corr), beta vs IHSG, sector Herfindahl,
-      VaR, liquidity/days-to-exit, gap/event risk, scenario stress.
-- [ ] Feed §6 exposure caps (≤10%/name, ≤30%/sector) + correlated-pair check.
+- [x] **Sector Rotation Map** (derived view): net-foreign flow by sector on the RS-vs-flow
+      quadrant (LEADERS / EARLY_RECOVERY / DISTRIBUTION_WARN / AVOID — spec §9 labels),
+      relative strength vs the universe (equal-weight proxy), foreign/domestic tide.
+      Look-ahead-safe; `missing ≠ zero` (no-data symbols skipped+logged, a sector missing an
+      axis carries `quadrant=None`). `signals/sector_rotation.py`, view `ui/sector_view.py`.
+- [x] **Portfolio Risk Monitor** (observation, risk ≠ prediction): §6 exposure caps, sector
+      Herfindahl, "same-bandar" crowding matrix (broker-overlap cosine) + correlated-pair check,
+      β vs an injected benchmark, historical VaR (95%·1d), liquidity/days-to-exit, scenario
+      stress (defined what-ifs), §6 circuit breakers. `signals/risk_monitor.py`, view
+      `ui/risk_view.py`. Positions are an input (fill engine → slice 7); P&L withheld until an
+      entry price exists.
+- [x] Feed §6 exposure caps (≤10%/name, ≤30%/sector) + correlated-pair check (crowding ρ ≥ 0.7).
+- [x] Both wired into the Streamlit nav (Sector Rotate, Risk Monitor).
+- [x] **Tests (20 new, 192 total):** quadrant classification + RS/flow aggregation + look-ahead +
+      missing≠zero; exposure caps, HHI, crowding/shared-broker, β (incl. zero-variance guard),
+      historical VaR nearest-rank, days-to-exit, scenario impacts, circuit-breaker states,
+      end-to-end report + look-ahead firewall on broker flow.
 
 ## Slice 7 — Execution  ⬜
 **Goal:** trigger → order → fill → risk; run forward-paper.

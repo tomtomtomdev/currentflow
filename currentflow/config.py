@@ -137,3 +137,28 @@ DECAY_WINDOW_DAYS = 10                # window over which price-rise / divergenc
 DECAY_DIVERGENCE_MIN_PRICE_RISE = 0.03  # price up ≥ 3% over the window while flow falls
 DECAY_FOREIGN_SELL_STREAK_DAYS = 3   # ≥ this many trailing days of net foreign sell = outflow
 DECAY_NO_DEMAND_SPREAD_MULT = 1.0    # "narrow" = spread ≤ this × recent avg spread (no-demand)
+
+# --- Sector Rotation Map (spec §9; slice 6) — DERIVED VIEW ---------------------------
+# Flow-by-sector + RS-vs-flow quadrant. The quadrant is a categorical observation of a
+# sector's (relative-strength, net-flow) position — never a buy/sell verb (RULE B). RS
+# is measured relative to the universe (equal-weight mean return) as a market proxy;
+# never IHSG-as-benchmark for returns (§8) — here it only frames the RS axis.
+SECTOR_WINDOW_DAYS = 20              # trailing window for sector flow + relative strength
+
+# --- Portfolio Risk Monitor (spec §9 + §6 caps; slice 6) — OBSERVATION ----------------
+# Risk *observations*, not return predictions (RULE B): VaR/β/HHI are measurements, the
+# crowding matrix is a broker-overlap correlation, the caps/breakers are the §6 limits.
+EXPOSURE_CAP_NAME = 0.10            # ≤ 10% equity per name (§6)
+EXPOSURE_CAP_SECTOR = 0.30         # ≤ 30% per sector (§6)
+EXPOSURE_WARN_NAME = 0.085         # design: amber as a name approaches the 10% cap
+EXPOSURE_WARN_SECTOR = 0.25        # design: amber as a sector approaches the 30% cap
+CROWDING_CORR_THRESHOLD = 0.70     # correlated-pair flag: broker-overlap ρ ≥ this (§6 crowding check)
+RISK_RETURN_WINDOW_DAYS = 60       # trailing window of daily returns for β and VaR
+VAR_CONFIDENCE = 0.95              # historical 1-day Value-at-Risk confidence level
+DTE_PARTICIPATION = 0.20           # can liquidate ≤ 20% of ADV per day → days-to-exit
+CIRCUIT_HALT_DAILY_PNL = -0.03     # halt NEW entries at −3% daily P&L (§6)
+CIRCUIT_PAUSE_DRAWDOWN = -0.10     # pause the system at −10% peak-to-trough drawdown (§6)
+# Scenario stress = defined what-if shocks (hypothetical impact, not a prediction, §9).
+STRESS_IHSG_GAP = -0.05            # IHSG −5% gap-down, transmitted through portfolio β
+STRESS_FOREIGN_EXODUS = -0.03      # foreign exodus: shock to foreign-crowded exposure
+STRESS_RUPIAH_SHOCK = -0.04        # rupiah shock: broad shock across the book
