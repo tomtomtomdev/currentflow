@@ -18,9 +18,10 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 
-from currentflow.signals import accumulation, engine, foreign_flow, heatmap, replay
+from currentflow.signals import accumulation, distribution, engine, foreign_flow, heatmap, replay
 from currentflow.signals.broker_flow import analyze, buyer_seller_matrix
 from currentflow.store.db import Store
+from currentflow.ui.trap_view import ribbon_banner, ribbon_rows
 from currentflow.ui.accumulation_view import accumulation_panel, stealth_callout
 from currentflow.ui.broker_flow_view import (
     DISCLAIMER,
@@ -74,6 +75,19 @@ def _symbols(store: Store, table: str) -> list[str]:
     ]
 
 
+def _trap_ribbon(store: Store, symbol: str, decision_ts: datetime) -> None:
+    """Stage-2 trap/decay ribbon (slice 5) — wired into every symbol-scoped view.
+    Surfaces §5 veto traps + §8 signal-decay flags as observation, most-severe first."""
+    mon = distribution.monitor(store, symbol, decision_ts)
+    banner = ribbon_banner(mon)
+    if banner is None:
+        st.caption(":green[✓ no trap or decay flags — clean]")
+        return
+    st.warning("Trap / decay — " + banner)
+    with st.expander("All trap & decay flags (observation, not a recommendation)"):
+        st.dataframe(pd.DataFrame(ribbon_rows(mon)), use_container_width=True)
+
+
 def _render_broker_flow(store: Store) -> None:
     st.title("Broker Flow Analyzer")
     st.caption(f":green[{OBSERVATION_BADGE}] — here is the flow, you decide.")
@@ -86,6 +100,7 @@ def _render_broker_flow(store: Store) -> None:
     symbol = st.sidebar.selectbox("Symbol", symbols)
     decision_ts = datetime.now()
     snap = analyze(store, symbol, decision_ts)
+    _trap_ribbon(store, symbol, decision_ts)
 
     left, right = st.columns([1.35, 1])
     with left:
@@ -123,6 +138,7 @@ def _render_foreign_flow(store: Store) -> None:
     symbol = st.sidebar.selectbox("Symbol", symbols)
     decision_ts = datetime.now()
     snap = foreign_flow.analyze(store, symbol, decision_ts)
+    _trap_ribbon(store, symbol, decision_ts)
 
     callout = reversal_callout(snap)
     if callout:
@@ -196,6 +212,7 @@ def _render_replay(store: Store) -> None:
         return
 
     symbol = st.sidebar.selectbox("Symbol", symbols)
+    _trap_ribbon(store, symbol, datetime.now())
     dates = [
         r[0]
         for r in store._con.execute(
@@ -243,7 +260,9 @@ def _render_accumulation(store: Store) -> None:
         st.warning("No data ingested yet — run the ingest pipeline first.")
         return
     symbol = st.sidebar.selectbox("Symbol", symbols)
-    snap = accumulation.analyze(store, symbol, datetime.now())
+    decision_ts = datetime.now()
+    _trap_ribbon(store, symbol, decision_ts)
+    snap = accumulation.analyze(store, symbol, decision_ts)
 
     callout = stealth_callout(snap)
     if callout:
@@ -267,9 +286,22 @@ def _render_heatmap(store: Store) -> None:
     if not symbols:
         st.warning("No data ingested yet — run the ingest pipeline first.")
         return
-    cells = heatmap.heatmap(store, symbols, datetime.now())
+    decision_ts = datetime.now()
+    cells = heatmap.heatmap(store, symbols, decision_ts)
     for alert in divergence_alerts(cells):
         st.warning("◆ " + alert)
+
+    st.subheader("Distribution / decay watch")
+    watch_rows = []
+    for s in symbols:
+        banner = ribbon_banner(distribution.monitor(store, s, decision_ts))
+        if banner:
+            watch_rows.append({"symbol": s, "flag": banner})
+    if watch_rows:
+        st.dataframe(pd.DataFrame(watch_rows), use_container_width=True)
+    else:
+        st.caption(":green[✓ no trap or decay flags across the heatmap]")
+
     st.subheader("By sector")
     st.dataframe(pd.DataFrame(sector_totals(cells)), use_container_width=True)
     st.subheader("By stock")
@@ -287,15 +319,15 @@ def _render_sms(store: Store) -> None:
         return
     symbol = st.sidebar.selectbox("Symbol", symbols)
     track = st.sidebar.radio("Track", ["A", "B"], index=1)
-    res = engine.evaluate(store, symbol, datetime.now(), track=track)
+    decision_ts = datetime.now()
+    res = engine.evaluate(store, symbol, decision_ts, track=track)
+    _trap_ribbon(store, symbol, decision_ts)
 
     left, right = st.columns([1, 1.4])
     with left:
         st.metric("SMS (composite)", score_display(res.sms))   # •••  until VALIDATED
         st.metric("State", state_label(res))
         st.caption(f"Wyckoff phase: {res.phase.phase.value} · track {res.track}")
-        if res.veto.vetoes:
-            st.error("Vetoes: " + ", ".join(v.reason.value for v in res.veto.vetoes))
     with right:
         st.subheader("Score components — observation")
         st.dataframe(pd.DataFrame(component_rows(res.sms)), use_container_width=True)

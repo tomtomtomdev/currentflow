@@ -175,6 +175,19 @@ class Scr2Row:
 
 
 @dataclass(frozen=True, slots=True)
+class ScrExitRow:
+    """One SCR-EXIT distribution/mirror survivor (screeners.md; IHSG). A name in a
+    distribution regime with foreign outflow — a signal-decay candidate (spec §8)."""
+
+    symbol: str
+    date: Date
+    as_of: datetime
+    bandar_accum_dist: float | None     # fitem 14400 (< 0 = distribution regime)
+    net_foreign_ma20: float | None      # fitem 13540 (< 0 = foreign outflow)
+    foreign_sell_streak: float | None   # fitem 13562 (> 2 = persistent selling)
+
+
+@dataclass(frozen=True, slots=True)
 class BrokerNet:
     """One broker's buy or sell side for a (symbol, date) from marketdetectors."""
 

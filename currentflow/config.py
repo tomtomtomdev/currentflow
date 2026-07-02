@@ -128,3 +128,12 @@ VETO_MARKUP_THIN_RVOL = 1.0           # … on ≤ 1× RVOL (no real demand behi
 VETO_WASH_RATIO = 0.70                # broker min(buy,sell)/max(buy,sell) ≥ 0.7 = churn
 VETO_DIST_CLOSE_POSITION = 0.5        # high-vol up bar closing in the lower half of its range
 VETO_ROTATION_MIN_DAYS = 3            # ≥3 concentrated days with a rotating top buyer = disguise
+
+# --- Stage-2 distribution / decay layer (spec §8 signal-decay; slice 5) -------------
+# The credibility/exit layer. These are OBSERVATION flags (categorical severities, not
+# numbers — RULE B), surfaced across every view. `missing ≠ zero`: a detector that
+# needs foreign flow stays silent when net_foreign is absent, never inventing outflow.
+DECAY_WINDOW_DAYS = 10                # window over which price-rise / divergence is read
+DECAY_DIVERGENCE_MIN_PRICE_RISE = 0.03  # price up ≥ 3% over the window while flow falls
+DECAY_FOREIGN_SELL_STREAK_DAYS = 3   # ≥ this many trailing days of net foreign sell = outflow
+DECAY_NO_DEMAND_SPREAD_MULT = 1.0    # "narrow" = spread ≤ this × recent avg spread (no-demand)

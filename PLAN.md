@@ -96,11 +96,23 @@ Legend: ⬜ not started · 🟡 in progress · ✅ done. Keep the box in sync wi
       number hidden pre-validation and revealed only when VALIDATED; veto taxonomy per labeled case;
       engine state machine + look-ahead; SMS component math; accumulation/heatmap; screener fidelity.
 
-## Slice 5 — Stage-2 distribution / trap layer  ⬜
+## Slice 5 — Stage-2 distribution / trap layer  ✅
 **Goal:** the credibility layer.
-- [ ] Distribution / UTAD / no-demand / trap detectors.
-- [ ] Wire trap/veto flags into **every** view.
-- [ ] SCR-EXIT distribution/mirror screener runs continuously over open + ARMED names.
+- [x] **§8 signal-decay detectors** (`signals/distribution.py`, pure observation): PHASE_ROLLOVER
+      (phase → DISTRIBUTION / UTAD), NO_DEMAND (up bar, narrow spread, shrinking volume — VSA),
+      BEARISH_DIVERGENCE (price up while net flow falls — "the single best exit signal", §8),
+      FOREIGN_OUTFLOW (NBSA sell streak). Exit-side complement to the slice-4 §5 entry vetoes;
+      categorical severities (INFO/WATCH/WARN), never a number (RULE B); `missing ≠ zero`.
+- [x] **Wire trap/veto flags into every view:** `TrapMonitor` unifies §5 veto traps + §8 decay
+      from one look-ahead-safe read; `ui/trap_view.py` ribbon (most-severe-first) is rendered at
+      the top of every built module (Broker Flow, Foreign Flow, Accum, Replay, Heatmap, SMS).
+- [x] **SCR-EXIT** distribution/mirror screener (`screeners/scr_exit.py`) exactly per screeners.md
+      (14400<0 ∧ 13540<0 ∧ 13562>2), cached to DuckDB `scr_exit_distribution` with `as_of`,
+      ingest-once, look-ahead-safe read; `exit_flags_for` intersects survivors with the open+ARMED
+      watchlist (off-watch names logged, never silently dropped).
+- [x] **Tests (17 new, 172 total):** each decay detector fires on its labeled chart; clean
+      accumulation stays clean (no false alarms); look-ahead-safe monitor; missing≠zero; SCR-EXIT
+      template fidelity + ingest-once + watchlist intersection; ribbon severity ordering + RULE B.
 
 ## Slice 6 — Sector Rotation Map + Portfolio Risk Monitor  ⬜
 **Goal:** Stage-4 gates surfaced as risk observations (not return predictions).

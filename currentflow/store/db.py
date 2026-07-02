@@ -30,6 +30,7 @@ from currentflow.dal.models import (
     Scr1bRow,
     Scr1cRow,
     Scr2Row,
+    ScrExitRow,
     Side,
 )
 from currentflow.store.schema import (
@@ -42,6 +43,7 @@ from currentflow.store.schema import (
     SCR1B_COLUMNS,
     SCR1C_COLUMNS,
     SCR2_COLUMNS,
+    SCR_EXIT_COLUMNS,
 )
 
 
@@ -133,6 +135,16 @@ class Store:
             for r in rows_in
         ]
         return self._insert("scr2_volume_anomaly", SCR2_COLUMNS, rows)
+
+    def write_scr_exit(self, rows_in: Iterable[ScrExitRow]) -> int:
+        rows = [
+            (
+                r.symbol, r.date, r.as_of, r.bandar_accum_dist,
+                r.net_foreign_ma20, r.foreign_sell_streak,
+            )
+            for r in rows_in
+        ]
+        return self._insert("scr_exit_distribution", SCR_EXIT_COLUMNS, rows)
 
     def write_ksei_ownership(self, rows_in: Iterable[OwnershipSlice]) -> int:
         rows = [
@@ -268,6 +280,17 @@ class Store:
             Scr2Row(
                 symbol=r[0], date=r[1], as_of=r[2], volume=r[3],
                 volume_ma20=r[4], frequency=r[5], frequency_spike=r[6],
+            )
+            for r in rows
+        ]
+
+    def read_scr_exit(self, day: Date, decision_ts: datetime) -> list[ScrExitRow]:
+        """SCR-EXIT survivors for `day` as visible at `decision_ts` (latest as_of/symbol)."""
+        rows = self._read_screener("scr_exit_distribution", SCR_EXIT_COLUMNS, day, decision_ts)
+        return [
+            ScrExitRow(
+                symbol=r[0], date=r[1], as_of=r[2], bandar_accum_dist=r[3],
+                net_foreign_ma20=r[4], foreign_sell_streak=r[5],
             )
             for r in rows
         ]

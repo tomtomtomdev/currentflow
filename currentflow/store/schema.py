@@ -94,6 +94,16 @@ SCR2_COLUMNS: tuple[str, ...] = (
     "frequency_spike",
 )
 
+# SCR-EXIT distribution/mirror results (screeners.md; spec §8 signal-decay).
+SCR_EXIT_COLUMNS: tuple[str, ...] = (
+    "symbol",
+    "date",
+    "as_of",
+    "bandar_accum_dist",
+    "net_foreign_ma20",
+    "foreign_sell_streak",
+)
+
 # KSEI monthly ownership slices (foreign-ownership-trend overlay, spec §9).
 KSEI_COLUMNS: tuple[str, ...] = (
     "symbol",
@@ -190,6 +200,16 @@ CREATE TABLE IF NOT EXISTS scr2_volume_anomaly (
     "volume_ma20"     DOUBLE,
     "frequency"       DOUBLE,
     "frequency_spike" DOUBLE,
+    PRIMARY KEY ("symbol", "date", "as_of")
+);
+
+CREATE TABLE IF NOT EXISTS scr_exit_distribution (
+    "symbol"              VARCHAR   NOT NULL,
+    "date"                DATE      NOT NULL,
+    "as_of"               TIMESTAMP NOT NULL,
+    "bandar_accum_dist"   DOUBLE,
+    "net_foreign_ma20"    DOUBLE,
+    "foreign_sell_streak" DOUBLE,
     PRIMARY KEY ("symbol", "date", "as_of")
 );
 
