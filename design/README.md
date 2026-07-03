@@ -26,6 +26,7 @@ Per `LOCKED_SPEC.md §10` the production target is a **local-first Python stack:
 
 ## Files in this bundle
 - **`IDX Flow Terminal.dc.html`** — the full, current prototype: session gate + all 8 terminal modules, RULE A/B enforcement, seeded mock data. The single source of visual/interaction truth.
+- **`screens/` + `SCREENS_INDEX.md`** — high-res 1280×800 captures of every screen (2 login states + shell + 8 modules). **These are the pixel-fidelity targets** — build against them.
 - **`LOCKED_SPEC.md`** (v1.2) — the **authoritative specification. This governs; the UI serves it.** Priority sections: §0 (RULE A/B), §4 (SMS weights, internal-until-validated), §5 (veto filters), §6 (entry/sizing/risk), §9 (terminal modules & gating tiers; §9.1 session gate), §10 (local-first stack), §13 (acceptance criteria), §15 (disclaimers).
 - **`DATA_SOURCES.md`** — real feed contracts. §4.1 is the **verified `login/v6` + `mfa/verification/v1` wire contract** the session gate drives (from HAR capture). Also covers auth token lifecycle and feed constraints.
 - **`PLAN.md`** — implementation slices. **Slice 11** is the session-gate DAL/UI/test checklist, including the reCAPTCHA-enforcement probe that decides the login approach — **do that probe first.**
