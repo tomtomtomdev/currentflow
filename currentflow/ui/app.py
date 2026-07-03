@@ -86,7 +86,7 @@ MODULES = [
 ]
 
 # Operator sector map — ILLUSTRATIVE, seeded from the design handoff ticker reference
-# (design/README.md). Like the broker-DNA registry, it is operator knowledge to verify
+# (design/SCREENS_terminal.md). Like the broker-DNA registry, it is operator knowledge to verify
 # and extend; unmapped symbols fall back to UNKNOWN (never silently grouped).
 OPERATOR_SECTOR_MAP = {
     "BRMS": "Basic Materials", "NCKL": "Basic Materials", "MBMA": "Basic Materials",

@@ -1,4 +1,4 @@
-"""Accumulation chart series (design/README.md §3: price + cumulative smart-money
+"""Accumulation chart series (design/SCREENS_terminal.md §3: price + cumulative smart-money
 accumulation + accumulator VWAP). Pure view-model rows; missing broker days are a gap
 (None), never a fabricated zero.
 """

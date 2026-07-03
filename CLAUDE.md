@@ -115,16 +115,18 @@ Report net-of-full-fee-stack returns benchmarked to **LQ45 / sector**, never IHS
 ## UI / design target
 
 The terminal's look & interaction are specified as a **high-fidelity design handoff** in
-[`design/`](design/):
+[`design/`](design/) (the "VectorLab" handoff bundle):
 
-- [`design/README.md`](design/README.md) — the handoff: global shell (top bar / nav rail / main
-  pane / ARMED watchlist / disclaimer ticker), all 8 module screens, design tokens (colors,
-  Geist/Geist Mono type, spacing), interactions, and state model.
-- [`design/README-login-session-gate.md`](design/README-login-session-gate.md) — the slice-11
-  login / session-gate handoff (§9.1): the credential + OTP flow that stands between `./run.sh`
-  and the terminal. Auth plumbing only — gates no signal or RULE A/B behavior.
-- [`design/IDX-Flow-Terminal.dc.html`](design/IDX-Flow-Terminal.dc.html) — working prototype
-  (`.dc.html` design-tool format), now including the login/session gate. **Reference only — do
+- [`design/README.md`](design/README.md) — the handoff index: what the app is, fidelity,
+  non-negotiable implementation constraints, shared design tokens, and reading order.
+- [`design/SCREENS_terminal.md`](design/SCREENS_terminal.md) — per-screen spec: global shell
+  (top bar / nav rail / main pane / ARMED watchlist / disclaimer ticker), all 8 module screens,
+  design tokens (colors, Geist/Geist Mono type, spacing), interactions, and state model.
+- [`design/SCREENS_login.md`](design/SCREENS_login.md) — the slice-11 login / session-gate
+  handoff (§9.1): the credential + OTP flow that stands between `./run.sh` and the terminal.
+  Auth plumbing only — gates no signal or RULE A/B behavior.
+- [`design/IDX Flow Terminal.dc.html`](<design/IDX Flow Terminal.dc.html>) — working prototype
+  (`.dc.html` design-tool format), including the login/session gate. **Reference only — do
   not ship this HTML.** Read it for layout, styling, data shape, and interaction logic; charts
   are hand-built SVG.
 
@@ -144,4 +146,4 @@ The 8 modules map 1:1 to `LOCKED_SPEC.md` §9 and to `PLAN.md` slices 2–8.
 
 - [`PLAN.md`](PLAN.md) — slice-by-slice execution plan (from §11).
 - [`PROGRESS.md`](PROGRESS.md) — durable log of shipped slices + each module's validation state.
-- [`design/`](design/) — hifi UI design target (handoff README + HTML prototype).
+- [`design/`](design/) — hifi UI design target (VectorLab handoff: index + screen specs + HTML prototype).

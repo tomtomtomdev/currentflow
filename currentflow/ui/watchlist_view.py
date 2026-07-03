@@ -1,4 +1,4 @@
-"""ARMED watchlist rail view-model (design/README.md right rail) — pure data shaping,
+"""ARMED watchlist rail view-model (design/SCREENS_terminal.md right rail) — pure data shaping,
 no Streamlit.
 
 RULE B: a row carries a state WORD (ARMED/WATCH) and the five design spark-bar
@@ -19,7 +19,7 @@ from currentflow.ui.sms_view import WATCHLIST_FRAMING
 
 FRAMING = WATCHLIST_FRAMING
 
-# design spark-bar labels, in design order (design/README.md: `DIV BRK FF RVOL BLK`)
+# design spark-bar labels, in design order (design/SCREENS_terminal.md: `DIV BRK FF RVOL BLK`)
 SPARK_LABELS = {
     "divergence": "DIV",
     "broker_concentration": "BRK",

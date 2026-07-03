@@ -1,4 +1,4 @@
-"""ARMED watchlist rail view-model (design/README.md right rail) — RULE B safe.
+"""ARMED watchlist rail view-model (design/SCREENS_terminal.md right rail) — RULE B safe.
 
 The rail shows a state WORD (ARMED/WATCH) and the five design spark-bar component
 strengths (DIV BRK FF RVOL BLK). It must never emit the composite SMS number, a rank,
