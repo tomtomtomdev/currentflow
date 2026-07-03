@@ -104,6 +104,33 @@ SCR_EXIT_COLUMNS: tuple[str, ...] = (
     "foreign_sell_streak",
 )
 
+# SCR-3 trend-confirmation results (screeners.md; spec Stage 3 / §6 trigger context).
+SCR3_COLUMNS: tuple[str, ...] = (
+    "symbol",
+    "date",
+    "as_of",
+    "price",
+    "price_ma20",
+    "price_ma50",
+    "vwap",
+    "adx14",
+    "atr14",
+    "rs_3m",
+)
+
+# SCR-4 fundamental-tilt reference results (screeners.md; spec §7 — ranking, not a gate).
+SCR4_COLUMNS: tuple[str, ...] = (
+    "symbol",
+    "date",
+    "as_of",
+    "mf_rank_pct",
+    "roc_greenblatt",
+    "ev_ebit",
+    "rank_roic",
+    "roe",
+    "market_cap",
+)
+
 # KSEI monthly ownership slices (foreign-ownership-trend overlay, spec §9).
 KSEI_COLUMNS: tuple[str, ...] = (
     "symbol",
@@ -210,6 +237,33 @@ CREATE TABLE IF NOT EXISTS scr_exit_distribution (
     "bandar_accum_dist"   DOUBLE,
     "net_foreign_ma20"    DOUBLE,
     "foreign_sell_streak" DOUBLE,
+    PRIMARY KEY ("symbol", "date", "as_of")
+);
+
+CREATE TABLE IF NOT EXISTS scr3_trend_confirm (
+    "symbol"     VARCHAR   NOT NULL,
+    "date"       DATE      NOT NULL,
+    "as_of"      TIMESTAMP NOT NULL,
+    "price"      DOUBLE,
+    "price_ma20" DOUBLE,
+    "price_ma50" DOUBLE,
+    "vwap"       DOUBLE,
+    "adx14"      DOUBLE,
+    "atr14"      DOUBLE,
+    "rs_3m"      DOUBLE,
+    PRIMARY KEY ("symbol", "date", "as_of")
+);
+
+CREATE TABLE IF NOT EXISTS scr4_fundamental_tilt (
+    "symbol"         VARCHAR   NOT NULL,
+    "date"           DATE      NOT NULL,
+    "as_of"          TIMESTAMP NOT NULL,
+    "mf_rank_pct"    DOUBLE,
+    "roc_greenblatt" DOUBLE,
+    "ev_ebit"        DOUBLE,
+    "rank_roic"      DOUBLE,
+    "roe"            DOUBLE,
+    "market_cap"     DOUBLE,
     PRIMARY KEY ("symbol", "date", "as_of")
 );
 

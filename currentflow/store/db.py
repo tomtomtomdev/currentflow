@@ -30,6 +30,8 @@ from currentflow.dal.models import (
     Scr1bRow,
     Scr1cRow,
     Scr2Row,
+    Scr3Row,
+    Scr4Row,
     ScrExitRow,
     Side,
 )
@@ -43,6 +45,8 @@ from currentflow.store.schema import (
     SCR1B_COLUMNS,
     SCR1C_COLUMNS,
     SCR2_COLUMNS,
+    SCR3_COLUMNS,
+    SCR4_COLUMNS,
     SCR_EXIT_COLUMNS,
 )
 
@@ -145,6 +149,26 @@ class Store:
             for r in rows_in
         ]
         return self._insert("scr_exit_distribution", SCR_EXIT_COLUMNS, rows)
+
+    def write_scr3(self, rows_in: Iterable[Scr3Row]) -> int:
+        rows = [
+            (
+                r.symbol, r.date, r.as_of, r.price, r.price_ma20, r.price_ma50,
+                r.vwap, r.adx14, r.atr14, r.rs_3m,
+            )
+            for r in rows_in
+        ]
+        return self._insert("scr3_trend_confirm", SCR3_COLUMNS, rows)
+
+    def write_scr4(self, rows_in: Iterable[Scr4Row]) -> int:
+        rows = [
+            (
+                r.symbol, r.date, r.as_of, r.mf_rank_pct, r.roc_greenblatt,
+                r.ev_ebit, r.rank_roic, r.roe, r.market_cap,
+            )
+            for r in rows_in
+        ]
+        return self._insert("scr4_fundamental_tilt", SCR4_COLUMNS, rows)
 
     def write_ksei_ownership(self, rows_in: Iterable[OwnershipSlice]) -> int:
         rows = [
@@ -291,6 +315,28 @@ class Store:
             ScrExitRow(
                 symbol=r[0], date=r[1], as_of=r[2], bandar_accum_dist=r[3],
                 net_foreign_ma20=r[4], foreign_sell_streak=r[5],
+            )
+            for r in rows
+        ]
+
+    def read_scr3(self, day: Date, decision_ts: datetime) -> list[Scr3Row]:
+        """SCR-3 survivors for `day` as visible at `decision_ts` (latest as_of/symbol)."""
+        rows = self._read_screener("scr3_trend_confirm", SCR3_COLUMNS, day, decision_ts)
+        return [
+            Scr3Row(
+                symbol=r[0], date=r[1], as_of=r[2], price=r[3], price_ma20=r[4],
+                price_ma50=r[5], vwap=r[6], adx14=r[7], atr14=r[8], rs_3m=r[9],
+            )
+            for r in rows
+        ]
+
+    def read_scr4(self, day: Date, decision_ts: datetime) -> list[Scr4Row]:
+        """SCR-4 tilt rows for `day` as visible at `decision_ts` (latest as_of/symbol)."""
+        rows = self._read_screener("scr4_fundamental_tilt", SCR4_COLUMNS, day, decision_ts)
+        return [
+            Scr4Row(
+                symbol=r[0], date=r[1], as_of=r[2], mf_rank_pct=r[3], roc_greenblatt=r[4],
+                ev_ebit=r[5], rank_roic=r[6], roe=r[7], market_cap=r[8],
             )
             for r in rows
         ]

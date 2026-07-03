@@ -188,6 +188,41 @@ class ScrExitRow:
 
 
 @dataclass(frozen=True, slots=True)
+class Scr3Row:
+    """One SCR-3 trend-confirmation survivor (screeners.md; spec Stage 3 / §6 trigger
+    context). Close > MA20 > MA50, above VWAP, ADX>20, positive RS — structure confirmed
+    before the technical trigger. ATR14 is pulled to seed stop sizing (engine residual)."""
+
+    symbol: str
+    date: Date
+    as_of: datetime
+    price: float | None            # fitem 2661
+    price_ma20: float | None       # fitem 12458
+    price_ma50: float | None       # fitem 12460
+    vwap: float | None             # fitem 21552
+    adx14: float | None            # fitem 21562
+    atr14: float | None            # fitem 21559 (stop-sizing seed)
+    rs_3m: float | None            # fitem 13373 (3-Month RS Line)
+
+
+@dataclass(frozen=True, slots=True)
+class Scr4Row:
+    """One SCR-4 fundamental-tilt reference row (screeners.md; spec §7). A RANKING pull,
+    not a gate — sorts survivors by Magic Formula inputs to set the conviction multiplier
+    and hold horizon. Fundamentals never block entry (LD-6)."""
+
+    symbol: str
+    date: Date
+    as_of: datetime
+    mf_rank_pct: float | None      # fitem 13474 Rank(Magic Formula)(%) — combined Greenblatt rank
+    roc_greenblatt: float | None   # fitem 13411
+    ev_ebit: float | None          # fitem 2897 (EY = 1 / this; negative ⇒ negative EBIT)
+    rank_roic: float | None        # fitem 15276
+    roe: float | None              # fitem 1461 (bank/FLOW_ONLY sector proxy)
+    market_cap: float | None       # fitem 2892
+
+
+@dataclass(frozen=True, slots=True)
 class BrokerNet:
     """One broker's buy or sell side for a (symbol, date) from marketdetectors."""
 

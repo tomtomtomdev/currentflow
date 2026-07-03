@@ -134,18 +134,30 @@ Legend: ⬜ not started · 🟡 in progress · ✅ done. Keep the box in sync wi
       historical VaR nearest-rank, days-to-exit, scenario impacts, circuit-breaker states,
       end-to-end report + look-ahead firewall on broker flow.
 
-## Slice 7 — Execution  ⬜
+## Slice 7 — Execution  ✅
 **Goal:** trigger → order → fill → risk; run forward-paper.
-- [ ] Technical trigger (LD-3): Spring-test OR LPS; compute stop + R:R; require **R:R ≥ 2:1** or skip.
-- [ ] Fundamental tilt (§7): Magic Formula rank (EY=1/2897, ROC=13411) → COMPOUNDER/NEUTRAL/SPECULATIVE;
-      FLOW_ONLY dual-track for financials/utilities (sector proxy).
-- [ ] Order gen: **limit only**, size to 1% risk, conviction multiplier, exposure caps, circuit breakers.
-- [ ] **IDX-aware paper fill engine (§12):** lot=100, tick bands, ARA/ARB reject, next-open + slippage,
-      FULL fee stack (broker + levy + VAT + 0.1% sell tax), T+2.
-- [ ] Risk/exit mgr (§8): stop, target, trailing, signal-decay exit (divergence = best exit signal).
-- [ ] SCR-3 trend-confirm, SCR-4 fundamental-tilt screeners wired.
-- **Tests:** fill-engine reproduces lot/tick/ARA-ARB/fee hand-checked cases; every order is a limit
-  with defined stop and R:R≥2:1.
+- [x] Technical trigger (LD-3): Spring-test (Phase C) OR LPS (Phase D); stop below spring/LPS swing low;
+      first target = AR high (C) / measured move resistance+span (D); **R:R ≥ 2:1 or skip** (`execution/trigger.py`).
+- [x] Fundamental tilt (§7): Magic Formula combined-rank tercile (fitem 13474; EY=1/2897, ROC=13411) →
+      COMPOUNDER ×1.0 / NEUTRAL ×0.75 / SPECULATIVE ×0.5; negative EBIT → SPECULATIVE; FLOW_ONLY dual-track
+      for financials/utilities (ROE proxy can lift ×0.75→×1.0, never COMPOUNDER hold) — never a gate
+      (`fundamentals/tilt.py`).
+- [x] Order gen: **LIMIT only**, size to 1% risk × conviction multiplier, §6 exposure caps (10%/name,
+      30%/sector), §6 circuit breakers halt new entries (`execution/order.py`).
+- [x] **IDX-aware paper fill engine (§12):** lot=100, tick bands (fraksi harga), ARA/ARB reject on the
+      adverse side, next-open + liquidity-tiered slippage, limit discipline, FULL fee stack (commission +
+      levy + VAT-on-commission + 0.1% sell tax), T+2 settlement — the ONE fill engine (`paper/fill.py`).
+- [x] Risk/exit mgr (§8): stop → target → trailing (hold-profile width) → signal-decay exit (via
+      `signals.distribution`; divergence = best exit signal), capital-first priority (`execution/risk.py`).
+- [x] SCR-3 trend-confirm, SCR-4 fundamental-tilt screeners wired + cached with `as_of`
+      (`screeners/scr3.py`, `scr4.py`; new `Scr3Row`/`Scr4Row` + store tables).
+- [x] **Tests (54 new, 246 total):** fill-engine lot/tick/ARA-ARB/fee/slippage/T+2 hand-checked; tilt
+      terciles + FLOW_ONLY + negative-EBIT; trigger geometry + R:R gate; order sizing/caps/breakers;
+      exit priority + signal-decay; SCR-3/4 template fidelity + ingest-once + look-ahead; end-to-end
+      ARMED→trigger→tilt→order→fill invariant (LIMIT, defined stop, R:R≥2:1).
+- **Deferred within slice:** forward-paper *run* + the 2-yr backtest reconciliation land in slice 8
+  (they wire this shared fill engine to the validation state machine). Live fundamentals DAL feed
+  (`fundamentals_live`) not yet wired — the tilt is pure over injected/SCR-4 values.
 
 ## Slice 8 — Paper-trade validation wiring (RULE B switch)  ⬜
 **Goal:** connect forward results to per-module validation state.

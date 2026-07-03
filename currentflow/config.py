@@ -162,3 +162,73 @@ CIRCUIT_PAUSE_DRAWDOWN = -0.10     # pause the system at −10% peak-to-trough d
 STRESS_IHSG_GAP = -0.05            # IHSG −5% gap-down, transmitted through portfolio β
 STRESS_FOREIGN_EXODUS = -0.03      # foreign exodus: shock to foreign-crowded exposure
 STRESS_RUPIAH_SHOCK = -0.04        # rupiah shock: broad shock across the book
+
+# --- Execution: technical trigger (spec §6, LD-3; slice 7) ---------------------------
+# Grimes discipline: a passing score sets ARMED, not ENTER. Entry needs a confirmation
+# trigger (Spring-test close OR LPS pullback) via a LIMIT order, with R:R ≥ 2:1 or skip.
+RR_MIN = 2.0                       # first structural target R:R ≥ 2:1 or no trade (§6)
+STOP_BUFFER = 0.005               # stop sits this far below the spring/swing low (invalidation)
+LIMIT_UNDERCUT = 0.0              # limit placed at trigger; >0 shaves it below (never chase)
+# Phase D measured-move target: resistance + this × range span (a Wyckoff count). Phase C
+# targets the automatic-rally high (range resistance) directly.
+TARGET_MEASURED_MOVE_MULT = 1.0
+
+# --- Execution: sizing / order gen (spec §6; slice 7) --------------------------------
+RISK_PCT = 0.01                    # position risk locked at 1% of equity (IDX manipulation tax)
+LOT_SIZE = 100                     # IDX board lot = 100 shares (§12)
+# Conviction multipliers from the fundamental tilt (§7) — scale the 1% risk.
+CONVICTION_COMPOUNDER = 1.0
+CONVICTION_NEUTRAL = 0.75
+CONVICTION_SPECULATIVE = 0.5
+CONVICTION_FLOW_ONLY = 0.75        # financials/utilities default (§7); proxy can lift to 1.0
+
+# --- Execution: risk / exit manager (spec §8; slice 7) -------------------------------
+# Trailing-stop width by hold profile (§7): compounder rides wide, speculative trails tight.
+TRAIL_WIDE = 0.15                  # COMPOUNDER — hold through markup
+TRAIL_STANDARD = 0.10              # NEUTRAL
+TRAIL_TIGHT = 0.06                 # SPECULATIVE / FLOW_ONLY — exit at first target, tight trail
+
+# --- Fundamental tilt (spec §7, LD-6/7; slice 7) -------------------------------------
+# Magic Formula combined-rank percentile (fitem 13474) tercile → conviction & horizon.
+# Higher rank% = better (top tercile = COMPOUNDER). Financials + utilities skip MF and
+# run FLOW_ONLY with a sector proxy (banks: ROE > 12%). Fundamentals never block entry.
+MF_TOP_TERCILE_PCT = 66.667        # rank% ≥ this → top tercile (COMPOUNDER)
+MF_BOTTOM_TERCILE_PCT = 33.333     # rank% < this → bottom tercile (SPECULATIVE)
+FLOW_ONLY_SECTORS = frozenset({"FINANCIALS", "FINANCE", "BANK", "UTILITIES", "INFRASTRUCTURE"})
+BANK_ROE_PROXY_MIN = 0.12          # FLOW_ONLY quality proxy: ROE > 12% may promote ×0.75 → ×1.0
+
+# --- Paper fill engine (IDX-aware, spec §12; slice 7) --------------------------------
+# Lots of 100 · tick bands · ARA/ARB reject · next-open + slippage · FULL fee stack
+# (broker + levy + VAT + 0.1% sell tax) · T+2. The ONE fill engine shared by backtest
+# and forward-paper (§11/§13); every reported return is net of this stack.
+#
+# Tick sizes (fraksi harga) by price band — the current IDX regime. `(lower_inclusive,
+# tick)`; the band a price falls in is the last whose lower bound it meets.
+TICK_BANDS: tuple[tuple[float, float], ...] = (
+    (0.0, 1.0),        # < 200      → tick 1
+    (200.0, 2.0),      # 200–<500   → tick 2
+    (500.0, 5.0),      # 500–<2000  → tick 5
+    (2000.0, 10.0),    # 2000–<5000 → tick 10
+    (5000.0, 25.0),    # ≥ 5000     → tick 25
+)
+
+# Fee stack (§12). Each component is modelled explicitly so the "full fee stack" is
+# auditable and the hand-checked acceptance cases can pin every line. Commission is
+# side-specific to honour §12's "~0.15–0.25%" range (buy low end, sell high end);
+# VAT (PPN 11%) applies to the broker commission; the 0.1% sell tax (PPh final) hits
+# the sell notional only; the levy bundles IDX/KPEI/KSEI (~0.043%) on both sides.
+FEE_COMMISSION_BUY = 0.0015        # 0.15% broker commission (buy)
+FEE_COMMISSION_SELL = 0.0025       # 0.25% broker commission (sell)
+FEE_LEVY = 0.00043                 # IDX + KPEI + KSEI transaction levy (both sides)
+FEE_VAT = 0.11                     # PPN 11% on the broker commission
+FEE_SELL_TAX = 0.001               # 0.1% final sales tax on sell notional (§12)
+
+# Next-open slippage by liquidity tier (§12): LQ45 0.05–0.15% / mid-cap 0.2–0.5% /
+# small-cap >1%. Midpoints taken; buys slip up (worse), sells slip down (worse).
+SLIPPAGE_LARGE = 0.001             # LQ45 / large-cap (mid of 0.05–0.15%)
+SLIPPAGE_MID = 0.0035              # mid-cap (mid of 0.2–0.5%)
+SLIPPAGE_SMALL = 0.012             # small-cap (>1%)
+# ADV thresholds that assign the slippage tier (IDR). ≥ large → LARGE; ≥ mid → MID; else SMALL.
+SLIPPAGE_LARGE_ADV_IDR = 100_000_000_000.0   # ≥ IDR 100 bn ADV → large/LQ45-like
+SLIPPAGE_MID_ADV_IDR = 25_000_000_000.0      # ≥ IDR 25 bn ADV → mid-cap
+SETTLEMENT_DAYS = 2                # T+2 settlement (§12)
