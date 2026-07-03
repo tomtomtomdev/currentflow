@@ -12,6 +12,9 @@
 #   ./run.sh login        sign in with username/password + OTP (slice 11)
 #   ./run.sh paste        fallback: paste a Bearer into the Keychain (slice 10)
 #   ./run.sh check        verify the stored token authenticates against exodus
+#   ./run.sh ingest ...   fill the local store so the terminal has data, e.g.
+#                           ./run.sh ingest BBCA BBRI --days 90
+#                           ./run.sh ingest BBCA --from 2026-04-01 --to 2026-07-03
 #   ./run.sh log          tail the network-error log (logs/net.log; -f to follow)
 #   ./run.sh test         run the test suite
 #   PORT=8502 ./run.sh    launch on a non-default port
@@ -60,6 +63,16 @@ case "$cmd" in
     ensure_venv; ensure_deps
     exec "$PY" -m currentflow.dal.login check
     ;;
+  ingest)
+    ensure_venv; ensure_deps
+    # Needs the operator's own session (build_live_client reads the Keychain Bearer).
+    if ! "$PY" -m currentflow.dal.login status >/dev/null 2>&1; then
+      die "no session — run './run.sh login' before ingesting"
+    fi
+    shift || true
+    [[ $# -ge 1 ]] || die "usage: ./run.sh ingest SYM [SYM ...] [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--days N] [--db PATH]"
+    exec "$PY" -m currentflow.ingest "$@"
+    ;;
   log)
     # No venv/deps needed — just read the local net-error log (dal/netlog.py).
     [[ -f "$NET_LOG" ]] || die "no log yet — $NET_LOG (written once a net-error occurs)"
@@ -88,6 +101,6 @@ case "$cmd" in
       --theme.base dark
     ;;
   *)
-    die "unknown command '$cmd' — use: serve | login | paste | check | log | test"
+    die "unknown command '$cmd' — use: serve | login | paste | check | ingest | log | test"
     ;;
 esac

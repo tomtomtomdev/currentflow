@@ -8,6 +8,7 @@ logged, never swallowed.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date as Date
 from datetime import datetime, timedelta
@@ -80,3 +81,25 @@ async def ingest_symbol(
         days_skipped_cached=skipped,
         coverage=coverage,
     )
+
+
+async def ingest_universe(
+    client: ExodusClient,
+    store: Store,
+    symbols: Iterable[str],
+    start: Date,
+    end: Date,
+    *,
+    now: datetime,
+) -> list[IngestResult]:
+    """Ingest each symbol in turn over [start, end], returning one result per symbol.
+
+    Sequential by design: a single operator session, one feed method per call
+    (CLAUDE.md DAL rules) — the shared retry/backoff already paces the endpoint, so
+    fanning out would only risk tripping paywall/rate-limit backoff. Ingest-once means
+    re-runs are cheap no-ops.
+    """
+    return [
+        await ingest_symbol(client, store, symbol, start, end, now=now)
+        for symbol in symbols
+    ]
