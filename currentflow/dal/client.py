@@ -43,6 +43,7 @@ from currentflow.dal.parse import (
     parse_ksei_ownership,
     parse_ohlcv,
     parse_screener_results,
+    parse_screener_totalrows,
     parse_special_board,
     parse_symbol_info,
 )
@@ -87,13 +88,18 @@ class ExodusClient:
 
     # --- feeds (Slice 1) ----------------------------------------------------------
 
-    async def broker_summary(
-        self, symbol: str, date_from: Date, date_to: Date
-    ) -> list[BrokerNet]:
-        """marketdetectors/{sym} — broker net buy/sell, history to 2019."""
+    async def broker_summary(self, symbol: str, day: Date) -> list[BrokerNet]:
+        """marketdetectors/{sym} for ONE trading day (`from = to = day`).
+
+        Live-verified (slice 13): a multi-day range returns a single range
+        AGGREGATE with every row stamped `netbs_date = from` — per-day broker
+        rows exist only day-by-day, so this method takes one day and callers
+        loop (the per-day cost model DATA_SOURCES §7 always budgeted). History
+        reaches to 2019; each call is paywall-counted.
+        """
         params = {
-            "from": date_from.isoformat(),
-            "to": date_to.isoformat(),
+            "from": day.isoformat(),
+            "to": day.isoformat(),
             "transaction_type": "TRANSACTION_TYPE_NET",
             "market_board": "MARKET_BOARD_REGULER",
             "investor_type": "INVESTOR_TYPE_ALL",
@@ -104,16 +110,31 @@ class ExodusClient:
     async def ohlcv_foreign(
         self, symbol: str, date_from: Date, date_to: Date
     ) -> list[DailyBar]:
-        """company-price-feed/historical/summary/{sym} — OHLCV + foreign + VWAP."""
+        """company-price-feed/historical/summary/{sym} — OHLCV + foreign + VWAP.
+
+        Paginated (live-verified, slice 13): without `limit`/`page` the server
+        returns only ~12 most-recent rows regardless of the range, and `limit`
+        beyond `OHLCV_PAGE_LIMIT` (50) is a 400. Pages are walked (newest-first)
+        until a short page, so a backfill range is never silently truncated.
+        """
         params = {
             "period": "HS_PERIOD_DAILY",
             "start_date": date_from.isoformat(),
             "end_date": date_to.isoformat(),
+            "limit": config.OHLCV_PAGE_LIMIT,
         }
-        payload = await self._get(
-            f"company-price-feed/historical/summary/{symbol}", params
-        )
-        return parse_ohlcv(symbol, payload)
+        bars: list[DailyBar] = []
+        page = 1
+        while True:
+            payload = await self._get(
+                f"company-price-feed/historical/summary/{symbol}",
+                {**params, "page": page},
+            )
+            batch = parse_ohlcv(symbol, payload)
+            bars.extend(batch)
+            if len(batch) < config.OHLCV_PAGE_LIMIT:
+                return bars
+            page += 1
 
     # --- feeds (Slice 2: universe gate + screeners) ---------------------------------
 
@@ -156,9 +177,33 @@ class ExodusClient:
         """POST screener/templates — server-side pre-filter (screeners.md §1).
 
         Returns [{symbol, values: {fitem_id: raw}}] per surviving company.
+
+        The endpoint is paginated (live-verified, slice 13): an integer `page` is
+        REQUIRED (omitting it → 400 "Screener Page can't be empty") and `limit` is
+        the page size. One `SCREENER_PAGE_LIMIT`-sized page normally covers the
+        whole universe; if `totalrows` says more survived, keep paging — a screener
+        result is never silently truncated (no silent caps).
         """
-        payload = await self._post("screener/templates", template)
-        return parse_screener_results(payload)
+        rows: list[dict[str, Any]] = []
+        page = 1
+        while True:
+            payload = await self._post(
+                "screener/templates",
+                {**template, "page": page, "limit": config.SCREENER_PAGE_LIMIT},
+            )
+            batch = parse_screener_results(payload)
+            rows.extend(batch)
+            total = parse_screener_totalrows(payload)
+            if total is None or len(rows) >= total:
+                return rows
+            if not batch:  # server claims more rows but sent an empty page
+                log.warning(
+                    "run_screener: server reports %d total rows but page %d was "
+                    "empty — returning the %d received (incomplete)",
+                    total, page, len(rows),
+                )
+                return rows
+            page += 1
 
     # --- request core -------------------------------------------------------------
 

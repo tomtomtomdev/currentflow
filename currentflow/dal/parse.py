@@ -395,3 +395,12 @@ def parse_screener_results(payload: Any) -> list[dict[str, Any]]:
                 values[fid] = _num(res.get("raw"))
         out.append({"symbol": sym, "values": values})
     return out
+
+
+def parse_screener_totalrows(payload: Any) -> int | None:
+    """Total survivor count the server claims for a screener run (`data.totalrows`),
+    or None when absent — the client pages until it has them all (no silent caps)."""
+    node = _unwrap(payload)
+    if isinstance(node, dict):
+        return _int(node.get("totalrows"))
+    return None

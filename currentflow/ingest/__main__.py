@@ -28,6 +28,7 @@ from typing import Callable
 
 from currentflow.dal.errors import AuthError, ExodusError
 from currentflow.dal.session import build_live_client
+from currentflow.ingest.bootstrap import DEFAULT_DAYS
 from currentflow.ingest.pipeline import ingest_universe
 from currentflow.logging_setup import configure_logging
 from currentflow.store.db import Store
@@ -36,7 +37,6 @@ from currentflow.store.db import Store
 # ingesting to a different path than the UI reads is the silent way to keep the
 # "run the ingest pipeline first" warning even after a successful ingest.
 DEFAULT_DB = "currentflow.duckdb"
-DEFAULT_DAYS = 90
 
 
 def _resolve_range(from_iso: str | None, to_iso: str | None, days: int) -> tuple[Date, Date]:

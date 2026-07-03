@@ -23,14 +23,18 @@ def _ohlcv_rows(days: list[int]) -> list[dict]:
 
 async def test_ingest_stores_and_reports_coverage(store):
     # Mon 2026-06-01 .. Wed 2026-06-03 traded; nothing else in range.
+    # Broker rows are fetched one call per missing day (server aggregates ranges),
+    # then bars land last (the ingest-once commit marker).
     transport = scripted_transport([
-        (200, ohlcv_payload(_ohlcv_rows([1, 2, 3]))),
         (200, broker_payload(
             buys=[{"netbs_broker_code": "YP", "type": "Asing", "bval": 1, "blot": 1,
                    "netbs_date": "2026-06-01"}],
             sells=[],
             data_last_updated="2026-06-01T17:30:00",
         )),
+        (200, broker_payload([], [])),
+        (200, broker_payload([], [])),
+        (200, ohlcv_payload(_ohlcv_rows([1, 2, 3]))),
     ])
     client = ExodusClient(transport)
 
@@ -48,8 +52,10 @@ async def test_ingest_stores_and_reports_coverage(store):
 
 async def test_second_ingest_skips_cached_and_fetches_nothing(store):
     first = scripted_transport([
-        (200, ohlcv_payload(_ohlcv_rows([1, 2, 3]))),
         (200, broker_payload([], [])),
+        (200, broker_payload([], [])),
+        (200, broker_payload([], [])),
+        (200, ohlcv_payload(_ohlcv_rows([1, 2, 3]))),
     ])
     await ingest_symbol(
         ExodusClient(first), store, "BBCA",

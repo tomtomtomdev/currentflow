@@ -626,6 +626,95 @@ def _session_topbar() -> bool:
     return True
 
 
+def _maybe_bootstrap(store: Store) -> None:
+    """First authed run with an empty store → auto-resolve the SCR-0 universe and
+    ingest 90 days (slice 13), so a fresh machine never lands on empty modules.
+
+    Keyed on store emptiness, not a "just logged in" event — so a session-restored
+    launch bootstraps too. One-shot per Streamlit session via `_bootstrap_done`
+    (set BEFORE running); a browser refresh mid-run re-fires, but ingest-once makes
+    that a cheap resume, never a re-pull. The first run is the app's largest pull —
+    ~100–150 names × (one paywall-counted broker call per trading day + paginated
+    OHLCV) for 90 days — sequential by design and paced by the shared backoff, so
+    expect it to run for a while; per-symbol progress renders as it goes.
+    Partial failure degrades to the per-module "run the ingest pipeline first"
+    warnings — never a bricked terminal; only AuthError sends the operator back
+    to the login form (fail loud, same mechanism as sign-out)."""
+    if st.session_state.get("_bootstrap_done"):
+        return
+    if _symbols(store, "daily_bar"):  # already populated — nothing to bootstrap
+        st.session_state["_bootstrap_done"] = True
+        return
+    st.session_state["_bootstrap_done"] = True
+
+    from currentflow.dal.errors import AuthError
+    from currentflow.dal.session import build_live_client
+    from currentflow.dal.token_store import KeychainTokenStore
+    from currentflow.ingest.bootstrap import DEFAULT_DAYS, bootstrap_ingest
+    from currentflow.ui import login_view as lv
+
+    with st.status(
+        f"First run — resolving universe (SCR-0) + ingesting {DEFAULT_DAYS} days…",
+        expanded=True,
+    ) as status:
+        bar = st.progress(0.0)
+
+        def on_progress(p) -> None:  # runs synchronously on the script thread
+            if p.stage == "screener":
+                st.write("Running SCR-0 eligibility screener…")
+            elif p.result is None:
+                bar.progress(p.index / p.total, text=f"{p.symbol} ({p.index + 1}/{p.total})")
+            else:
+                r = p.result
+                line = f"{r.symbol}: +{r.bars_inserted} bars, +{r.broker_rows_inserted} broker rows"
+                if r.coverage.has_gaps:
+                    line += f", GAPS on {len(r.coverage.gaps)} day(s)"
+                st.write(line)
+
+        async def _do():
+            # No refresher: a 401 fails loud (AuthError) — same as the ingest CLI.
+            client, transport = build_live_client()
+            try:
+                return await bootstrap_ingest(
+                    client, store, now=datetime.now(), on_progress=on_progress
+                )
+            finally:
+                await transport.aclose()  # close the pool on the same session loop
+
+        try:
+            summary = _run(_do())
+        except AuthError as exc:
+            status.update(label="Session rejected", state="error")
+            st.session_state["_bootstrap_done"] = False  # re-triggers after re-login
+            KeychainTokenStore().clear()  # gate goes False → login form (player_id kept)
+            st.session_state["login_view"] = lv.LoginView(lv.CREDENTIALS)
+            st.error(f"Session rejected during first-run ingest — sign in again: {exc}")
+            st.rerun()
+
+        if summary.error is None and summary.eligible:
+            bar.progress(1.0, text=f"{len(summary.results)} symbols ingested")
+            status.update(label="Initial data ingested", state="complete")
+
+    if summary.error is not None:
+        where = summary.failed_symbol or "the SCR-0 screener"
+        st.warning(
+            f"Initial fetch stopped at {where}: {summary.error}. Kept "
+            f"{len(summary.results)}/{len(summary.eligible)} symbols already ingested "
+            f"(ingest-once — a retry resumes there). Manual fallback: ./run.sh ingest SYM …"
+        )
+    elif not summary.eligible:
+        st.warning(
+            "SCR-0 returned no eligible names — nothing ingested. "
+            "Manual fallback: ./run.sh ingest SYM …"
+        )
+    else:
+        st.rerun()  # modules re-render from the now-populated store
+        return
+    if st.button("Retry initial fetch"):
+        st.session_state["_bootstrap_done"] = False
+        st.rerun()
+
+
 def main() -> None:
     configure_logging()  # persist dal `net-error` lines to logs/net.log
     st.set_page_config(page_title="CurrentFlow", layout="wide")
@@ -638,6 +727,7 @@ def main() -> None:
         return
 
     store = _store(_db_path())
+    _maybe_bootstrap(store)  # slice 13: first-run auto-ingest into an empty store
 
     module = st.sidebar.radio("Module", MODULES, index=0)
     renderers = {

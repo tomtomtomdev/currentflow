@@ -62,11 +62,19 @@ async def ingest_symbol(
                 "ingest %s: %d/%d trading days already cached, fetching %s..%s",
                 symbol, skipped, len(wanted), lo, hi,
             )
+        # Broker rows come one call per missing day (the endpoint aggregates any
+        # multi-day range — live-verified, slice 13). Bars are fetched and written
+        # LAST as the ingest-once commit marker: `ingested_dates` keys on daily_bar,
+        # so a failure anywhere mid-symbol leaves every day still "missing" and a
+        # retry re-fetches the whole symbol (deterministic `as_of` makes re-written
+        # broker rows exact-key no-ops) — never a permanent broker hole.
+        broker: list = []
+        for day in missing:
+            broker.extend(await client.broker_summary(symbol, day))
+        broker_inserted = store.write_broker_net(broker)
+
         bars = await client.ohlcv_foreign(symbol, lo, hi)
         bars_inserted = store.write_daily_bars(bars)
-
-        broker = await client.broker_summary(symbol, lo, hi)
-        broker_inserted = store.write_broker_net(broker)
     else:
         log.info("ingest %s: nothing to fetch, all %d days cached", symbol, len(wanted))
 

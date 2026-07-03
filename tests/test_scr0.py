@@ -8,6 +8,7 @@ from datetime import datetime
 
 import pytest
 
+from currentflow import config
 from currentflow.dal.client import ExodusClient
 from currentflow.dal.errors import TransportError
 from currentflow.dal.parse import parse_screener_results
@@ -77,6 +78,60 @@ async def test_post_without_transport_fails_loud():
     client = ExodusClient(scripted_transport([]))
     with pytest.raises(TransportError):
         await client.run_screener(SCR0_TEMPLATE)
+
+
+async def test_run_screener_sends_required_pagination_fields():
+    """Live-verified (slice 13): omitting the integer `page` is a 400. The client
+    must send page + limit alongside every template."""
+    calls: list = []
+    client = ExodusClient(
+        scripted_transport([]),
+        post_transport=scripted_transport([(200, scr0_payload())], calls),
+    )
+    await client.run_screener(SCR0_TEMPLATE)
+    _path, body = calls[0]
+    assert body["page"] == 1
+    assert body["limit"] == config.SCREENER_PAGE_LIMIT
+    assert body["name"] == "scr0-eligibility"  # template fields still carried
+
+
+async def test_run_screener_pages_until_totalrows():
+    """A survivor set larger than one page is fetched completely (no silent caps)."""
+
+    def page_payload(symbols: list[str], totalrows: int) -> dict:
+        return {
+            "data": {
+                "totalrows": totalrows,
+                "calcs": [{"symbol": s, "results": []} for s in symbols],
+            }
+        }
+
+    calls: list = []
+    client = ExodusClient(
+        scripted_transport([]),
+        post_transport=scripted_transport(
+            [
+                (200, page_payload(["AAAA", "BBBB"], totalrows=3)),
+                (200, page_payload(["CCCC"], totalrows=3)),
+            ],
+            calls,
+        ),
+    )
+    rows = await client.run_screener(SCR0_TEMPLATE)
+    assert [r["symbol"] for r in rows] == ["AAAA", "BBBB", "CCCC"]
+    assert [body["page"] for _p, body in calls] == [1, 2]
+
+
+async def test_run_screener_stops_on_empty_page_despite_totalrows():
+    """A lying server (totalrows > what it will ever send) must not loop forever."""
+    client = ExodusClient(
+        scripted_transport([]),
+        post_transport=scripted_transport(
+            [(200, {"data": {"totalrows": 99, "calcs": []}})]
+        ),
+    )
+    rows = await client.run_screener(SCR0_TEMPLATE)
+    assert rows == []
 
 
 async def test_run_scr0_caches_ingest_once(store):

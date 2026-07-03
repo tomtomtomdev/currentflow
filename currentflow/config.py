@@ -56,6 +56,17 @@ REPLAY_PHASE_LOOKBACK_DAYS = 150
 MAX_RETRIES = 4
 BACKOFF_BASE_SECONDS = 2.0  # 2, 4, 8, 16 …
 
+# --- Feed pagination (slice 13, live-verified) --------------------------------------
+# `screener/templates` requires an integer `page` (omitting it → 400 "Screener Page
+# can't be empty") and takes `limit` as the page size. One IHSG-sized page normally
+# covers the whole universe (~900 names); the client still pages by `totalrows` so a
+# larger result is never silently truncated (no silent caps).
+SCREENER_PAGE_LIMIT = 900
+# `company-price-feed/historical/summary` silently caps an un-paginated call at ~12
+# rows regardless of the date range; `limit` beyond 50 is rejected (400). The client
+# pages until a short page so a long backfill range is never silently truncated.
+OHLCV_PAGE_LIMIT = 50
+
 # --- Live transport (slice 10) ----------------------------------------------------
 # The operator's own authenticated Stockbit session Bearer is captured out-of-band
 # (own session, at own risk — CLAUDE.md/§15) and stored in the macOS Keychain, never

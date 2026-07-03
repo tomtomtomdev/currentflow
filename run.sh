@@ -8,11 +8,14 @@
 # Streamlit terminal. Nothing leaves the machine.
 #
 # Usage:
-#   ./run.sh              launch the terminal (default; login form if no session)
+#   ./run.sh              launch the terminal (default; login form if no session).
+#                         First launch with an EMPTY store auto-runs the bootstrap
+#                         after sign-in: SCR-0 universe + 90-day ingest (slice 13).
 #   ./run.sh login        sign in with username/password + OTP (slice 11)
 #   ./run.sh paste        fallback: paste a Bearer into the Keychain (slice 10)
 #   ./run.sh check        verify the stored token authenticates against exodus
-#   ./run.sh ingest ...   fill the local store so the terminal has data, e.g.
+#   ./run.sh ingest ...   backfill / manual fallback (the auto-bootstrap covers the
+#                         first run), e.g.
 #                           ./run.sh ingest BBCA BBRI --days 90
 #                           ./run.sh ingest BBCA --from 2026-04-01 --to 2026-07-03
 #   ./run.sh log          tail the network-error log (logs/net.log; -f to follow)

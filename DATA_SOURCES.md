@@ -12,11 +12,11 @@
 
 | Spec feed (§10) | Endpoint | Key fields | Notes |
 |---|---|---|---|
-| **Broker summary (CORE)** | `marketdetectors/{sym}?from=&to=&transaction_type=TRANSACTION_TYPE_NET&market_board=MARKET_BOARD_REGULER&investor_type=INVESTOR_TYPE_ALL` | `broker_summary.brokers_buy[]/brokers_sell[]`: `netbs_broker_code`, `netbs_buy_avg_price` (**accumulator VWAP**), `bval`/`sval`, `blot`/`slot`, `freq`, `type` (Asing/Lokal/Pemerintah), `netbs_date`; `bandar_detector` (acc/dist for top1/3/5/10, `broker_accdist`, `number_broker_buysell`); `data_last_updated` | `from`/`to` → **history to 2019**. `type` gives foreign/domestic per broker. `period=BROKER_SUMMARY_PERIOD_LATEST` for latest. **Behind paywall counter.** |
+| **Broker summary (CORE)** | `marketdetectors/{sym}?from=&to=&transaction_type=TRANSACTION_TYPE_NET&market_board=MARKET_BOARD_REGULER&investor_type=INVESTOR_TYPE_ALL` | `broker_summary.brokers_buy[]/brokers_sell[]`: `netbs_broker_code`, `netbs_buy_avg_price` (**accumulator VWAP**), `bval`/`sval`, `blot`/`slot`, `freq`, `type` (Asing/Lokal/Pemerintah), `netbs_date`; `bandar_detector` (acc/dist for top1/3/5/10, `broker_accdist`, `number_broker_buysell`); `data_last_updated` | `from`/`to` → **history to 2019**, but **live-verified 2026-07-03: a multi-day range returns ONE range-aggregate with every row stamped `netbs_date = from`** — per-day rows require `from = to = day`, one call per trading day (the DAL's `broker_summary(sym, day)` is single-day for this reason). `type` gives foreign/domestic per broker. `period=BROKER_SUMMARY_PERIOD_LATEST` for latest. **Behind paywall counter.** |
 | Broker summary (market-wide) | `order-trade/broker/top?period=&market_type=&eod_only=` | per-broker `net_value`, `buy_value`, `sell_value`, `total_volume`, `total_frequency`, `group` (FOREIGN/LOCAL/GOVERNMENT) | Market-level top brokers; broker-DNA reference. |
 | Broker distribution (per stock) | `order-trade/broker/distribution?date=&symbol=&data_type=BROKER_…` | `by_value`/`by_volume` → `top_broker_buy/sell` | Takes explicit `date=`. |
 | Broker activity (per broker) | `order-trade/broker/activity` , `…/activity-chart?period=&brokers_code=&investor_type=&market_board=` | per-minute net value by symbol for a broker code | Enables **syndicate / broker-DNA** tracking (§9). Intraday resolution. |
-| **OHLCV + foreign flow** | `company-price-feed/historical/summary/{sym}?period=HS_PERIOD_DAILY&start_date=&end_date=&limit=&page=` | per day: `open/high/low/close`, `volume`, `value`, `frequency`, `average` (VWAP), `foreign_buy`, `foreign_sell`, `net_foreign`, `change_percentage` | **Best single EOD feed** — OHLCV + foreign + VWAP in one call, date-ranged + paginated. |
+| **OHLCV + foreign flow** | `company-price-feed/historical/summary/{sym}?period=HS_PERIOD_DAILY&start_date=&end_date=&limit=&page=` | per day: `open/high/low/close`, `volume`, `value`, `frequency`, `average` (VWAP), `foreign_buy`, `foreign_sell`, `net_foreign`, `change_percentage` | **Best single EOD feed** — OHLCV + foreign + VWAP, date-ranged + paginated. **Live-verified 2026-07-03: pagination is enforced** — without `limit`/`page` only ~12 most-recent rows return regardless of range; `limit` > 50 → 400; rows live under `data.result` with a `data.paginate` node. The DAL pages (`limit=50`, newest-first) until a short page. |
 | Foreign/domestic series | `findata-view/foreign-domestic/v1/chart-data/{sym}` | foreign vs domestic time series | Dedicated; redundant with above. |
 | Intraday price line | `charts/{sym}/daily?timeframe=today` | per-minute `value` (no OHLCV) | For **Money Flow Replay** intraday overlay only, not EOD signal. |
 | **Corporate actions** | `corpaction/{sym}` and `corpaction/{dividend,stocksplit,rightissue,reversesplit,bonus,warrant,tenderoffer,ipo,rups,pubex,economic}` | action type, dates, ratios | Drives ±5-day exclusion window (§3) + level adjustment. |
@@ -167,8 +167,8 @@ Thin async client over `exodus`; one method per feed; every write stamped with `
 ```python
 class ExodusClient:
     # auth: bearer token + refresh; paywall/rate-limit backoff; 401 -> fail loud
-    async def broker_summary(sym, date_from, date_to) -> list[BrokerNet]   # marketdetectors/{sym}
-    async def ohlcv_foreign(sym, date_from, date_to)  -> list[DailyBar]    # historical/summary/{sym}
+    async def broker_summary(sym, day)                 -> list[BrokerNet]   # marketdetectors/{sym}; ONE day (server aggregates ranges)
+    async def ohlcv_foreign(sym, date_from, date_to)  -> list[DailyBar]    # historical/summary/{sym}; pages internally (limit=50)
     async def corp_actions(sym)                        -> list[CorpAction]  # corpaction/*
     async def status_flags(sym)                        -> StatusFlags       # emitten/{sym}/info
     async def index_membership(sym)                    -> list[str]         # emitten/{sym}/info.indexes

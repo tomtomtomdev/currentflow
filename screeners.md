@@ -32,6 +32,7 @@ IHSG universe (~900)
 | `sequence` | comma-separated `fitem_id`s → result columns. |
 | `ordercol` / `ordertype` | sort column index (into `sequence`) / `ASC`\|`DESC`. |
 | `name`, `description`, `screenerid`, `type` | template identity; `type:"TEMPLATE_TYPE_CUSTOM"`. |
+| `page` / `limit` | pagination (**live-verified 2026-07-03**): integer `page` is REQUIRED — omitting it → `400 "Screener Page can't be empty"`; `limit` = page size (default 25). Response carries `totalrows`/`curpage`/`perpage`. The DAL sends `limit=SCREENER_PAGE_LIMIT` (900, one IHSG-sized page) and pages by `totalrows` — never a silent truncation. |
 
 **Filter object — two forms** (confirmed from captured payloads):
 

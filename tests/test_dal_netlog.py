@@ -209,7 +209,7 @@ async def test_client_401_fail_loud_logged_error(caplog):
     caplog.set_level(logging.DEBUG)
     client = ExodusClient(scripted_transport([401]))
     with pytest.raises(AuthError):
-        await client.broker_summary("BBCA", D0, D1)
+        await client.broker_summary("BBCA", D0)
     (rec,) = _net_lines(caplog)
     assert rec.levelno == logging.ERROR
     assert "status=401" in rec.getMessage() and "outcome=fail-loud" in rec.getMessage()
@@ -219,7 +219,7 @@ async def test_client_unexpected_status_logged_error(caplog):
     caplog.set_level(logging.DEBUG)
     client = ExodusClient(scripted_transport([418]))
     with pytest.raises(TransportError):
-        await client.broker_summary("BBCA", D0, D1)
+        await client.broker_summary("BBCA", D0)
     (rec,) = _net_lines(caplog)
     assert rec.levelno == logging.ERROR and "status=418" in rec.getMessage()
 

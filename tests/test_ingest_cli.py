@@ -63,14 +63,17 @@ def test_cli_ingests_into_the_store_the_terminal_reads(monkeypatch):
     store = Store(":memory:")
     # Keep the CLI's finally from closing our in-memory store before we assert on it.
     monkeypatch.setattr(store, "close", lambda: None)
+    # One broker call per missing day (server aggregates ranges), then bars last.
     steps = [
-        (200, ohlcv_payload(_bars([1, 2, 3]))),
         (200, broker_payload(
             buys=[{"netbs_broker_code": "YP", "type": "Asing", "bval": 1, "blot": 1,
                    "netbs_date": "2026-06-01"}],
             sells=[],
             data_last_updated="2026-06-01T17:30:00",
         )),
+        (200, broker_payload([], [])),
+        (200, broker_payload([], [])),
+        (200, ohlcv_payload(_bars([1, 2, 3]))),
     ]
 
     rc = main(
@@ -91,8 +94,10 @@ def test_cli_ingests_into_the_store_the_terminal_reads(monkeypatch):
 def test_cli_reports_inserts_and_upcases_symbol(capsys):
     store = Store(":memory:")
     steps = [
-        (200, ohlcv_payload(_bars([1, 2, 3]))),
         (200, broker_payload(buys=[], sells=[])),
+        (200, broker_payload(buys=[], sells=[])),
+        (200, broker_payload(buys=[], sells=[])),
+        (200, ohlcv_payload(_bars([1, 2, 3]))),
     ]
 
     rc = main(
