@@ -8,8 +8,17 @@ IDX has one exchange timezone; we do not mix zones. `as_of` (availability_ts) an
 from __future__ import annotations
 
 from datetime import time, timedelta
+from pathlib import Path
 
 EXODUS_BASE_URL = "https://exodus.stockbit.com"
+
+# --- Logging (local-only; captures dal/netlog.py `net-error` lines) -----------------
+# Rotating file under a git-ignored dir on the operator's machine — never republished
+# (spec §10). Redaction happens at the seam (netlog.py); this only persists those lines.
+LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
+LOG_FILE = LOG_DIR / "net.log"
+LOG_MAX_BYTES = 5_000_000   # ~5 MB per file
+LOG_BACKUP_COUNT = 3        # keep net.log + 3 rotations
 
 # --- Publish-latency policy (LD-5) ------------------------------------------------
 # The HAR capture cannot reveal WHEN EOD broker summary actually publishes vs the

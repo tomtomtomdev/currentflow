@@ -13,3 +13,7 @@ venv/
 *.duckdb.wal
 *.sqlite
 data/
+
+# Local logs (net-error lines from own-session traffic — never republished, §10)
+logs/
+*.log

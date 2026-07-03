@@ -23,6 +23,7 @@ from datetime import date, timedelta
 from getpass import getpass
 
 from currentflow import config
+from currentflow.logging_setup import configure_logging
 from currentflow.dal.auth import AuthClient
 from currentflow.dal.errors import AuthError, ExodusError
 from currentflow.dal.session import build_live_client, session_status, store_auth_session
@@ -145,6 +146,7 @@ def _cmd_check() -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    configure_logging()  # persist dal `net-error` lines to logs/net.log
     parser = argparse.ArgumentParser(prog="currentflow.dal.login")
     sub = parser.add_subparsers(dest="cmd", required=True)
     for name in ("login", "paste", "status", "check", "clear"):

@@ -12,6 +12,7 @@
 #   ./run.sh login        sign in with username/password + OTP (slice 11)
 #   ./run.sh paste        fallback: paste a Bearer into the Keychain (slice 10)
 #   ./run.sh check        verify the stored token authenticates against exodus
+#   ./run.sh log          tail the network-error log (logs/net.log; -f to follow)
 #   ./run.sh test         run the test suite
 #   PORT=8502 ./run.sh    launch on a non-default port
 #
@@ -24,6 +25,7 @@ VENV="$REPO_ROOT/.venv"
 PY="$VENV/bin/python"
 APP="currentflow/ui/app.py"
 PORT="${PORT:-8501}"
+NET_LOG="$REPO_ROOT/logs/net.log"
 
 log() { printf '\033[36m[run]\033[0m %s\n' "$*"; }
 die() { printf '\033[31m[run] %s\033[0m\n' "$*" >&2; exit 1; }
@@ -58,6 +60,16 @@ case "$cmd" in
     ensure_venv; ensure_deps
     exec "$PY" -m currentflow.dal.login check
     ;;
+  log)
+    # No venv/deps needed — just read the local net-error log (dal/netlog.py).
+    [[ -f "$NET_LOG" ]] || die "no log yet — $NET_LOG (written once a net-error occurs)"
+    shift || true
+    if [[ "${1:-}" == "-f" ]]; then
+      log "following $NET_LOG (ctrl-c to stop)"
+      exec tail -f "$NET_LOG"
+    fi
+    exec tail -n "${1:-40}" "$NET_LOG"
+    ;;
   test)
     ensure_venv; ensure_deps
     exec "$PY" -m pytest
@@ -76,6 +88,6 @@ case "$cmd" in
       --theme.base dark
     ;;
   *)
-    die "unknown command '$cmd' — use: serve | login | paste | check | test"
+    die "unknown command '$cmd' — use: serve | login | paste | check | log | test"
     ;;
 esac

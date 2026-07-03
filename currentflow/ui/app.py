@@ -18,6 +18,7 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 
+from currentflow.logging_setup import configure_logging
 from currentflow.signals import (
     accumulation,
     distribution,
@@ -625,6 +626,7 @@ def _session_topbar() -> bool:
 
 
 def main() -> None:
+    configure_logging()  # persist dal `net-error` lines to logs/net.log
     st.set_page_config(page_title="CurrentFlow", layout="wide")
 
     # Auth gate (slice 11): no valid session → the login flow, never blank modules.
