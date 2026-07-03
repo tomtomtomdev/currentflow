@@ -232,3 +232,22 @@ SLIPPAGE_SMALL = 0.012             # small-cap (>1%)
 SLIPPAGE_LARGE_ADV_IDR = 100_000_000_000.0   # ≥ IDR 100 bn ADV → large/LQ45-like
 SLIPPAGE_MID_ADV_IDR = 25_000_000_000.0      # ≥ IDR 25 bn ADV → mid-cap
 SETTLEMENT_DAYS = 2                # T+2 settlement (§12)
+
+# --- Scale / ML layer (spec §11 step 9, LD-8) — GATED --------------------------------
+# ML is deferred and gated (LD-8): before ANY optimizer or ranker may run, the rules system
+# must FIRST have earned its number — ≥ PAPER_VALIDATION_MONTHS of forward paper with a
+# positive walk-forward Sharpe (the `sms` module VALIDATED in the ValidationLedger). Reflexive,
+# non-stationary, small-sample IDX flow overfits trivially, so ML is admitted only once the
+# non-ML rules have demonstrably survived fill-realistic forward paper.
+#
+# ML is confined to a signal-weight OPTIMIZER / RANKER over ENGINEERED features only, under
+# mandatory purged + embargoed cross-validation. Weights are never hand-edited live — the
+# optimizer is the sole writer of the weight surface (CLAUDE.md / §4).
+ML_ADMISSION_MODULE = "sms"        # the rules-system module whose VALIDATED state admits ML (LD-8)
+ML_CV_FOLDS = 3                    # sequential out-of-sample walk-forward test folds
+ML_EMBARGO_FRAC = 0.02            # embargo = this fraction of samples dropped at each train↔test boundary (López de Prado)
+ML_WEIGHT_STEP = 5                # optimizer coordinate-search granularity on the integer weight simplex (§4)
+ML_WEIGHT_SUM = 100               # weights sum to 100 per track (locked §4 structure — optimizer preserves it)
+# Structurally-locked zero weights the optimizer must never fund (LD-1): Track B excludes
+# foreign flow (unreliable on lapis-2). Keyed by track → set of components pinned to 0.
+ML_LOCKED_ZEROS: dict[str, frozenset[str]] = {"A": frozenset(), "B": frozenset({"foreign_flow"})}

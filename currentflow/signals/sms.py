@@ -209,11 +209,17 @@ def compute_sms(
     decision_ts: datetime,
     adv20: float | None = None,
     rebalance_multiplier: float = 1.0,
+    weights: dict[str, int] | None = None,
 ) -> SmsResult:
-    """Assemble the track-weighted SMS. `internal_score` is GATED by RULE B."""
+    """Assemble the track-weighted SMS. `internal_score` is GATED by RULE B.
+
+    `weights` overrides the locked `config.SMS_WEIGHTS[track]` for THIS call only — the seam
+    the slice-9 walk-forward optimizer uses to score candidate weights without ever mutating
+    the global surface (weights are never hand-edited live; CLAUDE.md / §4). Defaults to the
+    locked track weights."""
     if track not in config.SMS_WEIGHTS:
         raise ValueError(f"unknown track {track!r} — expected 'A' or 'B'")
-    weights = config.SMS_WEIGHTS[track]
+    weights = config.SMS_WEIGHTS[track] if weights is None else weights
 
     raw = {
         "divergence": _divergence(bars),

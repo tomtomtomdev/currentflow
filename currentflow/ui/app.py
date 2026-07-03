@@ -62,7 +62,7 @@ from currentflow.ui.risk_view import (
 )
 from currentflow.ui.sector_view import scatter_points, sector_rows
 from currentflow.ui.sms_view import GATE_BANNER, WATCHLIST_FRAMING, component_rows, score_display, state_label
-from currentflow.ui import daily_top_view, ranking_view
+from currentflow.ui import daily_top_view, ml_view, ranking_view
 from currentflow.validation.promotion import ValidationLedger
 
 MODULES = [
@@ -76,6 +76,7 @@ MODULES = [
     "∑ SMS / Rank 🔒",
     "◇ AI Ranking 🔒",
     "☰ Daily Top 🔒",
+    "⚙ ML Layer 🔒",
 ]
 
 # Operator sector map — ILLUSTRATIVE, seeded from the design handoff ticker reference
@@ -499,6 +500,29 @@ def _render_risk(store: Store) -> None:
     st.dataframe(pd.DataFrame(scenario_rows(report)), use_container_width=True)
 
 
+def _render_ml(store: Store) -> None:
+    st.title("ML Layer")
+    st.caption(":red[GATED · LD-8] — signal-weight optimizer / ranker; runs only after the "
+               "rules system earns ≥3mo positive forward-paper walk-forward Sharpe.")
+
+    status = ml_view.status(_ledger())
+    (st.success if status["admitted"] else st.error)(status["banner"])
+    st.caption(status["detail"])
+
+    c1, c2 = st.columns(2)
+    c1.metric("Admission module", status["admission_module"])
+    c2.metric("Required months (RULE B)", status["required_months"])
+    st.metric("Applied weight updates", status["weight_updates"])
+    if status["last_update"] is not None:
+        st.subheader("Last weight update (provenance)")
+        st.json(status["last_update"])
+    else:
+        st.info(
+            "No weight updates — the optimizer is the sole writer of SMS weights and cannot "
+            "run until the LD-8 gate opens. Weights are never hand-edited live (§4)."
+        )
+
+
 def main() -> None:
     st.set_page_config(page_title="CurrentFlow", layout="wide")
     store = _store(_db_path())
@@ -515,6 +539,7 @@ def main() -> None:
         MODULES[7]: _render_sms,
         MODULES[8]: _render_ranking,
         MODULES[9]: _render_daily_top,
+        MODULES[10]: _render_ml,
     }
     if module in renderers:
         renderers[module](store)

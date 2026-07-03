@@ -187,10 +187,46 @@ Legend: ⬜ not started · 🟡 in progress · ✅ done. Keep the box in sync wi
   transport + accrued time) — the harness is built and tested; production modules stay OBSERVATION_ONLY
   until an actual run promotes them. Live-fundamentals feed still injected (tilt), unchanged from slice 7.
 
-## Slice 9 — Scale / ML (gated)  ⬜
-**Goal:** only after ≥3 months positive forward-paper walk-forward Sharpe (LD-8).
-- [ ] ML strictly as signal-weight optimizer / ranker on engineered features.
-- [ ] Mandatory purged/embargoed CV + out-of-sample; no live weight hand-editing.
+## Slice 9 — Scale / ML (gated)  ✅
+**Goal:** only after ≥3 months positive forward-paper walk-forward Sharpe (LD-8). Built as a
+**harness gated shut** — exactly the slice-8 posture: the code is complete and tested, but an
+LD-8 admission gate keeps it closed until the rules system actually earns validation. In
+production nothing has cleared forward paper, so the whole ML layer refuses to run (correct).
+- [x] **LD-8 admission gate** (`ml/admission.py`) — the ML analogue of RULE B: `check_admission`
+      reads the server-authoritative `ValidationLedger`; ML is admitted ONLY when the rules
+      system (`sms`) is VALIDATED (≥`PAPER_VALIDATION_MONTHS` + positive walk-forward Sharpe).
+      `require_admission` raises `MLNotAdmittedError`; every ML entry point calls it first, so
+      nothing in `currentflow.ml` can run ahead of the rules.
+- [x] **Purged + embargoed walk-forward CV** (`ml/cv.py`, LD-8 mandatory): anchored forward
+      folds (train strictly precedes test), **purge** of any train sample whose label span
+      overlaps the test window, **embargo** buffer at the boundary; too-few-samples raises
+      (missing ≠ zero). Deterministic index math, no shuffling.
+- [x] **Engineered features only** (`ml/features.py`): the feature space IS the existing §4 SMS
+      component sub-scores — a thin look-ahead-safe adapter, no new signal (LD-8).
+- [x] **ML strictly as signal-weight optimizer** (`ml/optimizer.py`) — the sole writer of the
+      weight surface: deterministic coordinate ascent on the integer weight simplex maximizing
+      in-sample (train-fold) Sharpe, reporting **worst out-of-sample test-fold walk-forward
+      Sharpe** as the acceptance gate; preserves the locked §4 structure (sum=100, LD-1 Track-B
+      `foreign_flow` pinned 0); proposes only, `improved` iff OOS positive AND non-degrading.
+- [x] **No live weight hand-editing** (`ml/weights_store.py`): a provenance-tracked surface with
+      **no raw setter** — the only mutation is `apply_proposal`, which re-checks admission and
+      refuses any non-improving proposal. `compute_sms(weights=…)` seam lets the optimizer score
+      candidates without ever mutating `config.SMS_WEIGHTS`.
+- [x] **ML ranker** (`ml/ranker.py`, §9 AI Buy/Sell): transparent linear ranker over engineered
+      features, **doubly gated** — LD-8 admission to run + RULE B display gate (score/position
+      `•••` until the `ai_ranking` module is VALIDATED). Ordering is observation, number is claim.
+- [x] **View** (`ui/ml_view.py` + Streamlit "⚙ ML Layer 🔒" pane): surfaces the LD-8 gate + any
+      applied weight provenance; operational diagnostics only, never a per-name predictive number.
+- [x] **Tests (20 new, 287 total):** admission closed→open transition; purge/embargo/forward-only
+      CV hand-checked + insufficient-samples raise; features == engineered components; optimizer
+      requires admission, climbs the paying component, preserves the simplex + locked zeros, never
+      proposes a degrading change; weight store has no hand-edit path + re-gated apply + never
+      degrades; ranker requires admission + RULE B withhold→reveal; ML-view locked/open banner.
+- **Standing deferral (unchanged from slice 8):** the LD-8 gate opens only on a **real
+  multi-month forward-paper run** (needs the live DAL transport + accrued calendar time). Until
+  then the harness stays closed by design — production modules are OBSERVATION_ONLY and the ML
+  layer is LOCKED. Wiring the optimizer's `evaluate` to a full backtest-under-candidate-weights
+  over the live store is the one integration that lands with that run (the seam exists).
 
 ---
 
