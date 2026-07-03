@@ -228,6 +228,34 @@ production nothing has cleared forward paper, so the whole ML layer refuses to r
   layer is LOCKED. Wiring the optimizer's `evaluate` to a full backtest-under-candidate-weights
   over the live store is the one integration that lands with that run (the seam exists).
 
+## Slice 10 — Live DAL transport (closes the standing deferral)  ✅
+**Goal:** wire the real network + own-session Bearer that every prior slice deferred. Not a
+new spec §11 slice (the build order ends at 9) — it turns the transport-injected `ExodusClient`
+into a production client so a *real* forward-paper run becomes possible (the one thing code
+alone couldn't do). No locked behavior changes; no spec bump.
+- [x] **Keychain token store** (`dal/token_store.py`): macOS `security` CLI via subprocess (zero
+      new dep, stdlib core like slice 9). `get`/`set`/`clear`; strips a pasted `Bearer ` prefix;
+      missing → `None` (never a blank header); refuses empty; injectable `runner` for tests.
+- [x] **httpx transport** (`dal/transport.py`): `HttpxTransport.get/post` bind onto the client's
+      injected `Transport`/`PostTransport`. Returns the raw `Response` (client maps status codes),
+      raises `TransportError` on network failure (backoff engages) and `AuthError` rather than
+      send a blank `Authorization`. Token read **fresh per request** so a refresh takes effect
+      without rebuilding. Base URL from `config.EXODUS_BASE_URL`; injectable `AsyncClient`.
+- [x] **Session factory** (`dal/session.py`): `build_live_client(store, prompt, client)` — the one
+      production construction site: wires `token_provider` (Keychain) + `refresh` (optional
+      re-paste on 401) + transport/post_transport. `session_status` gives a masked, no-network
+      health check. Without a `prompt`, a 401 fails loud immediately (re-capture required).
+- [x] **Operator CLI** (`dal/login.py`): `paste` (hidden `getpass` → Keychain), `status` (masked),
+      `check` (live ping proves the token authenticates), `clear`. The 'view' of this vertical.
+- [x] **Tests (14 new, 301 total):** store round-trip + Bearer-strip + empty-refusal + failure;
+      masked status; transport injects Bearer/base-URL/params + JSON body, reads token fresh,
+      fails loud on missing token, maps network errors, passes HTTP status through for the client;
+      factory end-to-end through `ExodusClient` (auth+parse, 401-fail-loud, 401→prompt→refresh→ok).
+- **Operator action (out of code):** capture the Bearer from your own authenticated Stockbit
+  session and `python -m currentflow.dal.login paste`. Then a real multi-month forward-paper run
+  can accrue — the event that promotes modules past `OBSERVATION_ONLY` (RULE B) and opens the
+  LD-8 ML gate. The harness for all of that already exists (slices 8–9).
+
 ---
 
 ## Acceptance criteria (definition of done — `LOCKED_SPEC.md` §13)

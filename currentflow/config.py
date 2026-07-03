@@ -47,6 +47,15 @@ REPLAY_PHASE_LOOKBACK_DAYS = 150
 MAX_RETRIES = 4
 BACKOFF_BASE_SECONDS = 2.0  # 2, 4, 8, 16 …
 
+# --- Live transport (slice 10) ----------------------------------------------------
+# The operator's own authenticated Stockbit session Bearer is captured out-of-band
+# (own session, at own risk — CLAUDE.md/§15) and stored in the macOS Keychain, never
+# on disk in plaintext, never republished. The httpx transport reads it fresh per
+# request so a refresh (re-paste) takes effect without rebuilding the client.
+HTTP_TIMEOUT_SECONDS = 30.0
+KEYCHAIN_SERVICE = "currentflow-exodus"   # `security` generic-password service
+KEYCHAIN_ACCOUNT = "bearer"               # account name under that service
+
 # --- Universe gate (spec §3, LOCKED) ----------------------------------------------
 ADV_FLOOR_IDR = 10_000_000_000.0        # 20-day avg daily value traded ≥ IDR 10 bn
 ADV_TRACK_A_IDR = 25_000_000_000.0      # Track A additionally requires ADV ≥ IDR 25 bn
