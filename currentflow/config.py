@@ -54,7 +54,30 @@ BACKOFF_BASE_SECONDS = 2.0  # 2, 4, 8, 16 …
 # request so a refresh (re-paste) takes effect without rebuilding the client.
 HTTP_TIMEOUT_SECONDS = 30.0
 KEYCHAIN_SERVICE = "currentflow-exodus"   # `security` generic-password service
-KEYCHAIN_ACCOUNT = "bearer"               # account name under that service
+KEYCHAIN_ACCOUNT = "bearer"               # pasted raw Bearer (slice-10 fallback)
+# Slice 11: the credential-login session (access+refresh+expiry) is one JSON blob
+# under a separate account. `access_token()` prefers this session's access token and
+# falls back to the pasted Bearer above, so both auth paths coexist.
+KEYCHAIN_SESSION_ACCOUNT = "session"
+
+# --- In-app login flow (slice 11; verified wire contract DATA_SOURCES §4.1) --------
+# Own-session credential login. Credentials/OTP/recaptcha are transient in-memory
+# only — never persisted, rendered back, or logged (§9.1). Only the access+refresh
+# tokens reach the Keychain (KEYCHAIN_SESSION_ACCOUNT above).
+AUTH_LOGIN_USERNAME_PATH = "login/v6/username"
+AUTH_CHALLENGE_START_PATH = "mfa/verification/v1/challenge/start"
+AUTH_CHALLENGE_OTP_SEND_PATH = "mfa/verification/v1/challenge/otp/send"
+AUTH_CHALLENGE_OTP_VERIFY_PATH = "mfa/verification/v1/challenge/otp/verify"
+AUTH_NEW_DEVICE_VERIFY_PATH = "login/v6/new-device/verify"
+# Refresh route/shape NOT in the HAR capture — do NOT guess. `AuthClient.refresh`
+# raises until an operator captures a real refresh exchange and pins this.
+AUTH_REFRESH_PATH: str | None = None
+# reCAPTCHA v3 is invisible; whether the server ENFORCES the token is unconfirmed
+# (probe first — §4.1). Sent as declared; the token itself is supplied by the caller
+# (empty for the pure-Python attempt, or an operator-assisted token if enforced).
+AUTH_RECAPTCHA_VERSION = "RECAPTCHA_VERSION_3"
+CHALLENGE_OTP = "CHALLENGE_OTP"
+CHALLENGE_FINISH = "CHALLENGE_FINISH"
 
 # --- Universe gate (spec §3, LOCKED) ----------------------------------------------
 ADV_FLOOR_IDR = 10_000_000_000.0        # 20-day avg daily value traded ≥ IDR 10 bn

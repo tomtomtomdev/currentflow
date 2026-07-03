@@ -8,8 +8,9 @@
 # Streamlit terminal. Nothing leaves the machine.
 #
 # Usage:
-#   ./run.sh              launch the terminal (default)
-#   ./run.sh login        capture / paste the Stockbit Bearer into the Keychain
+#   ./run.sh              launch the terminal (default; login form if no session)
+#   ./run.sh login        sign in with username/password + OTP (slice 11)
+#   ./run.sh paste        fallback: paste a Bearer into the Keychain (slice 10)
 #   ./run.sh check        verify the stored token authenticates against exodus
 #   ./run.sh test         run the test suite
 #   PORT=8502 ./run.sh    launch on a non-default port
@@ -47,6 +48,10 @@ cmd="${1:-serve}"
 case "$cmd" in
   login)
     ensure_venv; ensure_deps
+    exec "$PY" -m currentflow.dal.login login
+    ;;
+  paste)
+    ensure_venv; ensure_deps
     exec "$PY" -m currentflow.dal.login paste
     ;;
   check)
@@ -59,9 +64,10 @@ case "$cmd" in
     ;;
   serve)
     ensure_venv; ensure_deps
-    # Fail loud if no token is stored (DAL rule: never emit stale/empty).
+    # Slice 11: always start — the app renders the login form when there's no valid
+    # session (fail loud in-UI, never blank/stale modules). Just hint if unauthed.
     if ! "$PY" -m currentflow.dal.login status >/dev/null 2>&1; then
-      die "no Bearer token in Keychain — run './run.sh login' first"
+      log "no session yet — the terminal will open on the login form ('./run.sh login')"
     fi
     log "starting CurrentFlow terminal on http://localhost:$PORT"
     exec "$PY" -m streamlit run "$APP" \
@@ -70,6 +76,6 @@ case "$cmd" in
       --theme.base dark
     ;;
   *)
-    die "unknown command '$cmd' — use: serve | login | check | test"
+    die "unknown command '$cmd' — use: serve | login | paste | check | test"
     ;;
 esac

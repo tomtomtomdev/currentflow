@@ -87,10 +87,12 @@ def test_store_set_failure_raises():
 def test_session_status_masks_token():
     runner, _ = fake_keychain()
     store = KeychainTokenStore(runner=runner)
-    assert session_status(store) == {"has_token": False, "preview": None, "length": 0}
+    empty = session_status(store)
+    assert empty["has_token"] is False and empty["preview"] is None and empty["length"] == 0
     store.set("abcdefghijkl")
     st = session_status(store)
     assert st["has_token"] and st["length"] == 12
+    assert st["source"] == "paste"  # slice 11: pasted-Bearer path
     assert st["preview"] == "abcd…ijkl"
     assert "efgh" not in st["preview"]  # middle never leaked
 

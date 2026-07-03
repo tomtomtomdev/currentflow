@@ -27,6 +27,212 @@
 </style>
 </helmet>
 
+<!-- ============================ SESSION GATE (§9.1) ============================ -->
+<sc-if value="{{ showLogin }}" hint-placeholder-val="{{ true }}">
+<div style="width:100%; height:100vh; min-height:760px; display:flex; flex-direction:column; background:#070a10; color:#e6edf3; font-family:'Geist',sans-serif; overflow:hidden;">
+
+  <!-- minimal top bar -->
+  <div style="height:52px; flex:0 0 52px; display:flex; align-items:center; gap:14px; padding:0 18px; background:linear-gradient(180deg,#0d121b,#0a0e14); border-bottom:1px solid rgba(255,255,255,0.07);">
+    <div style="display:flex; align-items:center; gap:10px;">
+      <div style="width:26px; height:26px; border-radius:6px; background:linear-gradient(135deg,#58c4dd,#3a8fb0); display:flex; align-items:center; justify-content:center; font-weight:700; color:#04121a; font-size:15px;">V</div>
+      <div style="line-height:1;">
+        <div style="font-weight:600; font-size:15px; letter-spacing:0.02em;">VECTOR<span style="color:#58c4dd;">·</span>LAB</div>
+        <div style="font-size:10px; color:#5a6675; letter-spacing:0.14em; margin-top:2px;">IDX SMART-MONEY FLOW TERMINAL</div>
+      </div>
+    </div>
+    <div style="flex:1;"></div>
+    <div style="display:flex; align-items:center; gap:7px; font-size:11px; color:#8b98a9;">
+      <span style="width:7px; height:7px; border-radius:50%; background:#d29922; animation:livedot 1.8s infinite;"></span>
+      Session gate — sign-in required
+    </div>
+    <div style="font-family:'Geist Mono'; font-size:9.5px; color:#5a6675; letter-spacing:0.08em; padding-left:14px; border-left:1px solid rgba(255,255,255,0.08);">LOCAL · SINGLE-USER · PAPER</div>
+  </div>
+
+  <!-- body: brand / auth split -->
+  <div style="flex:1; display:flex; min-height:0;">
+
+    <!-- LEFT: brand + posture -->
+    <div style="flex:1; min-width:0; display:flex; flex-direction:column; justify-content:center; padding:0 clamp(30px,5vw,76px); border-right:1px solid rgba(255,255,255,0.06); background:radial-gradient(130% 100% at 10% 6%, rgba(88,196,221,0.07), transparent 58%);">
+      <div style="font-family:'Geist Mono'; font-size:11px; letter-spacing:0.22em; color:#58c4dd; margin-bottom:18px;">SESSION&nbsp;GATE</div>
+      <div style="font-family:'Geist'; font-weight:600; font-size:clamp(28px,3.4vw,42px); line-height:1.1; letter-spacing:-0.01em; max-width:15ch;">Sign in to open the terminal.</div>
+      <div style="font-size:13.5px; color:#8b98a9; line-height:1.6; max-width:52ch; margin-top:18px;">Establish <span style="color:#c2ccd8;">your own authenticated Stockbit session</span> — username, password, and a one-time code. The resulting session lives on this machine only; nothing is republished.</div>
+
+      <div style="display:flex; flex-direction:column; gap:14px; margin-top:34px; max-width:56ch;">
+        <div style="display:flex; align-items:flex-start; gap:12px;">
+          <span style="flex:0 0 auto; margin-top:2px; width:18px; height:18px; border-radius:5px; background:rgba(88,196,221,0.12); border:1px solid rgba(88,196,221,0.3); color:#58c4dd; font-size:10px; display:flex; align-items:center; justify-content:center;">✓</span>
+          <div style="font-size:12.5px; color:#c2ccd8; line-height:1.5;"><span style="color:#e6edf3; font-weight:500;">Credentialed sign-in.</span> Your own Stockbit login drives the verified <span style="font-family:'Geist Mono'; color:#8b98a9;">login/v6</span> flow — no hand-pasted token.</div>
+        </div>
+        <div style="display:flex; align-items:flex-start; gap:12px;">
+          <span style="flex:0 0 auto; margin-top:2px; width:18px; height:18px; border-radius:5px; background:rgba(88,196,221,0.12); border:1px solid rgba(88,196,221,0.3); color:#58c4dd; font-size:10px; display:flex; align-items:center; justify-content:center;">✓</span>
+          <div style="font-size:12.5px; color:#c2ccd8; line-height:1.5;"><span style="color:#e6edf3; font-weight:500;">Multi-factor by OTP.</span> A one-time code via email, WhatsApp, or SMS; the challenge can loop across channels before it clears.</div>
+        </div>
+        <div style="display:flex; align-items:flex-start; gap:12px;">
+          <span style="flex:0 0 auto; margin-top:2px; width:18px; height:18px; border-radius:5px; background:rgba(88,196,221,0.12); border:1px solid rgba(88,196,221,0.3); color:#58c4dd; font-size:10px; display:flex; align-items:center; justify-content:center;">✓</span>
+          <div style="font-size:12.5px; color:#c2ccd8; line-height:1.5;"><span style="color:#e6edf3; font-weight:500;">Keychain-backed session.</span> Access + refresh tokens held in the OS Keychain, read fresh, never written in plaintext (§10). Auth only — it gates no signal or RULE&nbsp;A/B behaviour.</div>
+        </div>
+      </div>
+
+      <div style="display:inline-flex; align-self:flex-start; align-items:center; gap:8px; margin-top:34px; padding:6px 12px; border:1px solid rgba(210,153,34,0.32); background:rgba(210,153,34,0.08); border-radius:6px; font-size:10.5px; color:#e8c168; letter-spacing:0.03em;">
+        <span style="font-family:'Geist Mono'; font-weight:600;">RULE&nbsp;B</span>
+        <span style="color:#b99a54;">·</span>
+        Observation-only — scores stay gated until paper-validated
+      </div>
+    </div>
+
+    <!-- RIGHT: auth card -->
+    <div style="flex:0 0 clamp(380px,34%,468px); display:flex; flex-direction:column; justify-content:center; padding:0 clamp(26px,3vw,46px); background:#0a0e14;">
+      <div style="background:#0d121b; border:1px solid rgba(255,255,255,0.07); border-radius:12px; padding:26px 24px;">
+
+        <!-- STEP 1 · CREDENTIALS -->
+        <sc-if value="{{ showCredentials }}" hint-placeholder-val="{{ true }}">
+        <div>
+          <div style="display:flex; align-items:center; justify-content:space-between;">
+            <div style="font-family:'Geist'; font-weight:600; font-size:16px; letter-spacing:0.01em;">Operator sign-in</div>
+            <span style="font-family:'Geist Mono'; font-size:9px; letter-spacing:0.08em; color:#5a6675;">STEP 1 · 2</span>
+          </div>
+          <div style="font-size:11.5px; color:#8b98a9; margin-top:5px; line-height:1.5;">Use your own Stockbit credentials.</div>
+
+          <div style="font-family:'Geist Mono'; font-size:10px; letter-spacing:0.1em; color:#5a6675; margin:22px 0 8px;">USERNAME</div>
+          <input type="text" autocomplete="off" spellcheck="false" placeholder="username or email" onInput="{{ onCredUser }}" onKeyDown="{{ onCredKey }}" style="width:100%; box-sizing:border-box; background:#070a10; border:1px solid rgba(255,255,255,0.12); border-radius:8px; padding:12px 13px; color:#e6edf3; font-family:'Geist Mono',monospace; font-size:12.5px; letter-spacing:0.03em; outline:none;" style-focus="border-color:rgba(88,196,221,0.6); box-shadow:0 0 0 1px rgba(88,196,221,0.3);">
+
+          <div style="font-family:'Geist Mono'; font-size:10px; letter-spacing:0.1em; color:#5a6675; margin:14px 0 8px;">PASSWORD</div>
+          <input type="password" autocomplete="off" spellcheck="false" placeholder="••••••••" onInput="{{ onCredPass }}" onKeyDown="{{ onCredKey }}" style="width:100%; box-sizing:border-box; background:#070a10; border:1px solid rgba(255,255,255,0.12); border-radius:8px; padding:12px 13px; color:#e6edf3; font-family:'Geist Mono',monospace; font-size:12.5px; letter-spacing:0.04em; outline:none;" style-focus="border-color:rgba(88,196,221,0.6); box-shadow:0 0 0 1px rgba(88,196,221,0.3);">
+
+          <sc-if value="{{ hasCredError }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex; align-items:flex-start; gap:9px; margin-top:14px; padding:10px 12px; border-radius:8px; background:rgba(248,81,73,0.10); border:1px solid rgba(248,81,73,0.32);">
+              <span style="flex:0 0 auto; margin-top:1px; color:#f85149; font-size:12px;">✕</span>
+              <span style="font-size:11.5px; color:#f6a9a4; line-height:1.45;">{{ credError }}</span>
+            </div>
+          </sc-if>
+
+          <div onClick="{{ submitCredentials }}" style="{{ credBtnStyle }}">{{ credBtnLabel }}</div>
+
+          <div style="display:flex; align-items:center; gap:7px; margin-top:14px; font-size:10px; color:#5a6675; line-height:1.4;">
+            <span style="color:#8b98a9;">⛨</span> Protected by reCAPTCHA — runs invisibly (v3). No challenge is shown.
+          </div>
+          <div style="margin-top:15px; padding-top:14px; border-top:1px solid rgba(255,255,255,0.06); font-size:11px; color:#8b98a9;">
+            Prefer a token? <span onClick="{{ useBearer }}" style="color:#58c4dd; cursor:pointer;">Paste a session Bearer instead →</span>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- STEP 2 · OTP CHALLENGE -->
+        <sc-if value="{{ showOtp }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <div style="display:flex; align-items:center; justify-content:space-between;">
+            <div style="display:flex; align-items:center; gap:11px;">
+              <div onClick="{{ backToCredentials }}" title="Use a different account" style="cursor:pointer; color:#8b98a9; font-size:17px; line-height:1;">←</div>
+              <div>
+                <div style="font-family:'Geist'; font-weight:600; font-size:16px; letter-spacing:0.01em;">Verify it's you</div>
+                <div style="font-size:11.5px; color:#8b98a9; margin-top:3px;">One-time code · multi-factor</div>
+              </div>
+            </div>
+            <span style="font-family:'Geist Mono'; font-size:9px; letter-spacing:0.08em; color:#5a6675;">STEP 2 · 2</span>
+          </div>
+
+          <sc-if value="{{ hasRoundNote }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex; align-items:flex-start; gap:9px; margin-top:16px; padding:9px 12px; border-radius:8px; background:rgba(210,153,34,0.09); border:1px solid rgba(210,153,34,0.3);">
+              <span style="flex:0 0 auto; margin-top:1px; color:#e8c168; font-size:11px;">↻</span>
+              <span style="font-size:11px; color:#e8c168; line-height:1.45;">{{ roundNote }}</span>
+            </div>
+          </sc-if>
+
+          <div style="font-family:'Geist Mono'; font-size:10px; letter-spacing:0.1em; color:#5a6675; margin:20px 0 9px;">SEND CODE VIA</div>
+          <div style="display:flex; gap:8px;">
+            <sc-for list="{{ channelChips }}" as="ch" hint-placeholder-count="3">
+              <div onClick="{{ ch.onClick }}" style="{{ ch.style }}">
+                <span style="{{ ch.glyphStyle }}">{{ ch.glyph }}</span>
+                <span style="{{ ch.labelStyle }}">{{ ch.label }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="font-size:11px; color:#8b98a9; margin-top:11px; line-height:1.45;">{{ otpSentNote }}</div>
+
+          <div style="font-family:'Geist Mono'; font-size:10px; letter-spacing:0.1em; color:#5a6675; margin:17px 0 9px;">6-DIGIT CODE</div>
+          <input type="text" inputmode="numeric" autocomplete="one-time-code" spellcheck="false" placeholder="••••••" onInput="{{ onOtpInput }}" onKeyDown="{{ onOtpKey }}" style="width:100%; box-sizing:border-box; background:#070a10; border:1px solid rgba(255,255,255,0.12); border-radius:8px; padding:13px; color:#e6edf3; font-family:'Geist Mono',monospace; font-size:22px; font-weight:600; letter-spacing:0.5em; text-align:center; outline:none;" style-focus="border-color:rgba(88,196,221,0.6); box-shadow:0 0 0 1px rgba(88,196,221,0.3);">
+
+          <sc-if value="{{ hasOtpError }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex; align-items:flex-start; gap:9px; margin-top:14px; padding:10px 12px; border-radius:8px; background:rgba(248,81,73,0.10); border:1px solid rgba(248,81,73,0.32);">
+              <span style="flex:0 0 auto; margin-top:1px; color:#f85149; font-size:12px;">✕</span>
+              <span style="font-size:11.5px; color:#f6a9a4; line-height:1.45;">{{ otpError }}</span>
+            </div>
+          </sc-if>
+
+          <div onClick="{{ verifyOtp }}" style="{{ otpBtnStyle }}">{{ otpBtnLabel }}</div>
+
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-top:15px;">
+            <span onClick="{{ resendOtp }}" style="{{ resendStyle }}">{{ resendLabel }}</span>
+            <span style="font-size:10px; color:#5a6675;">code expires shortly</span>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- FALLBACK · SESSION BEARER -->
+        <sc-if value="{{ showBearer }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <div style="display:flex; align-items:center; gap:11px;">
+            <div onClick="{{ useLogin }}" title="Back to credential sign-in" style="cursor:pointer; color:#8b98a9; font-size:17px; line-height:1;">←</div>
+            <div>
+              <div style="font-family:'Geist'; font-weight:600; font-size:16px; letter-spacing:0.01em;">Paste a session Bearer</div>
+              <div style="font-size:11.5px; color:#8b98a9; margin-top:3px;">Fallback — advanced (§10)</div>
+            </div>
+          </div>
+
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-top:22px; margin-bottom:8px;">
+            <span style="font-family:'Geist Mono'; font-size:10px; letter-spacing:0.1em; color:#5a6675;">SESSION BEARER</span>
+            <span style="font-size:9.5px; color:#5a6675;">password-type · masked</span>
+          </div>
+          <input type="password" autocomplete="off" spellcheck="false" placeholder="Bearer eyJhbGciOi… — paste session token" onInput="{{ onTokenInput }}" onKeyDown="{{ onTokenKey }}" style="width:100%; box-sizing:border-box; background:#070a10; border:1px solid rgba(255,255,255,0.12); border-radius:8px; padding:12px 13px; color:#e6edf3; font-family:'Geist Mono',monospace; font-size:12.5px; letter-spacing:0.04em; outline:none;" style-focus="border-color:rgba(88,196,221,0.6); box-shadow:0 0 0 1px rgba(88,196,221,0.3);">
+          <div style="font-size:10px; color:#5a6675; margin-top:8px; line-height:1.45;">A leading <span style="font-family:'Geist Mono'; color:#8b98a9;">Bearer&nbsp;</span> prefix is stripped automatically.</div>
+
+          <sc-if value="{{ hasAuthError }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex; align-items:flex-start; gap:9px; margin-top:14px; padding:10px 12px; border-radius:8px; background:rgba(248,81,73,0.10); border:1px solid rgba(248,81,73,0.32);">
+              <span style="flex:0 0 auto; margin-top:1px; color:#f85149; font-size:12px;">✕</span>
+              <span style="font-size:11.5px; color:#f6a9a4; line-height:1.45;">{{ authError }}</span>
+            </div>
+          </sc-if>
+
+          <div onClick="{{ submitToken }}" style="{{ verifyBtnStyle }}">{{ verifyLabel }}</div>
+
+          <div style="display:flex; align-items:center; gap:8px; margin-top:14px;">
+            <span style="width:7px; height:7px; border-radius:50%; background:{{ pingDotColor }}; flex:0 0 auto;"></span>
+            <span style="font-size:10.5px; color:#8b98a9; line-height:1.4;">{{ pingStatus }}</span>
+          </div>
+        </div>
+        </sc-if>
+
+      </div>
+
+      <div style="font-size:10px; color:#5a6675; line-height:1.6; margin-top:16px; padding:0 4px;">
+        On success, access + refresh tokens are written to the Keychain and the terminal reruns. Credentials and the one-time code are held only for this attempt — never persisted, rendered back, or logged.
+      </div>
+    </div>
+  </div>
+
+  <!-- disclaimer ticker -->
+  <div style="height:26px; flex:0 0 26px; background:#0a0e14; border-top:1px solid rgba(255,255,255,0.06); display:flex; align-items:center; overflow:hidden;">
+    <div style="flex:0 0 auto; padding:0 14px; font-size:9.5px; color:#5a6675; letter-spacing:0.08em; border-right:1px solid rgba(255,255,255,0.06); height:100%; display:flex; align-items:center; font-family:'Geist Mono';">LOCAL · SINGLE-USER · PAPER</div>
+    <div style="flex:1; overflow:hidden; white-space:nowrap;">
+      <div style="display:inline-block; animation:tickscroll 42s linear infinite; font-size:10px; color:#6b7787;">
+        <span style="padding:0 26px;">Private personal-use analytics tool — not a product, not a service, not for redistribution.</span>
+        <span style="padding:0 26px; color:#5a6675;">•</span>
+        <span style="padding:0 26px;">Not investment advice. All outputs are observations for the operator's own decisions.</span>
+        <span style="padding:0 26px; color:#5a6675;">•</span>
+        <span style="padding:0 26px;">Data consumed from operator's own session; used at own risk; not republished.</span>
+        <span style="padding:0 26px; color:#5a6675;">•</span>
+        <span style="padding:0 26px;">No live execution. Paper trading only. Paper results do not guarantee live performance.</span>
+        <span style="padding:0 26px; color:#5a6675;">•</span>
+        <span style="padding:0 26px;">Private personal-use analytics tool — not a product, not a service, not for redistribution.</span>
+        <span style="padding:0 26px; color:#5a6675;">•</span>
+        <span style="padding:0 26px;">Not investment advice. All outputs are observations for the operator's own decisions.</span>
+      </div>
+    </div>
+  </div>
+</div>
+</sc-if>
+
+<!-- ============================ TERMINAL ============================ -->
+<sc-if value="{{ authed }}" hint-placeholder-val="{{ false }}">
 <div style="width:100%; height:100vh; min-height:760px; display:flex; flex-direction:column; background:#070a10; color:#e6edf3; font-family:'Geist',sans-serif; overflow:hidden;">
 
   <!-- TOP BAR -->
@@ -57,6 +263,16 @@
     <div style="display:flex; align-items:center; gap:14px; font-family:'Geist Mono'; font-size:11px; color:#8b98a9;">
       <div>IHSG <span style="color:#f85149;">7,241.6</span> <span style="color:#f85149;">-0.42%</span></div>
       <div>Track&nbsp;B</div>
+    </div>
+    <div style="width:1px; height:26px; background:rgba(255,255,255,0.08);"></div>
+    <div style="display:flex; align-items:center; gap:10px;">
+      <div title="Own authenticated session · access+refresh in OS Keychain · read fresh per request" style="display:flex; align-items:center; gap:6px; font-size:10.5px; color:#8b98a9;">
+        <span style="width:6px; height:6px; border-radius:50%; background:#3fb950;"></span>
+        <span style="color:#c2ccd8;">{{ accountLabel }}</span>
+        <span style="color:#5a6675;">·</span>
+        <span style="font-family:'Geist Mono'; color:#8b98a9;">{{ tokenPreview }}</span>
+      </div>
+      <div onClick="{{ signOut }}" title="Clear the Keychain session and return to the login form" style="cursor:pointer; font-size:10.5px; color:#e6edf3; padding:5px 11px; border:1px solid rgba(255,255,255,0.12); border-radius:6px;" style-hover="background:rgba(255,255,255,0.06); border-color:rgba(255,255,255,0.22);">Sign&nbsp;out</div>
     </div>
   </div>
 
@@ -596,11 +812,112 @@
     </div>
   </div>
 </div>
+</sc-if>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:800},&quot;defaultModule&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;broker&quot;,&quot;replay&quot;,&quot;heatmap&quot;,&quot;sector&quot;],&quot;default&quot;:&quot;broker&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Terminal&quot;},&quot;paperValidated&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;RULE B&quot;,&quot;unit&quot;:&quot;&quot;},&quot;replaySpeedMs&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:220,&quot;min&quot;:60,&quot;max&quot;:400,&quot;step&quot;:20,&quot;unit&quot;:&quot;ms&quot;,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Terminal&quot;}}">
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:800},&quot;startAuthed&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Session&quot;,&quot;unit&quot;:&quot;&quot;},&quot;defaultModule&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;broker&quot;,&quot;replay&quot;,&quot;heatmap&quot;,&quot;sector&quot;],&quot;default&quot;:&quot;broker&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Terminal&quot;},&quot;paperValidated&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;RULE B&quot;,&quot;unit&quot;:&quot;&quot;},&quot;replaySpeedMs&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:220,&quot;min&quot;:60,&quot;max&quot;:400,&quot;step&quot;:20,&quot;unit&quot;:&quot;ms&quot;,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Terminal&quot;}}">
 class Component extends DCLogic {
-  state = { activeModule: null, selectedStock: 'BRMS', scrub: 43, playing: false };
+  state = { activeModule: null, selectedStock: 'BRMS', scrub: 43, playing: false,
+            authed: false, verifying: false, tokenPreview: null, username: null,
+            authMode: 'login', authStep: 'credentials', authRound: 0, selChannel: null,
+            resendIn: 0, credError: null, otpError: null, authError: null };
+  componentDidMount(){ if(this.props.startAuthed && !this.state.authed){ this.setState({authed:true, username:'operator', tokenPreview: this.state.tokenPreview || '····a1f9'}); } }
   get activeMod(){ return this.state.activeModule || this.props.defaultModule || 'broker'; }
+
+  // ---------- session gate — in-app credential + MFA login (§9.1, wire contract §4.1) ----------
+  OTP_ROUNDS = [
+    { channels:[
+        {id:'CHANNEL_EMAIL',    label:'Email',    target:'tom****@gmail.com', glyph:'✉'},
+        {id:'CHANNEL_WHATSAPP', label:'WhatsApp', target:'+62 ***-***-4821',  glyph:'✆'},
+        {id:'CHANNEL_SMS',      label:'SMS',      target:'+62 ***-***-4821',  glyph:'▤'}
+      ], def:'CHANNEL_EMAIL' },
+    { channels:[
+        {id:'CHANNEL_WHATSAPP', label:'WhatsApp', target:'+62 ***-***-4821',  glyph:'✆'},
+        {id:'CHANNEL_SMS',      label:'SMS',      target:'+62 ***-***-4821',  glyph:'▤'}
+      ], def:'CHANNEL_WHATSAPP' }
+  ];
+
+  setAuthMode(mode){ if(this._authTo) clearTimeout(this._authTo); this.setState({authMode:mode, authStep:'credentials', credError:null, otpError:null, authError:null, verifying:false}); }
+
+  // step 1 — credentials → POST login/v6/username (new-device branch → MFA)
+  onCredUser(e){ this._credUser = e.target.value; if(this.state.credError) this.setState({credError:null}); }
+  onCredPass(e){ this._credPass = e.target.value; if(this.state.credError) this.setState({credError:null}); }
+  onCredKey(e){ if(e.key === 'Enter'){ e.preventDefault(); this.submitCredentials(); } }
+  submitCredentials(){
+    if(this.state.verifying) return;
+    const u=(this._credUser||'').trim(); const p=this._credPass||'';
+    if(!u || !p){ this.setState({credError:'Enter your username and password.'}); return; }
+    this.setState({verifying:true, credError:null});
+    if(this._authTo) clearTimeout(this._authTo);
+    // recaptcha-v3 token minted invisibly; new-device branch returns {login_token, verification_token}
+    this._authTo = setTimeout(()=>{
+      if(p.length<6 || /wrong|invalid|fail/i.test(u+' '+p)){
+        this.setState({verifying:false, credError:'Sign-in failed — check your username and password.'});
+        return;
+      }
+      this._username = u;
+      this.beginOtpRound(0);
+      this.setState({verifying:false, authStep:'otp', otpError:null});
+    }, 1100);
+  }
+
+  // step 2 — OTP challenge (loops on next_challenge until CHALLENGE_FINISH)
+  beginOtpRound(round){
+    const r = this.OTP_ROUNDS[round];
+    this._otp = '';
+    this.setState({authRound:round, selChannel:r.def});
+    this.startCooldown(60);   // otp/send → next_attempt_in
+  }
+  selectChannel(id){ if(id===this.state.selChannel || this.state.verifying) return; this._otp=''; this.setState({selChannel:id, otpError:null}); this.startCooldown(60); }
+  startCooldown(sec){ if(this._cdIv) clearInterval(this._cdIv); this.setState({resendIn:sec}); this._cdIv=setInterval(()=>{ this.setState(s=>{ const n=s.resendIn-1; if(n<=0){ clearInterval(this._cdIv); this._cdIv=null; return {resendIn:0}; } return {resendIn:n}; }); }, 1000); }
+  resendOtp(){ if(this.state.resendIn>0 || this.state.verifying) return; this._otp=''; this.setState({otpError:null}); this.startCooldown(60); }
+  onOtpInput(e){ const v=(e.target.value||'').replace(/\D/g,'').slice(0,6); this._otp=v; e.target.value=v; if(this.state.otpError) this.setState({otpError:null}); }
+  onOtpKey(e){ if(e.key === 'Enter'){ e.preventDefault(); this.verifyOtp(); } }
+  verifyOtp(){
+    if(this.state.verifying) return;
+    const code=this._otp||'';
+    if(code.length!==6){ this.setState({otpError:'Enter the 6-digit code.'}); return; }
+    this.setState({verifying:true, otpError:null});
+    if(this._authTo) clearTimeout(this._authTo);
+    this._authTo = setTimeout(()=>{
+      if(code==='000000'){ this.setState({verifying:false, otpError:'Incorrect code — try again or resend.'}); return; }
+      const last=this.OTP_ROUNDS.length-1;
+      if(this.state.authRound<last){
+        // verify returned another CHALLENGE_OTP on a new channel set — loop
+        this.beginOtpRound(this.state.authRound+1);
+        this.setState({verifying:false});
+      } else {
+        // CHALLENGE_FINISH → new-device/verify → {access, refresh} to Keychain
+        if(this._cdIv){ clearInterval(this._cdIv); this._cdIv=null; }
+        this._credPass=''; this._otp='';
+        this.setState({authed:true, verifying:false, authStep:'credentials', tokenPreview:'····a1f9', username:this._username});
+      }
+    }, 1200);
+  }
+  backToCredentials(){ if(this._cdIv){clearInterval(this._cdIv); this._cdIv=null;} if(this._authTo) clearTimeout(this._authTo); this._otp=''; this.setState({authStep:'credentials', otpError:null, verifying:false}); }
+
+  // Bearer fallback (§10 note / reCAPTCHA option c)
+  onTokenInput(e){ this._tokenRaw = e.target.value; if(this.state.authError) this.setState({authError:null}); }
+  onTokenKey(e){ if(e.key === 'Enter'){ e.preventDefault(); this.submitToken(); } }
+  submitToken(){
+    if(this.state.verifying) return;
+    const raw = (this._tokenRaw || '').trim().replace(/^Bearer\s+/i,'').trim();
+    if(!raw){ this.setState({authError:'Paste your session Bearer to continue.', verifying:false}); return; }
+    this.setState({verifying:true, authError:null});
+    if(this._authTo) clearTimeout(this._authTo);
+    this._authTo = setTimeout(()=>{
+      const bad = raw.length < 24 || /expired|invalid|401/i.test(raw);
+      if(bad){ this.setState({verifying:false, authError:'Live ping returned 401 — token expired or invalid. Not stored.'}); }
+      else { this._tokenRaw=''; this.setState({authed:true, verifying:false, authError:null, tokenPreview:'····'+raw.slice(-4), username:'operator'}); }
+    }, 1300);
+  }
+
+  signOut(){
+    if(this._authTo) clearTimeout(this._authTo);
+    if(this._cdIv){ clearInterval(this._cdIv); this._cdIv=null; }
+    this._tokenRaw=''; this._credUser=''; this._credPass=''; this._otp='';
+    this.setState({authed:false, verifying:false, authMode:'login', authStep:'credentials', authRound:0,
+      selChannel:null, resendIn:0, credError:null, otpError:null, authError:null, tokenPreview:null, username:null, activeModule:null});
+  }
 
   // ---------- palette ----------
   C = {
@@ -700,7 +1017,7 @@ class Component extends DCLogic {
     return arr;
   }
 
-  componentWillUnmount(){ if(this._iv) clearInterval(this._iv); }
+  componentWillUnmount(){ if(this._iv) clearInterval(this._iv); if(this._cdIv) clearInterval(this._cdIv); if(this._authTo) clearTimeout(this._authTo); }
 
   selectStock(t){ if(this._iv){clearInterval(this._iv); this._iv=null;} this.setState({selectedStock:t, scrub:43, playing:false}); }
   setModule(m){ if(this._iv){clearInterval(this._iv); this._iv=null;} this.setState({activeModule:m, playing:false}); }
@@ -1226,7 +1543,64 @@ class Component extends DCLogic {
       };
     });
 
+    // ---- session gate view state (credential + MFA login) ----
+    const authed = this.state.authed;
+    const verifying = this.state.verifying;
+    const mode = this.state.authMode || 'login';
+    const step = this.state.authStep || 'credentials';
+    const round = this.OTP_ROUNDS[this.state.authRound] || this.OTP_ROUNDS[0];
+    const selId = this.state.selChannel || round.def;
+    const selCh = round.channels.find(c=>c.id===selId) || round.channels[0];
+    const resendIn = this.state.resendIn || 0;
+    const btn = (dis)=> `width:100%; margin-top:18px; padding:12px 14px; border-radius:8px; border:none; text-align:center; cursor:${dis?'default':'pointer'}; font-family:'Geist',sans-serif; font-weight:600; font-size:13px; letter-spacing:0.02em; color:#04121a; background:${dis?'#3a8fb0':'#58c4dd'}; opacity:${dis?0.8:1}; transition:background .15s;`;
+    const channelChips = round.channels.map(c=>{
+      const on = c.id===selId;
+      return { label:c.label, glyph:c.glyph, target:c.target, onClick:()=>this.selectChannel(c.id),
+        style:`flex:1; display:flex; flex-direction:column; align-items:center; gap:5px; padding:10px 6px; border-radius:8px; cursor:pointer; background:${on?'rgba(88,196,221,0.10)':'#070a10'}; border:1px solid ${on?'rgba(88,196,221,0.5)':'rgba(255,255,255,0.10)'}; color:${on?C.accent:C.muted};`,
+        glyphStyle:'font-size:15px; line-height:1;', labelStyle:'font-size:10px; letter-spacing:0.02em;' };
+    });
+    const authVals = {
+      authed, showLogin: !authed, verifying, authMode: mode,
+      showCredentials: mode==='login' && step==='credentials',
+      showOtp:         mode==='login' && step==='otp',
+      showBearer:      mode==='bearer',
+      // step 1 — credentials
+      onCredUser:(e)=>this.onCredUser(e), onCredPass:(e)=>this.onCredPass(e), onCredKey:(e)=>this.onCredKey(e),
+      submitCredentials:()=>this.submitCredentials(),
+      credBtnLabel: verifying ? 'Signing in…' : 'Sign in',
+      credBtnStyle: btn(verifying),
+      hasCredError: !!this.state.credError, credError: this.state.credError || '',
+      useBearer:()=>this.setAuthMode('bearer'), useLogin:()=>this.setAuthMode('login'),
+      // step 2 — OTP
+      channelChips,
+      otpSentNote: `Code sent to ${selCh.target} via ${selCh.label}.`,
+      hasRoundNote: this.state.authRound>0,
+      roundNote: `Additional verification required — a fresh code was sent via ${selCh.label}.`,
+      onOtpInput:(e)=>this.onOtpInput(e), onOtpKey:(e)=>this.onOtpKey(e), verifyOtp:()=>this.verifyOtp(),
+      otpBtnLabel: verifying ? 'Verifying…' : 'Verify code',
+      otpBtnStyle: btn(verifying),
+      hasOtpError: !!this.state.otpError, otpError: this.state.otpError || '',
+      resendOtp:()=>this.resendOtp(),
+      resendLabel: resendIn>0 ? `Resend in ${resendIn}s` : 'Resend code',
+      resendStyle: `font-size:11px; cursor:${resendIn>0?'default':'pointer'}; color:${resendIn>0?C.faint:C.accent};`,
+      backToCredentials:()=>this.backToCredentials(),
+      // bearer fallback
+      onTokenInput:(e)=>this.onTokenInput(e), onTokenKey:(e)=>this.onTokenKey(e), submitToken:()=>this.submitToken(),
+      verifyLabel: verifying ? 'Verifying with live ping…' : 'Verify & open terminal',
+      verifyBtnStyle: btn(verifying),
+      hasAuthError: !!this.state.authError, authError: this.state.authError || '',
+      pingDotColor: verifying ? C.armed : (this.state.authError ? C.sell : C.buy),
+      pingStatus: verifying ? 'Pinging session endpoint — one short authenticated request…'
+                : (this.state.authError ? 'Rejected in-browser — token was not written to the Keychain.'
+                : 'The Bearer is verified with a live ping before it is accepted.'),
+      // session
+      signOut:()=>this.signOut(),
+      tokenPreview: this.state.tokenPreview || '····a1f9',
+      accountLabel: this.state.username || 'operator'
+    };
+
     return {
+      ...authVals,
       headerAsOf: dateFor(43)+' · 16:32',
       modules,
       moduleTitle:hd.title, moduleSubtitle:hd.sub,

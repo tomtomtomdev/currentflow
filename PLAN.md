@@ -256,6 +256,100 @@ alone couldn't do). No locked behavior changes; no spec bump.
   can accrue — the event that promotes modules past `OBSERVATION_ONLY` (RULE B) and opens the
   LD-8 ML gate. The harness for all of that already exists (slices 8–9).
 
+## Slice 11 — In-app username/password + MFA login flow  ✅  (spec v1.2, §9.1)
+**Built as a harness against the verified §4.1 contract** (injected-transport tests, no live
+network — the slice-8/9/10 posture). Two §4.1 open items are genuinely live-gated and stay
+deferred to an operator probe, NOT guessed in code: (a) reCAPTCHA-v3 server *enforcement* —
+`login_username` carries `recaptcha_token` as a pass-through param (empty = the pure-Python
+attempt; paste an operator-minted token if the probe shows enforcement); (b) the refresh route —
+`AuthClient.refresh` + the `build_session_refresh` seam **fail loud** (→ re-login) until
+`config.AUTH_REFRESH_PATH` is pinned from a real capture. The Bearer **paste** stays as the
+fallback (`./run.sh paste`). 23 new tests (324 total).
+
+**Goal:** sign in with **credentials**, not a hand-pasted Bearer. `./run.sh` → browse always lands
+honestly: the login form when there's no valid session, the terminal when authed. This is the
+credential login the slice-1 deferral (`login/v6` + MFA) always pointed at; the transport,
+Keychain store, and session factory from slice 10 are the substrate. Engine untouched — auth
+plumbing only (spec v1.2 bump for the §9.1/§10/§15 posture change; no LD/weight/gate change).
+
+**Wire contract: verified** from `login-stockbit.har` (2026-07-03), pinned in `DATA_SOURCES.md §4.1`.
+The 5-step flow (all `POST … application/json` to `exodus.stockbit.com`): `login/v6/username` →
+`mfa/verification/v1/challenge/{start, otp/send, otp/verify}` (verify **loops** on `next_challenge`
+until `CHALLENGE_FINISH`) → `login/v6/new-device/verify` → `{access, refresh}` tokens.
+
+> **① FIRST STEP — probe reCAPTCHA enforcement (decides the whole approach).** `login/v6/username`
+> carries a `recaptcha_token` (reCAPTCHA **v3** — *invisible*, silently browser-minted; the operator
+> only ever sees the OTP steps, never a challenge). The question is **not UX, it's server
+> enforcement.** Probe (cheap): send `login/v6/username` with the token **omitted / empty / junk**
+> and observe.
+>   - **Not enforced** → pure-Python login works; recaptcha is a non-issue; skip the fork below.
+>   - **Enforced** → then, and only then, pick one: (a) headless browser (Playwright) to run
+>     `grecaptcha.execute(...)` — heavy dep vs. stdlib-core, fragile vs. bot scoring; (b) operator-
+>     assisted token paste (~2 min TTL); (c) keep the slice-10 Bearer paste as the real auth path
+>     (honest fallback). Pin the chosen path into §9.1 before coding `dal/auth.login`.
+> Probe `player_id` (OneSignal UUID) in the same request — required / arbitrary-UUID / omittable is
+> **unconfirmed**. Also **unconfirmed:** the refresh-endpoint route/shape (not exercised in the HAR —
+> capture one). **Do not guess these in code.**
+
+**DAL / session (the new plumbing):**
+- [x] **`dal/auth.py`** — auth client over the exodus auth endpoints (own `HttpxTransport`, no
+      Bearer yet), matching §4.1 exactly:
+      `login_username(user, password, recaptcha_token, player_id)` → `{login_token, verification_token}`
+      (new-device branch) or direct session (trusted-device — **unconfirmed**, guard for it);
+      `challenge_start(verification_token)` → `next_challenge` + channels;
+      `otp_send(verification_token, channel)`; `otp_verify(verification_token, otp)` → `next_challenge`
+      (**caller loops** send→verify until `CHALLENGE_FINISH`);
+      `new_device_verify(login_token)` → `{access:{token,expired_at}, refresh:{token,expired_at}, user}`;
+      `refresh(refresh_token)` → new access (**route TBC — leave unimplemented/raising until captured**).
+      Maps bad creds / failed OTP → `AuthError`, network → `TransportError`; **never logs** password,
+      OTP, recaptcha, or token bodies.
+- [x] **Extend the token store** (`dal/token_store.py`) to hold **access + refresh (+ expiries)** in
+      the Keychain (one JSON blob) — `get_access`/`get_refresh`/`set_session`/`clear`; missing →
+      `None`, never a blank header (unchanged contract).
+- [x] **Wire `build_live_client`'s `refresh` seam** (`dal/session.py`) to `dal/auth.refresh` using
+      the stored refresh token, so a `401` triggers a real token refresh (not a re-paste); on
+      refresh failure it fails loud (→ UI returns to the login form). *(Depends on the refresh route.)*
+- [x] **CLI** (`dal/login.py`): add a **`login`** subcommand (prompt username + hidden password,
+      then drive the OTP challenge loop interactively → store session); keep `status`/`check`/`clear`;
+      `paste` stays as the out-of-band fallback (§10 note / reCAPTCHA option 3).
+
+**UI (the view):**
+- [x] **`run.sh serve`**: drop the fail-loud token precondition (`run.sh:62-65`) so the server
+      always starts; keep `login`/`check`/`test`. (May still `log` a hint, never block launch.)
+- [x] **Auth gate in `ui/app.py`**: on load read session status (Keychain, no network); no valid
+      session → render the **login flow instead of the modules** (fail loud, never blank/stale).
+- [x] **Login view** (`ui/login_view.py`) — a small **state machine** matching the flow:
+      `CREDENTIALS` (user + password[+recaptcha per the decision]) → `OTP` (channel picker + code
+      entry, resend honoring `next_attempt_in`, **repeats** while `next_challenge==CHALLENGE_OTP`)
+      → `FINISH` (`new_device_verify` → `store.set_session(...)` → rerun into terminal). On
+      `AuthError` show an in-browser error and **store nothing**. Credentials/OTP held transiently
+      in the run only — never persisted, rendered back, or logged (§9.1 posture).
+- [x] **Top-bar session control**: masked account/session status (username + masked token) +
+      **sign-out** → `store.clear()` + rerun back to the login form.
+- [x] **Mid-session 401**: DAL 401 → attempt refresh (session seam above); refresh fail → back to
+      the login form. Never a silent stale/empty fallback.
+- [x] **Scope guardrail:** auth only — establishes the operator's *own* session; does not gate or
+      alter any signal, number, or RULE A/B behavior; gated modules stay server-authoritative via
+      the ledger.
+
+**Tests** (injected transport — no live network, mirrors the slice-10 transport tests; use the
+§4.1 recorded response shapes as fixtures):
+- [x] `dal/auth`: username→new-device `{login_token, verification_token}`; challenge start→channels;
+      **multi-round** otp verify loop (`CHALLENGE_OTP`→`CHALLENGE_OTP`→`CHALLENGE_FINISH`);
+      new-device verify→`{access, refresh}`; bad creds / failed OTP→`AuthError`; network→`TransportError`;
+      **assert password/OTP/recaptcha/token bodies never appear in logs**.
+- [x] token store: access+refresh(+expiry) round-trip, clear, missing→None.
+- [x] session factory: `401 → refresh → retry ok`, and `401 → refresh fail → AuthError` (fail loud)
+      — *once the refresh route is confirmed; until then test the fail-loud-and-relogin path.*
+- [x] login view-model (pure, Streamlit runtime not exercised): CREDENTIALS→OTP→FINISH transitions,
+      OTP loop over two channels, rejected login stores nothing + surfaces error, sign-out clears →
+      login; credentials/token never appear in rendered output.
+
+- **Decisions-log entry** to add to `PROGRESS.md` when this lands: "in-app username/password + MFA
+  login flow (verified `login/v6` + `mfa/verification/v1` contract, §4.1) replaces Bearer-paste as
+  the primary auth surface; access+refresh in Keychain, credentials transient; **spec bumped
+  v1.1 → v1.2** (§9.1/§10/§15), engine unchanged. reCAPTCHA-v3 / refresh-route resolution: <fill in>."
+
 ---
 
 ## Acceptance criteria (definition of done — `LOCKED_SPEC.md` §13)

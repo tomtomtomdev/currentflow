@@ -90,11 +90,46 @@ Order book is **live only**; Stockbit does not serve historical L2. Absorption d
 | Risk | Detail | Mitigation |
 |---|---|---|
 | **Paywall counters** | `paywall/eligibility/check`, `paywall/counter/increment` gate `marketdetectors` + broker history behind Pro with **usage counters**. Backtest = ~150 names × 2yr daily broker summary = tens of thousands of calls. | Throttle; **ingest once, cache to DuckDB keyed `(symbol, date, as_of)`; never re-pull a stored datum.** Nightly incremental only. |
-| **Auth token lifecycle** | Bearer token from logged-in session (`login/v6` + MFA). Expires. | DAL needs a token-refresh / re-capture path; fail loud on 401, never silently emit stale/empty. |
+| **Auth token lifecycle** | Bearer token from logged-in session (`login/v6` + MFA). Access ~24h, refresh ~7d (see §4.1). Expires. | DAL needs a token-refresh / re-capture path; fail loud on 401, never silently emit stale/empty. |
 | **Look-ahead timing** | `netbs_date` / `data_last_updated` let you stamp `as_of`, but HAR can't reveal **when EOD broker summary actually publishes** vs next-session open. | **Measure publish latency empirically** before trusting any same-day-broker signal. Scheduler fires on observed publication, not clock (spec LD-5). |
 | **Empty ≠ zero** | Illiquid names return all-zero rows (observed on XBIG). | Integrity check: distinguish "no trades" from "not yet published" from "gap"; never read a gap as zero flow (spec §2). |
 | **HTML fragility** | Financial statements are rendered HTML. | Isolate the parser; treat breakage as routine maintenance; snapshot raw HTML so re-parsing is possible without re-fetch. |
 | **ToS** | Own-session scraping. | Local-only, no redistribution, personal use (spec §10 / §15). |
+
+### 4.1 Login flow — verified wire contract (`login-stockbit.har`, 2026-07-03)
+
+Pinned from a real own-session capture. All `POST … application/json` against `https://exodus.stockbit.com`.
+Values below are **field shapes only** — secrets (password, OTP, tokens, recaptcha) are never reproduced here.
+The final `access.token` is the `Authorization: Bearer …` the rest of the DAL already uses (JWT, RS256).
+
+**1 · `POST /login/v6/username`**
+- req: `{ user, password, recaptcha_token, recaptcha_version: "RECAPTCHA_VERSION_3", player_id }`
+- resp (new-device / MFA branch, observed): `data.new_device.multi_factor.{ login_token, verification_token }` (both 36-char).
+  *(Trusted-device path — where this call returns `access`/`refresh` directly with no MFA — was **not** captured; HAR-to-confirm.)*
+
+**2 · `POST /mfa/verification/v1/challenge/start`**
+- req: `{ verification_token }`
+- resp: `data.next_challenge` (e.g. `CHALLENGE_OTP`), `data.supporting_data.otp.{ channels:[{channel,target}], default_channel }`. Channels seen: `CHANNEL_EMAIL`, `CHANNEL_WHATSAPP`, `CHANNEL_SMS` (target masked, e.g. `tom****@gmail.com`).
+
+**3 · `POST /mfa/verification/v1/challenge/otp/send`**
+- req: `{ verification_token, channel }`
+- resp: `data.{ channel, target(masked), next_attempt_in: 60 }` (resend cooldown, seconds).
+
+**4 · `POST /mfa/verification/v1/challenge/otp/verify`**  ← **loops**
+- req: `{ verification_token, otp }`  (6-digit)
+- resp: `data.next_challenge`. **This is a loop**: a verify can return another `CHALLENGE_OTP` with a *new* channel set (the capture required two rounds — email, then WhatsApp/SMS) before finally returning `CHALLENGE_FINISH`. Drive: repeat send→verify until `next_challenge == CHALLENGE_FINISH`.
+
+**5 · `POST /login/v6/new-device/verify`**  (only after `CHALLENGE_FINISH`)
+- req: `{ multi_factor: { login_token } }`  (the `login_token` from step 1)
+- resp: `data.access.{ token, expired_at }`, `data.refresh.{ token, expired_at }`, plus `data.user.{ id, username, email, exchange, privilege, … }`. Observed lifetimes: **access ≈ 24h, refresh ≈ 7d** (ISO-8601 `expired_at`).
+
+**Open items (not resolved by this HAR — do not guess in code):**
+- **`recaptcha_token`** — reCAPTCHA **v3** (`recaptcha_version: RECAPTCHA_VERSION_3`), a ~2148-char token the browser generates *silently* via `grecaptcha.execute(siteKey, …)`. v3 is **invisible** — no challenge is ever shown to the user (consistent with the operator seeing only the OTP steps), but a token is still POSTed. **Open question is server-side enforcement, not UX:** does `login/v6/username` reject a request that omits the token (or sends a dummy / low-scored one)?
+  - **Probe first** (cheap, decides everything): attempt `login/v6/username` with `recaptcha_token` omitted / empty / junk and see whether it 200s or errors.
+  - If **not enforced** → a pure-Python login works and the captcha is a non-issue.
+  - If **enforced** → mint the token by (a) driving a real browser (Playwright/Selenium `grecaptcha.execute`) — a heavy dep against the stdlib-core posture — or (b) an operator-assisted token, or (c) fall back to the slice-10 Bearer paste. This fork is the slice-11 design decision **only if the probe shows enforcement.**
+- **`player_id`** — a OneSignal push id (UUID). Whether it is required / accepts an arbitrary UUID / may be omitted is **unconfirmed** (probe alongside the recaptcha test).
+- **Refresh endpoint** — access was valid for the whole capture, so the refresh route + request/response shape are **unconfirmed**. Capture a token-refresh exchange (or an expiry) before wiring `dal/auth.refresh`.
 
 ---
 

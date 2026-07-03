@@ -523,8 +523,105 @@ def _render_ml(store: Store) -> None:
         )
 
 
+def _login_controller():
+    """The login controller lives in session_state so MFA handles + the httpx client
+    survive Streamlit reruns during the flow. Created lazily on first use."""
+    from currentflow.dal.auth import AuthClient
+    from currentflow.ui.login_view import LoginController
+
+    if "login_ctl" not in st.session_state:
+        st.session_state["login_ctl"] = LoginController(AuthClient())
+        st.session_state["login_view"] = None
+    return st.session_state["login_ctl"]
+
+
+def _run(coro):
+    import asyncio
+
+    return asyncio.run(coro)
+
+
+def _render_login() -> None:
+    """The login flow — rendered instead of the modules when there is no session.
+    Fail loud: never a blank/stale terminal (§9.1). Credentials/OTP held only in this
+    run, never persisted or echoed back."""
+    from currentflow.dal.token_store import KeychainTokenStore
+    from currentflow.ui import login_view as lv
+
+    ctl = _login_controller()
+    store = KeychainTokenStore()
+    view = st.session_state.get("login_view") or lv.initial_view(store)
+
+    st.title("CurrentFlow — sign in")
+    st.caption(
+        "Your own Stockbit session (own risk, §15). Credentials and OTP are used only "
+        "to sign in — never stored, never logged. Only the session token is kept."
+    )
+    if view.error:
+        st.error(view.error)
+
+    if view.state == lv.CREDENTIALS:
+        with st.form("credentials"):
+            user = st.text_input("Username / email")
+            password = st.text_input("Password", type="password")
+            recaptcha = st.text_input(
+                "reCAPTCHA token (leave blank to try without)", type="password"
+            )
+            if st.form_submit_button("Sign in"):
+                st.session_state["login_view"] = _run(
+                    ctl.submit_credentials(user, password, recaptcha_token=recaptcha)
+                )
+                st.rerun()
+    elif view.state == lv.OTP:
+        labels = {f"{c.channel} → {c.target}": c.channel for c in view.channels}
+        pick = st.selectbox("OTP channel", list(labels)) if labels else None
+        col_send, col_verify = st.columns(2)
+        with col_send:
+            if st.button("Send OTP") and pick:
+                st.session_state["login_view"] = _run(ctl.send_otp(labels[pick]))
+                st.rerun()
+        with col_verify:
+            with st.form("otp"):
+                code = st.text_input("OTP code")
+                if st.form_submit_button("Verify"):
+                    st.session_state["login_view"] = _run(ctl.verify_otp(code))
+                    st.rerun()
+    elif view.state == lv.FINISH:
+        st.session_state["login_view"] = view
+        st.success(f"Signed in as {view.username or 'operator'} — loading terminal…")
+        st.rerun()
+
+
+def _session_topbar() -> bool:
+    """Masked session status + sign-out in the sidebar. Returns True while a valid
+    session exists (module rendering proceeds), False after sign-out."""
+    from currentflow.dal.session import session_status
+    from currentflow.dal.token_store import KeychainTokenStore
+    from currentflow.ui import login_view as lv
+
+    store = KeychainTokenStore()
+    st_status = session_status(store)
+    if not st_status["has_token"]:
+        return False
+    who = st_status.get("username") or "operator"
+    st.sidebar.caption(f"● {who} — {st_status['preview']} [{st_status['source']}]")
+    if st.sidebar.button("Sign out"):
+        _login_controller().sign_out() if "login_ctl" in st.session_state else store.clear()
+        st.session_state["login_view"] = lv.LoginView(lv.CREDENTIALS)
+        st.rerun()
+    return True
+
+
 def main() -> None:
     st.set_page_config(page_title="CurrentFlow", layout="wide")
+
+    # Auth gate (slice 11): no valid session → the login flow, never blank modules.
+    if not _session_topbar():
+        _render_login()
+        st.divider()
+        st.caption(DISCLAIMER)
+        return
+
     store = _store(_db_path())
 
     module = st.sidebar.radio("Module", MODULES, index=0)

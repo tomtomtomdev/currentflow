@@ -1,6 +1,8 @@
-# IDX Smart-Money Screener & Flow Terminal — Locked Specification v1.1
+# IDX Smart-Money Screener & Flow Terminal — Locked Specification v1.2
 
 **Status:** LOCKED. v1.0 resolved the eight contradictions from `CONSOLIDATED_THESIS.md` into a decision engine. **v1.1 merges `vector-lab.md`** — the same domain re-framed as a private, single-operator flow *terminal* — into this spec: the v1.0 engine is kept intact as the core, wrapped in an observation/UI layer, hardened data posture, and a stricter presentation gate. Build to this; changes require a version bump and a documented reason.
+
+**Changelog — v1.2 (2026-07-03):** §9.1 in-app **session/auth** re-scoped from an out-of-band Bearer *paste* to a full **username + password + MFA login flow** performed by the app against the exodus auth endpoints, yielding access + refresh tokens the DAL already expects (§10). §10 and §15 updated for the credential-handling posture. *Reason:* the operator asked to sign in with credentials rather than hand-capture a Bearer; the tool still consumes only the operator's own session, local-only, nothing republished — so LD-10 holds. No decision (LD-1…LD-8), weight, threshold, gate, pipeline stage, or RULE A/B behavior changed; this is auth plumbing only. The wire contract is now **verified from a real own-session capture** (`login-stockbit.har`, pinned in DATA_SOURCES §4.1) — see the flow in §9.1. **Two items remain unconfirmed and gate implementation:** whether the `recaptcha_token` (reCAPTCHA **v3** — invisible, silently browser-minted; no challenge is ever shown, only the OTP steps are) is **server-enforced**, and the refresh-endpoint shape (not exercised in the capture). The reCAPTCHA question is resolved by a cheap probe (attempt login without/with a junk token); a headless-browser dependency is warranted **only if the probe shows enforcement**.
 
 **Changelog — v1.1 (2026-06-30):** §5 veto filters extended with the finer **trap taxonomy** (markup-on-thin-volume, wash/churn, broker rotation), absorbed from the detection-layer spec (`screener/CONSOLIDATED_SCREENER_SPEC.md`). *Reason:* the single "distribution-dressed-as-accumulation" veto was coarse; these three named sub-screens catch pump, manufactured-volume, and disguised-single-player manipulation it misses. No decision (LD-1…LD-8), weight, or threshold changed.
 
@@ -195,6 +197,27 @@ The pipeline (§2) is the engine; this is the workbench over it. Modules are tie
 - **AI Buy/Sell Ranking** — pre-validation a "flow-derived ranking, not a recommendation"; stronger language only once forward hit-rate is paper-validated (LD-8 also governs the ML ranker).
 - **Daily Top Opportunities** — "highest flow-signal names today," observation framing; narrative digest of what the flow shows.
 
+### 9.1 Session gate (in-app login flow, v1.2)
+
+*(v1.2 re-scope of the auth surface. No locked-behavior change to the engine — auth plumbing only. Still the operator's own session, local-only, never republished — LD-10 / §10 / §15 hold. The wire contract is **verified** from `login-stockbit.har` and pinned in DATA_SOURCES §4.1; the two unconfirmed items below gate implementation.)*
+
+The launcher (`run.sh`) always starts the server; the auth gate lives in the terminal shell. On load the app reads session status from the Keychain (no network). No valid session → the shell renders the **login flow instead of the modules** — never a blank or stale terminal (DAL "fail loud, never emit stale/empty"). The flow (verified endpoints, all `POST` to `exodus.stockbit.com`; full field shapes in DATA_SOURCES §4.1):
+
+1. **`/login/v6/username`** — `{user, password, recaptcha_token, recaptcha_version, player_id}` → on a new device returns `multi_factor.{login_token, verification_token}`.
+2. **`/mfa/verification/v1/challenge/start`** — `{verification_token}` → `next_challenge` + OTP channels (email / WhatsApp / SMS).
+3. **`/mfa/.../otp/send`** then **`/otp/verify`** — operator picks a channel, receives a code, enters it. **The verify step loops**: it may return another `CHALLENGE_OTP` (a second channel) before `CHALLENGE_FINISH`. The form drives send→verify until finished.
+4. **`/login/v6/new-device/verify`** — `{multi_factor:{login_token}}` → `data.access.{token, expired_at}` + `data.refresh.{token, expired_at}` (access ≈ 24h, refresh ≈ 7d). Both tokens are stored in the OS Keychain and the app reruns into the terminal.
+
+- **Bad credentials / failed OTP → in-browser error**, nothing stored.
+- **Valid session → terminal.** Modules render as today. A masked account/session status and a **sign-out** control (clears the Keychain tokens → returns to the login form) live in the top bar.
+- **Auth loss mid-session.** On a DAL `401` the app first attempts a **refresh** using the stored refresh token (the token-refresh path DATA_SOURCES §4 requires); if refresh fails it returns the operator to the login form. Never a silent fallback to stale/empty data.
+
+**Open items gating implementation (DATA_SOURCES §4.1):** (a) `recaptcha_token` is a **reCAPTCHA v3** token — invisible (no challenge is presented; the operator sees only the OTP steps) and silently browser-minted. The open question is **server-side enforcement**, settled by a cheap probe (login with the token omitted / junked): if unenforced, a pure-Python login works; if enforced, mint it via a headless browser or an assisted step, else fall back to the slice-10 Bearer paste. (b) The **refresh endpoint** shape was not in the capture. Until these are settled, the slice-10 out-of-band Bearer capture remains the working fallback (§10).
+
+**Credential handling (posture):** username/password and any OTP are held **transiently in memory** for the duration of the login exchange and are **never persisted, logged, or written to disk** — only the returned access/refresh tokens reach the Keychain. Login talks to the exodus auth endpoints and nowhere else; nothing leaves the machine beyond that own-session authentication (§10/§15).
+
+The login flow is auth only — it establishes the operator's *own* session. It does not gate or alter any signal, number, or RULE A/B behavior.
+
 ---
 
 ## 10. Data posture & stack (LD-10) — locked
@@ -204,6 +227,8 @@ The pipeline (§2) is the engine; this is the workbench over it. Modules are tie
 **Required feeds:** broker summary (core), OHLCV, foreign/domestic classification, corporate actions + suspension/halt + ARA/ARB state, free-float / shares-outstanding, financials (TTM). Order-book depth is an optional tier — some modules degrade gracefully without it.
 
 **Stack (single-user, local-first):** Python (Pandas/Polars, TA-Lib) for analytics & signals; local time-series store (SQLite / DuckDB — no cloud for one user); **Streamlit** prototype UI (richer later); feature-store schema with `as_of` stamps so gated modules have clean inputs when they earn validation. *(Supersedes the v1.0 thesis's TimescaleDB/Postgres/Docker-cloud sketch — over-built for one operator.)*
+
+**Session / auth surface (v1.2):** the operator signs in with **username + password (+ MFA)** via the in-app login flow (§9.1), which authenticates against the exodus auth endpoint (`login/v6` + MFA) and stores the returned **access + refresh** tokens in the OS Keychain; the access token is read fresh per request and refreshed on `401`, never written to disk in plaintext. Credentials/OTP are transient in-memory only — never persisted (§9.1). *(The slice-10 CLI `login paste` of a hand-captured Bearer remains a fallback for capturing a session out-of-band, but the primary surface is the credential login.)* Own authenticated session only, own risk — §15.
 
 ---
 
@@ -262,7 +287,9 @@ Lots of 100 shares · auto-reject bands (±7% main board / ±10–25% dev board 
 - Not investment advice. All outputs are observations for the operator's own decisions.
 - Data consumed from the operator's own session; used at own risk; not republished.
 - No live execution. Paper trading only. Paper results do not guarantee live performance.
+- The operator's own Stockbit credentials/OTP are entered locally, used only to authenticate against the exodus endpoint, and never persisted, logged, or transmitted anywhere else (§9.1); only the resulting session tokens are stored (OS Keychain). Own-session login, own risk.
 
 ---
 
+*v1.2 (2026-07-03): in-app username/password (+MFA) login flow re-scope (§9.1/§10/§15); auth plumbing only, engine unchanged.*
 *v1.1 consolidated from: `LOCKED_SPEC.md` v1.0 (engine core) + `vector-lab.md` (terminal re-frame, presentation gate, data posture). Upstream: `CONSOLIDATED_THESIS.md` and the six source drafts.*

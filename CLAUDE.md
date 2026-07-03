@@ -1,7 +1,7 @@
 # CLAUDE.md — CurrentFlow repo conventions
 
 CurrentFlow is a **private, single-operator IDX smart-money screener & flow terminal**.
-Source of truth: [`LOCKED_SPEC.md`](LOCKED_SPEC.md) (v1.1, LOCKED), with data mapping in
+Source of truth: [`LOCKED_SPEC.md`](LOCKED_SPEC.md) (v1.2, LOCKED), with data mapping in
 [`DATA_SOURCES.md`](DATA_SOURCES.md) and server-side pre-filters in [`screeners.md`](screeners.md).
 
 **Read the spec before writing code.** Any change to locked behavior requires a spec version
@@ -120,9 +120,13 @@ The terminal's look & interaction are specified as a **high-fidelity design hand
 - [`design/README.md`](design/README.md) — the handoff: global shell (top bar / nav rail / main
   pane / ARMED watchlist / disclaimer ticker), all 8 module screens, design tokens (colors,
   Geist/Geist Mono type, spacing), interactions, and state model.
+- [`design/README-login-session-gate.md`](design/README-login-session-gate.md) — the slice-11
+  login / session-gate handoff (§9.1): the credential + OTP flow that stands between `./run.sh`
+  and the terminal. Auth plumbing only — gates no signal or RULE A/B behavior.
 - [`design/IDX-Flow-Terminal.dc.html`](design/IDX-Flow-Terminal.dc.html) — working prototype
-  (`.dc.html` design-tool format). **Reference only — do not ship this HTML.** Read it for
-  layout, styling, data shape, and interaction logic; charts are hand-built SVG.
+  (`.dc.html` design-tool format), now including the login/session gate. **Reference only — do
+  not ship this HTML.** Read it for layout, styling, data shape, and interaction logic; charts
+  are hand-built SVG.
 
 **Stack decision (2026-07-01): Streamlit** per §10 — pure Python, single process, Plotly/Altair
 for charts. Fidelity to the hifi prototype is *approximate*: the dark paned layout, keyboard nav,
