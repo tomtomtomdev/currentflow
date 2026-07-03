@@ -536,9 +536,21 @@ def _login_controller():
 
 
 def _run(coro):
+    """Drive a coroutine on ONE persistent per-session event loop.
+
+    The login flow caches an `httpx.AsyncClient` in `session_state` across reruns;
+    its connection pool binds to whatever loop first drives it. `asyncio.run` opens
+    AND closes a fresh loop per call, orphaning that pool — the next submit then hits
+    `RuntimeError: Event loop is closed` while closing stale connections. Reusing a
+    single open loop keeps the cached client valid for the life of the session."""
     import asyncio
 
-    return asyncio.run(coro)
+    loop = st.session_state.get("_event_loop")
+    if loop is None or loop.is_closed():
+        loop = asyncio.new_event_loop()
+        st.session_state["_event_loop"] = loop
+    asyncio.set_event_loop(loop)
+    return loop.run_until_complete(coro)
 
 
 def _render_login() -> None:
