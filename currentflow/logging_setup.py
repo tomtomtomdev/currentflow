@@ -7,9 +7,9 @@ survives to be read back later.
 
 Local-only, single-operator posture (CLAUDE.md / spec §10): the log lives under
 `LOG_DIR` (git-ignored) on the operator's machine and is never republished. The
-`net-error` formatter is already redacted at the seam — paths + coarse outcomes only,
-never a body, token, OTP, or exception message — so persisting these lines adds no new
-secret exposure.
+`net-error` formatter is already redacted at the seam — paths + coarse outcomes, plus
+(auth-4xx only) the server's sanitized rejection reason — never a body, token, OTP, or
+exception message — so persisting these lines adds no new secret exposure.
 """
 
 from __future__ import annotations

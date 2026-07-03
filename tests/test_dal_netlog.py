@@ -61,6 +61,25 @@ def test_helper_err_line_is_error_when_fail_loud(caplog):
     assert "status=" not in msg
 
 
+def test_helper_appends_server_message_when_provided(caplog):
+    caplog.set_level(logging.DEBUG)
+    log = logging.getLogger("t.net.c")
+    log_net_error(log, method="POST", path="login/v6/username", status=400,
+                  outcome="fail-loud", retryable=False, server_message="bad creds")
+    (rec,) = _net_lines(caplog)
+    msg = rec.getMessage()
+    assert "status=400" in msg and 'msg="bad creds"' in msg
+
+
+def test_helper_omits_msg_field_when_no_server_message(caplog):
+    caplog.set_level(logging.DEBUG)
+    log = logging.getLogger("t.net.d")
+    log_net_error(log, method="GET", path="p", error_class="ConnectError",
+                  outcome="fail-loud", retryable=False)
+    (rec,) = _net_lines(caplog)
+    assert "msg=" not in rec.getMessage()  # class-name-only path unchanged
+
+
 # --- transport seam (HttpxTransport) ---------------------------------------------
 
 
@@ -131,6 +150,40 @@ async def test_auth_4xx_reject_logged_error(caplog):
     await auth.aclose()
     (rec,) = _net_lines(caplog)
     assert rec.levelno == logging.ERROR and "status=401" in rec.getMessage()
+
+
+async def test_auth_4xx_reject_carries_server_message(caplog):
+    """The single fail-loud carve-out: an auth 4xx persists the server's own reason
+    (`message`/`error` field) so a 400 can be diagnosed from the log alone — recaptcha
+    enforcement vs bad creds vs player_id — without re-running the login."""
+    caplog.set_level(logging.DEBUG)
+    auth = AuthClient(
+        client=_mock_client(
+            lambda r: httpx.Response(400, json={"message": "recaptcha token required"})
+        )
+    )
+    with pytest.raises(AuthError):
+        await auth.login_username("tommy", "s3cr3t-pw")
+    await auth.aclose()
+    (rec,) = _net_lines(caplog)
+    msg = rec.getMessage()
+    assert "status=400" in msg
+    assert 'msg="recaptcha token required"' in msg
+
+
+async def test_auth_4xx_server_message_stays_one_greppable_line(caplog):
+    """A hostile/multiline server body must not break the single-line net-error
+    invariant: newlines collapse and the reason is length-capped."""
+    caplog.set_level(logging.DEBUG)
+    noisy = "invalid\nrequest\r\n" + "x" * 500
+    auth = AuthClient(client=_mock_client(lambda r: httpx.Response(400, json={"error": noisy})))
+    with pytest.raises(AuthError):
+        await auth.login_username("tommy", "s3cr3t-pw")
+    await auth.aclose()
+    (rec,) = _net_lines(caplog)
+    msg = rec.getMessage()
+    assert "\n" not in msg and "\r" not in msg
+    assert len(msg) < 400  # capped, not the full 500-char body
 
 
 async def test_auth_secrets_never_appear_in_netlog(caplog):
