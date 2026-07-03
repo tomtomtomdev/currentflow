@@ -41,3 +41,25 @@ def may_display_number(
 ) -> bool:
     """RULE B gate: True only when the module has cleared paper validation."""
     return module_state(module, registry) is ModuleState.VALIDATED
+
+
+# The single token every gated module renders in place of a withheld number/rank/verb.
+WITHHELD = "•••"
+
+
+def gated_display(
+    module: str,
+    value: object,
+    *,
+    registry: dict[str, ModuleState] | None = None,
+    fmt: str = "{}",
+) -> str:
+    """Return the formatted `value` ONLY when `module` is VALIDATED; otherwise `WITHHELD`.
+
+    The one place the observation↔claim switch is applied for every gated module (SMS,
+    AI ranking, Daily Top). The switch is driven by the (server-authoritative) registry —
+    never a client toggle (CLAUDE.md / LD-9). A `None` value is always withheld.
+    """
+    if value is None or not may_display_number(module, registry):
+        return WITHHELD
+    return fmt.format(value)

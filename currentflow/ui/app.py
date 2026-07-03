@@ -62,6 +62,8 @@ from currentflow.ui.risk_view import (
 )
 from currentflow.ui.sector_view import scatter_points, sector_rows
 from currentflow.ui.sms_view import GATE_BANNER, WATCHLIST_FRAMING, component_rows, score_display, state_label
+from currentflow.ui import daily_top_view, ranking_view
+from currentflow.validation.promotion import ValidationLedger
 
 MODULES = [
     "⇄ Broker Flow",
@@ -72,6 +74,8 @@ MODULES = [
     "✦ Sector Rotate",
     "◈ Risk Monitor",
     "∑ SMS / Rank 🔒",
+    "◇ AI Ranking 🔒",
+    "☰ Daily Top 🔒",
 ]
 
 # Operator sector map — ILLUSTRATIVE, seeded from the design handoff ticker reference
@@ -91,6 +95,21 @@ def _db_path() -> str:
 @st.cache_resource
 def _store(path: str) -> Store:
     return Store(path)
+
+
+@st.cache_resource
+def _ledger() -> ValidationLedger:
+    """Server-authoritative per-module validation state (RULE B). Seeded OBSERVATION_ONLY;
+    only the paper-trade engine (`validation.promotion`) promotes a module — never the UI."""
+    return ValidationLedger()
+
+
+def _all_results(store: Store, track: str, decision_ts: datetime) -> list:
+    """Evaluate every ingested name for the ranking / daily-top gated modules."""
+    return [
+        engine.evaluate(store, s, decision_ts, track=track)
+        for s in _symbols(store, "daily_bar")
+    ]
 
 
 def _symbols(store: Store, table: str) -> list[str]:
@@ -348,16 +367,48 @@ def _render_sms(store: Store) -> None:
     track = st.sidebar.radio("Track", ["A", "B"], index=1)
     decision_ts = datetime.now()
     res = engine.evaluate(store, symbol, decision_ts, track=track)
+    registry = _ledger().states()   # server-authoritative RULE B state
     _trap_ribbon(store, symbol, decision_ts)
 
     left, right = st.columns([1, 1.4])
     with left:
-        st.metric("SMS (composite)", score_display(res.sms))   # •••  until VALIDATED
+        st.metric("SMS (composite)", score_display(res.sms, registry=registry))  # •••  until VALIDATED
         st.metric("State", state_label(res))
         st.caption(f"Wyckoff phase: {res.phase.phase.value} · track {res.track}")
     with right:
         st.subheader("Score components — observation")
         st.dataframe(pd.DataFrame(component_rows(res.sms)), use_container_width=True)
+
+
+def _render_ranking(store: Store) -> None:
+    st.title("AI Buy/Sell Ranking")
+    registry = _ledger().states()
+    st.caption(f":orange[GATED · RULE B] — {ranking_view.framing(registry=registry)}.")
+
+    symbols = _symbols(store, "daily_bar")
+    if not symbols:
+        st.warning("No data ingested yet — run the ingest pipeline first.")
+        return
+    track = st.sidebar.radio("Track", ["A", "B"], index=1)
+    results = _all_results(store, track, datetime.now())
+    st.dataframe(pd.DataFrame(ranking_view.ranking(results, registry=registry)), use_container_width=True)
+
+
+def _render_daily_top(store: Store) -> None:
+    st.title("Daily Top Opportunities")
+    registry = _ledger().states()
+    symbols = _symbols(store, "daily_bar")
+    if not symbols:
+        st.warning("No data ingested yet — run the ingest pipeline first.")
+        return
+    track = st.sidebar.radio("Track", ["A", "B"], index=1)
+    dig = daily_top_view.digest(_all_results(store, track, datetime.now()), registry=registry)
+    st.caption(f":orange[GATED · RULE B] — {dig['framing']}.")
+    st.metric("ARMED names today", dig["count"])
+    for row in dig["names"]:
+        st.subheader(f"{row['symbol']} · {row['track']}")
+        st.metric("SMS (composite)", row["score"])   # •••  until VALIDATED
+        st.dataframe(pd.DataFrame(row["components"]), use_container_width=True)
 
 
 def _render_sector(store: Store) -> None:
@@ -462,6 +513,8 @@ def main() -> None:
         MODULES[5]: _render_sector,
         MODULES[6]: _render_risk,
         MODULES[7]: _render_sms,
+        MODULES[8]: _render_ranking,
+        MODULES[9]: _render_daily_top,
     }
     if module in renderers:
         renderers[module](store)

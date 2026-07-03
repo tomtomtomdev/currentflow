@@ -159,14 +159,33 @@ Legend: ⬜ not started · 🟡 in progress · ✅ done. Keep the box in sync wi
   (they wire this shared fill engine to the validation state machine). Live fundamentals DAL feed
   (`fundamentals_live`) not yet wired — the tilt is pure over injected/SCR-4 values.
 
-## Slice 8 — Paper-trade validation wiring (RULE B switch)  ⬜
+## Slice 8 — Paper-trade validation wiring (RULE B switch)  ✅
 **Goal:** connect forward results to per-module validation state.
-- [ ] Backtest ⇄ forward-paper share one fill engine; results reconcile.
-- [ ] Per-module validation state; `PAPER_VALIDATION_MONTHS` (default 3) promotes observation → claim.
-- [ ] Implement the observation↔claim presentation switch across all gated modules (SMS, AI ranking,
-      Daily Top Opportunities).
-- [ ] Benchmark net-of-fees to LQ45 / sector index — never IHSG.
-- **Tests:** RULE B end-to-end — a module shows its number only after clearing validation.
+- [x] **Paper-trade runner** (`validation/runner.py`) — the forward-paper *run* deferred from slice 7:
+      walks a symbol through engine → trigger → tilt → order → **shared fill engine** → risk/exit,
+      emitting closed `PaperTrade`s. `run_backtest` (batch) + `run_forward` (day-by-day accrual) are
+      two code paths over the same `_attempt_entry`/`_attempt_exit` helpers (hence one `fill_order`),
+      so they **reconcile** over identical data (§13). Look-ahead-safe (per-day `decision_ts`).
+- [x] **`PaperTrade` atom** (`validation/trade.py`) — P&L net of the full fee stack by construction
+      (built from the two engine fills' cash flows; no fee math redone).
+- [x] **§8 metrics** (`validation/metrics.py`) — net-of-fee total/annualised return, Sharpe, max
+      drawdown, hit rate, turnover, excess-vs-benchmark; `walk_forward_sharpe` (worst of N folds).
+      **IHSG is refused as a benchmark** (raises) — never the composite (§8).
+- [x] **Promotion engine** (`validation/promotion.py`) — `ValidationLedger`, the server-authoritative
+      *sole authority*: `record_forward_paper` is the only writer; promotes OBSERVATION_ONLY →
+      VALIDATING → VALIDATED only on ≥ `PAPER_VALIDATION_MONTHS` **and** positive walk-forward Sharpe.
+- [x] **Observation↔claim switch across ALL gated modules** — shared `validation.state.gated_display`
+      (`•••` until VALIDATED); `ui/sms_view` refactored onto it; new `ui/ranking_view` (AI Buy/Sell
+      Ranking) + `ui/daily_top_view` (Daily Top). All three wired into the Streamlit nav, reading the
+      ledger's states (never a client toggle).
+- [x] Benchmark net-of-fees to LQ45 / sector index — never IHSG (metrics guard + §8 discipline).
+- [x] **Tests (21 new, 267 total):** runner round-trip (entry→target) + backtest/forward reconciliation
+      + look-ahead firewall; metrics hand-checked + IHSG-refusal + walk-forward folds; promotion state
+      machine (months × walk-forward, per-module isolation); RULE B end-to-end across all three gated
+      modules (withheld pre-validation, revealed only after the ledger promotes).
+- **Deferred:** a *real* multi-month forward-paper run against live-session data (needs the live DAL
+  transport + accrued time) — the harness is built and tested; production modules stay OBSERVATION_ONLY
+  until an actual run promotes them. Live-fundamentals feed still injected (tilt), unchanged from slice 7.
 
 ## Slice 9 — Scale / ML (gated)  ⬜
 **Goal:** only after ≥3 months positive forward-paper walk-forward Sharpe (LD-8).
@@ -177,14 +196,19 @@ Legend: ⬜ not started · 🟡 in progress · ✅ done. Keep the box in sync wi
 
 ## Acceptance criteria (definition of done — `LOCKED_SPEC.md` §13)
 
-- [ ] Look-ahead test passes (no `availability_ts >= decision_ts`).
-- [ ] Phase gate rejects all non-C/D candidates (unit-tested on labeled charts).
-- [ ] No unvalidated module displays a number (RULE B test).
-- [ ] Per-module validation state drives the observation↔claim UI switch.
-- [ ] Every order is a limit order with a defined stop and R:R ≥ 2:1.
-- [ ] Fill engine reproduces lot/tick/ARA-ARB/fee math against hand-checked cases.
-- [ ] Backtest and forward-paper share one fill engine; results reconcile.
-- [ ] Reported return is net of full fee stack, benchmarked to LQ45/sector (not IHSG).
-- [ ] Money Flow Replay reconstructs any past signal from stored `as_of` data.
-- [ ] All data stays local; nothing republished.
-- [ ] No live hand-editing of SMS weights; tuning only via walk-forward optimizer.
+- [x] Look-ahead test passes (no `availability_ts >= decision_ts`).
+- [x] Phase gate rejects all non-C/D candidates (unit-tested on labeled charts).
+- [x] No unvalidated module displays a number (RULE B test — all 3 gated modules, slice 8).
+- [x] Per-module validation state drives the observation↔claim UI switch (`ValidationLedger`, slice 8).
+- [x] Every order is a limit order with a defined stop and R:R ≥ 2:1.
+- [x] Fill engine reproduces lot/tick/ARA-ARB/fee math against hand-checked cases.
+- [x] Backtest and forward-paper share one fill engine; results reconcile (slice 8).
+- [x] Reported return is net of full fee stack, benchmarked to LQ45/sector (not IHSG — metrics guard, slice 8).
+- [x] Money Flow Replay reconstructs any past signal from stored `as_of` data.
+- [x] All data stays local; nothing republished.
+- [x] No live hand-editing of SMS weights; tuning only via walk-forward optimizer.
+
+> Code/test-complete for v1.1. The one thing code cannot satisfy on its own — a **real
+> multi-month forward-paper run** that actually promotes a module (needs the live DAL
+> transport + accrued calendar time) — is the standing deferral; the harness is built and
+> tested, and modules correctly stay OBSERVATION_ONLY until such a run clears them.

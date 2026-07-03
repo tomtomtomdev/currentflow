@@ -13,9 +13,8 @@ from __future__ import annotations
 
 from currentflow.signals.engine import EngineResult, EngineState
 from currentflow.signals.sms import SmsResult
-from currentflow.validation.state import ModuleState, may_display_number, module_state
+from currentflow.validation.state import WITHHELD, ModuleState, gated_display, module_state
 
-WITHHELD = "•••"
 MODULE = "sms"
 
 WATCHLIST_FRAMING = "highest flow-signal names today — observation, not a recommendation"
@@ -52,9 +51,7 @@ def score_display(
     result: SmsResult, *, registry: dict[str, ModuleState] | None = None
 ) -> str:
     """The composite SMS — a real number ONLY once the module is VALIDATED (RULE B)."""
-    if may_display_number(MODULE, registry):
-        return f"{result.internal_score:.0f}"
-    return WITHHELD
+    return gated_display(MODULE, round(result.internal_score), registry=registry, fmt="{:.0f}")
 
 
 def state_label(engine_result: EngineResult) -> str:
