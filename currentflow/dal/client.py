@@ -36,6 +36,7 @@ from currentflow.dal.models import (
     OwnershipSlice,
     SymbolInfo,
 )
+from currentflow.dal.netlog import log_net_error
 from currentflow.dal.parse import (
     parse_broker_summary,
     parse_corp_actions,
@@ -162,21 +163,29 @@ class ExodusClient:
     # --- request core -------------------------------------------------------------
 
     async def _get(self, path: str, params: dict) -> Any:
-        return await self._request(lambda: self._transport(path, params), path)
+        return await self._request(lambda: self._transport(path, params), path, "GET")
 
     async def _post(self, path: str, body: dict) -> Any:
         if self._post_transport is None:
             raise TransportError(f"POST {path}: no post_transport configured")
-        return await self._request(lambda: self._post_transport(path, body), path)
+        return await self._request(
+            lambda: self._post_transport(path, body), path, "POST"
+        )
 
-    async def _request(self, send: Callable[[], Awaitable[Response]], path: str) -> Any:
+    async def _request(
+        self, send: Callable[[], Awaitable[Response]], path: str, method: str
+    ) -> Any:
         attempt = 0
         refreshed = False
         while True:
             try:
                 resp = await send()
             except (RateLimitError, TransportError) as exc:
-                attempt = await self._maybe_backoff(attempt, path, repr(exc))
+                # network/rate-limit already surfaced from the transport (logged there
+                # if httpx-level); record the retry decision at this altitude.
+                attempt = await self._maybe_backoff(
+                    attempt, path, method, type(exc).__name__, exc_type=type(exc)
+                )
                 continue
             except AuthError:
                 raise  # fail loud, no retry
@@ -190,32 +199,52 @@ class ExodusClient:
                     refreshed = True
                     await self._do_refresh()
                     continue
+                log_net_error(log, method=method, path=path, status=401,
+                              outcome="fail-loud", retryable=False)
                 raise AuthError(f"401 on {path}: token expired/invalid — re-capture required")
             if status in (402, 403):
                 attempt = await self._maybe_backoff(
-                    attempt, path, f"paywall/forbidden {status}", PaywallError
+                    attempt, path, method, status=status, exc_type=PaywallError
                 )
                 continue
             if status == 429:
                 attempt = await self._maybe_backoff(
-                    attempt, path, "429 rate limited", RateLimitError
+                    attempt, path, method, status=429, exc_type=RateLimitError
                 )
                 continue
             if 500 <= status < 600:
                 attempt = await self._maybe_backoff(
-                    attempt, path, f"server {status}", TransportError
+                    attempt, path, method, status=status, exc_type=TransportError
                 )
                 continue
+            log_net_error(log, method=method, path=path, status=status,
+                          outcome="fail-loud", retryable=False)
             raise TransportError(f"unexpected status {status} on {path}")
 
     async def _maybe_backoff(
-        self, attempt: int, path: str, why: str, exc_type: type[Exception] = TransportError
+        self,
+        attempt: int,
+        path: str,
+        method: str,
+        error_class: str | None = None,
+        *,
+        status: int | None = None,
+        exc_type: type[Exception] = TransportError,
     ) -> int:
-        """Sleep with exponential backoff, or raise once retries are exhausted."""
+        """Sleep with exponential backoff, or raise once retries are exhausted. Logs
+        one `net-error` line per retry (WARNING) and one on exhaustion (ERROR)."""
+        why = f"status {status}" if status is not None else error_class
         if attempt >= self._max_retries:
+            log_net_error(log, method=method, path=path, status=status,
+                          error_class=error_class,
+                          outcome=f"exhausted after {self._max_retries} retries",
+                          retryable=False)
             raise exc_type(f"{why} on {path}: exhausted {self._max_retries} retries")
         delay = self._backoff_base * (2**attempt)
-        log.warning("retry %d/%d on %s (%s) after %.0fs", attempt + 1, self._max_retries, path, why, delay)
+        log_net_error(log, method=method, path=path, status=status,
+                      error_class=error_class,
+                      outcome=f"retry {attempt + 1}/{self._max_retries} in {delay:.0f}s",
+                      retryable=True)
         await self._sleep(delay)
         return attempt + 1
 

@@ -17,12 +17,16 @@ takes effect on the next call without rebuilding the client.
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Callable
 
 import httpx
 
 from currentflow import config
 from currentflow.dal.errors import AuthError, TransportError
+from currentflow.dal.netlog import log_net_error
+
+log = logging.getLogger(__name__)
 
 
 class HttpxTransport:
@@ -64,6 +68,8 @@ class HttpxTransport:
                 self._url(path), params=params, headers=self._auth_headers()
             )
         except httpx.TransportError as exc:  # connect/read/timeout — retryable
+            log_net_error(log, method="GET", path=path, error_class=type(exc).__name__,
+                          outcome="raised-to-client", retryable=True)
             raise TransportError(f"GET {path}: network failure: {exc!r}") from exc
 
     async def post(self, path: str, body: dict) -> httpx.Response:
@@ -72,6 +78,8 @@ class HttpxTransport:
                 self._url(path), json=body, headers=self._auth_headers()
             )
         except httpx.TransportError as exc:
+            log_net_error(log, method="POST", path=path, error_class=type(exc).__name__,
+                          outcome="raised-to-client", retryable=True)
             raise TransportError(f"POST {path}: network failure: {exc!r}") from exc
 
     async def aclose(self) -> None:

@@ -41,6 +41,7 @@ import httpx
 
 from currentflow import config
 from currentflow.dal.errors import AuthError, TransportError
+from currentflow.dal.netlog import log_net_error
 
 log = logging.getLogger(__name__)
 
@@ -141,12 +142,18 @@ class AuthClient:
         try:
             resp = await self._client.post(self._url(path), json=body)
         except httpx.TransportError as exc:  # connect/read/timeout — retryable class
+            log_net_error(log, method="POST", path=path, error_class=type(exc).__name__,
+                          outcome="raised-to-caller", retryable=True)
             raise TransportError(f"POST {path}: network failure: {exc!r}") from exc
 
         if resp.status_code >= 500 or resp.status_code == 429:
+            log_net_error(log, method="POST", path=path, status=resp.status_code,
+                          outcome="raised-to-caller", retryable=True)
             raise TransportError(f"POST {path}: server status {resp.status_code}")
         if resp.status_code >= 400:
             # bad creds / failed OTP / invalid token → fail loud, do not retry.
+            log_net_error(log, method="POST", path=path, status=resp.status_code,
+                          outcome="fail-loud", retryable=False)
             raise AuthError(f"POST {path}: rejected ({resp.status_code}): {_msg(resp)}")
         payload = resp.json()
         data = payload.get("data") if isinstance(payload, dict) else None
