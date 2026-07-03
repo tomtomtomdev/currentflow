@@ -330,7 +330,7 @@ async def test_401_then_refresh_fails_loud():
 async def test_view_credentials_to_otp_to_finish():
     store, _ = _store()
     ctl = lv.LoginController(AuthClient(client=_mock_client(_flow_handler(rounds=1))), store)
-    v1 = await ctl.submit_credentials("tommy", "pw")
+    v1 = await ctl.submit_credentials("tommy", "pw", recaptcha_token="RECAP")
     assert v1.state == lv.OTP and [c.channel for c in v1.channels] == ["CHANNEL_EMAIL", "CHANNEL_WHATSAPP"]
     await ctl.send_otp("CHANNEL_EMAIL")
     v2 = await ctl.verify_otp("123456")
@@ -341,7 +341,7 @@ async def test_view_credentials_to_otp_to_finish():
 async def test_view_otp_loop_over_two_channels():
     store, _ = _store()
     ctl = lv.LoginController(AuthClient(client=_mock_client(_flow_handler(rounds=2))), store)
-    await ctl.submit_credentials("tommy", "pw")
+    await ctl.submit_credentials("tommy", "pw", recaptcha_token="RECAP")
     await ctl.send_otp("CHANNEL_EMAIL")
     mid = await ctl.verify_otp("111111")
     assert mid.state == lv.OTP and mid.error is None  # second round requested
@@ -358,7 +358,7 @@ async def test_view_rejected_login_stores_nothing_and_surfaces_error():
         return httpx.Response(401, json={"message": "invalid credentials"})
 
     ctl = lv.LoginController(AuthClient(client=_mock_client(handler)), store)
-    v = await ctl.submit_credentials("tommy", "wrong")
+    v = await ctl.submit_credentials("tommy", "wrong", recaptcha_token="RECAP")
     assert v.state == lv.CREDENTIALS and v.error
     assert store.get_session() is None  # store untouched on rejection
 
@@ -377,10 +377,35 @@ async def test_view_wrong_otp_stays_on_otp_for_retry():
         return httpx.Response(404)
 
     ctl = lv.LoginController(AuthClient(client=_mock_client(handler)), store)
-    await ctl.submit_credentials("tommy", "pw")
+    await ctl.submit_credentials("tommy", "pw", recaptcha_token="RECAP")
     v = await ctl.verify_otp("000000")
     assert v.state == lv.OTP and v.error  # retryable, not kicked to credentials
     assert store.get_session() is None
+
+
+async def test_view_empty_recaptcha_is_refused_before_any_request():
+    """reCAPTCHA v3 is server-enforced (§4.1): an empty token must be refused in the
+    view-model, never posted (which the server rejects 400). No network is touched."""
+    store, _ = _store()
+
+    def handler(request):  # must never be called
+        raise AssertionError(f"no request should fire: {request.url.path}")
+
+    ctl = lv.LoginController(AuthClient(client=_mock_client(handler)), store)
+    v = await ctl.submit_credentials("tommy", "pw", recaptcha_token="   ")
+    assert v.state == lv.CREDENTIALS and "reCAPTCHA" in (v.error or "")
+    assert store.get_session() is None
+
+
+def test_recaptcha_snippet_carries_site_key_and_copies_token():
+    from currentflow.dal import recaptcha
+
+    snippet = recaptcha.mint_snippet()
+    assert config.AUTH_RECAPTCHA_SITE_KEY in snippet
+    assert f"action:'{config.AUTH_RECAPTCHA_ACTION}'" in snippet
+    assert "grecaptcha.execute" in snippet and "copy(t)" in snippet
+    # instructions embed the runnable snippet for the operator
+    assert recaptcha.mint_snippet() in recaptcha.capture_instructions()
 
 
 def test_view_sign_out_clears_and_returns_to_credentials():

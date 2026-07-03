@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from currentflow.dal import recaptcha
 from currentflow.dal.auth import AuthClient, OtpChannel
 from currentflow.dal.errors import AuthError, ExodusError
 from currentflow.dal.session import (
@@ -67,6 +68,10 @@ class LoginController:
         recaptcha_token: str = "",
         player_id: str = "",
     ) -> LoginView:
+        # reCAPTCHA v3 is server-enforced (§4.1) — refuse an empty token here rather
+        # than fire a request that comes back 400. Stay on CREDENTIALS with guidance.
+        if not recaptcha_token.strip():
+            return LoginView(CREDENTIALS, error=recaptcha.REQUIRED_MESSAGE)
         try:
             start = await self._auth.login_username(
                 user, password, recaptcha_token=recaptcha_token, player_id=player_id

@@ -123,12 +123,14 @@ The final `access.token` is the `Authorization: Bearer …` the rest of the DAL 
 - req: `{ multi_factor: { login_token } }`  (the `login_token` from step 1)
 - resp: `data.access.{ token, expired_at }`, `data.refresh.{ token, expired_at }`, plus `data.user.{ id, username, email, exchange, privilege, … }`. Observed lifetimes: **access ≈ 24h, refresh ≈ 7d** (ISO-8601 `expired_at`).
 
-**Open items (not resolved by this HAR — do not guess in code):**
-- **`recaptcha_token`** — reCAPTCHA **v3** (`recaptcha_version: RECAPTCHA_VERSION_3`), a ~2148-char token the browser generates *silently* via `grecaptcha.execute(siteKey, …)`. v3 is **invisible** — no challenge is ever shown to the user (consistent with the operator seeing only the OTP steps), but a token is still POSTed. **Open question is server-side enforcement, not UX:** does `login/v6/username` reject a request that omits the token (or sends a dummy / low-scored one)?
-  - **Probe first** (cheap, decides everything): attempt `login/v6/username` with `recaptcha_token` omitted / empty / junk and see whether it 200s or errors.
-  - If **not enforced** → a pure-Python login works and the captcha is a non-issue.
-  - If **enforced** → mint the token by (a) driving a real browser (Playwright/Selenium `grecaptcha.execute`) — a heavy dep against the stdlib-core posture — or (b) an operator-assisted token, or (c) fall back to the slice-10 Bearer paste. This fork is the slice-11 design decision **only if the probe shows enforcement.**
-- **`player_id`** — a OneSignal push id (UUID). Whether it is required / accepts an arbitrary UUID / may be omitted is **unconfirmed** (probe alongside the recaptcha test).
+**Resolved — `recaptcha_token` is ENFORCED (probe closed 2026-07-03):**
+- reCAPTCHA **v3** (`recaptcha_version: RECAPTCHA_VERSION_3`), a ~2148-char token the browser generates *silently* via `grecaptcha.execute(siteKey, {action})`. v3 is **invisible** — no challenge is shown — but the token is required: a `login/v6/username` posted with an empty token is rejected **`400 "Permintaan tidak valid"`** (confirmed by comparing a failed empty-token attempt against a successful capture that carried a full token). A pure-Python login is therefore **not** possible.
+- **Site key** (public, client-side by design): `6LeBXZYqAAAAAIAqBYdAV5HuBc6i0YeVziSYrXAZ`. Pinned in `config.AUTH_RECAPTCHA_SITE_KEY`; action `"login"` (advisory — affects v3 score analytics, not validity).
+- **Chosen fork = operator-assisted token** (not a headless browser — that's a heavy dep against the stdlib-core posture). `dal/recaptcha.py` renders a DevTools-console snippet (`grecaptcha.execute(SITE_KEY,{action}).then(copy)`) that the operator runs on an open stockbit.com tab to mint a fresh token and paste it into the login prompt (CLI `login` and the Streamlit sign-in form). Token is **single-use, ~2 min TTL** — mint it right before submitting. The slice-10 Bearer `paste` remains as the fallback.
+- The login views **refuse an empty token** before any request fires (`LoginController.submit_credentials` / CLI), so an enforced-reject 400 can't be triggered by omission.
+
+**Still open (not resolved by this HAR — do not guess in code):**
+- **`player_id`** — a OneSignal push id (UUID); the successful capture carried one (`dc98dc8f-…`). Whether it is *required* vs. accepts an arbitrary/empty UUID is still **unconfirmed** (reCAPTCHA was the decisive gate for the 400). Carried through verbatim; defaults empty.
 - **Refresh endpoint** — access was valid for the whole capture, so the refresh route + request/response shape are **unconfirmed**. Capture a token-refresh exchange (or an expiry) before wiring `dal/auth.refresh`.
 
 ---

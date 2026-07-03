@@ -24,6 +24,7 @@ from getpass import getpass
 
 from currentflow import config
 from currentflow.logging_setup import configure_logging
+from currentflow.dal import recaptcha as recaptcha_capture
 from currentflow.dal.auth import AuthClient
 from currentflow.dal.errors import AuthError, ExodusError
 from currentflow.dal.session import build_live_client, session_status, store_auth_session
@@ -44,9 +45,14 @@ async def _run_login() -> int:
     if not user or not password:
         print("username and password required — nothing stored", file=sys.stderr)
         return 1
-    # reCAPTCHA v3 enforcement is unconfirmed (§4.1). Empty token = the pure-Python
-    # attempt; if the server rejects it, paste an operator-minted token here.
-    recaptcha = getpass("reCAPTCHA token (blank to try without): ").strip()
+    # reCAPTCHA v3 is enforced (§4.1) — the token can't be minted here, so guide the
+    # operator to mint a fresh one in the browser and paste it. Refuse an empty token
+    # rather than fire a request the server will reject 400.
+    print(recaptcha_capture.capture_instructions())
+    recaptcha = getpass("reCAPTCHA token (paste, hidden): ").strip()
+    if not recaptcha:
+        print(recaptcha_capture.REQUIRED_MESSAGE, file=sys.stderr)
+        return 1
 
     auth = AuthClient()
     try:

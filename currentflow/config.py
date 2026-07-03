@@ -81,10 +81,16 @@ AUTH_NEW_DEVICE_VERIFY_PATH = "login/v6/new-device/verify"
 # Refresh route/shape NOT in the HAR capture — do NOT guess. `AuthClient.refresh`
 # raises until an operator captures a real refresh exchange and pins this.
 AUTH_REFRESH_PATH: str | None = None
-# reCAPTCHA v3 is invisible; whether the server ENFORCES the token is unconfirmed
-# (probe first — §4.1). Sent as declared; the token itself is supplied by the caller
-# (empty for the pure-Python attempt, or an operator-assisted token if enforced).
+# reCAPTCHA v3 is invisible but the server DOES enforce it: a login/v6/username
+# posted with an empty/absent token is rejected 400 "Permintaan tidak valid"
+# (confirmed 2026-07-03 from a successful-vs-failed capture — see DATA_SOURCES §4.1).
+# The token can't be minted in pure Python; the operator mints a fresh one in the
+# browser via `grecaptcha.execute(SITE_KEY, {action})` and pastes it in. The site key
+# below is stockbit's public v3 key (safe to embed — it's client-side by design).
+# `dal.recaptcha` turns these into the console snippet shown at the paste prompt.
 AUTH_RECAPTCHA_VERSION = "RECAPTCHA_VERSION_3"
+AUTH_RECAPTCHA_SITE_KEY = "6LeBXZYqAAAAAIAqBYdAV5HuBc6i0YeVziSYrXAZ"
+AUTH_RECAPTCHA_ACTION = "login"   # advisory (affects v3 score analytics, not validity)
 CHALLENGE_OTP = "CHALLENGE_OTP"
 CHALLENGE_FINISH = "CHALLENGE_FINISH"
 

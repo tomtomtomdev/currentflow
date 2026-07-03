@@ -23,11 +23,13 @@ JSON. Error mapping mirrors the DAL taxonomy: bad creds / failed OTP → `AuthEr
 SECURITY: this module NEVER logs a password, OTP, recaptcha token, or any token body.
 Only endpoint paths and coarse outcomes are ever emitted.
 
-Two items in §4.1 are unresolved by the HAR and MUST NOT be guessed in code:
-  * `recaptcha_token` (reCAPTCHA v3, invisible) — server enforcement unconfirmed.
-    The caller supplies it (empty string for the pure-Python attempt, or an
-    operator-assisted token if the probe shows enforcement). This client only
-    carries it through; it does not mint one.
+`recaptcha_token` (reCAPTCHA v3, invisible) is **required** — the server rejects an
+empty token 400 (confirmed 2026-07-03, §4.1). This client only carries it through; it
+never mints one. The operator mints a fresh token in the browser (see `dal.recaptcha`)
+and the login views supply it; an empty token is refused before this client is reached.
+
+Two items in §4.1 remain unresolved by the HAR and MUST NOT be guessed in code:
+  * `player_id` (OneSignal UUID) — required-vs-optional unconfirmed; carried through.
   * refresh route/shape — not captured. `refresh()` raises until pinned in config.
 """
 
@@ -152,9 +154,12 @@ class AuthClient:
             raise TransportError(f"POST {path}: server status {resp.status_code}")
         if resp.status_code >= 400:
             # bad creds / failed OTP / invalid token → fail loud, do not retry.
+            # Persist the server's own reason (netlog's auth-4xx carve-out) so a 400
+            # is diagnosable from logs/net.log without re-running the login.
+            server_msg = _msg(resp)
             log_net_error(log, method="POST", path=path, status=resp.status_code,
-                          outcome="fail-loud", retryable=False)
-            raise AuthError(f"POST {path}: rejected ({resp.status_code}): {_msg(resp)}")
+                          outcome="fail-loud", retryable=False, server_message=server_msg)
+            raise AuthError(f"POST {path}: rejected ({resp.status_code}): {server_msg}")
         payload = resp.json()
         data = payload.get("data") if isinstance(payload, dict) else None
         if data is None:
