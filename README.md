@@ -4,12 +4,35 @@ Research and specification repo for a screener that detects **institutional
 ("smart-money" / *bandar*) accumulation on the Indonesia Stock Exchange (IDX)**
 before markup, and paper-trades it under realistic IDX fill/fee constraints.
 
-This repo holds **specifications, not code** — the source research, the
-consolidated thesis, and the locked build spec.
+This repo holds both the **locked specification** (source research, consolidated
+thesis, build spec) and the **implementation** — a local-first, single-operator
+Python package (`currentflow/`) with a Streamlit terminal, built in vertical
+slices against [`LOCKED_SPEC.md`](LOCKED_SPEC.md). See [`PROGRESS.md`](PROGRESS.md)
+for shipped slices and each module's validation state.
 
 > ⚠️ **Educational / informational only. Not financial advice.** All thresholds
 > must be backtested and calibrated per regime. Paper results do not guarantee
 > live performance.
+
+---
+
+## Quickstart
+
+Local-first, single-operator — nothing leaves the machine, nothing is deployed.
+The `run.sh` launcher resolves the repo's own `.venv`, installs the package +
+extras, checks your Stockbit Bearer token, then starts the terminal.
+
+```bash
+./run.sh login     # capture / paste your Stockbit Bearer into the macOS Keychain
+./run.sh check     # verify the stored token authenticates against exodus
+./run.sh           # launch the terminal → http://localhost:8501
+./run.sh test      # run the test suite
+```
+
+`PORT=8502 ./run.sh` launches on a non-default port. First run bootstraps the
+`.venv` and does an editable install (`pip install -e ".[dev,ui]"`); subsequent
+runs are a cheap no-op. The terminal refuses to start without a stored token
+(DAL rule: fail loud, never emit stale/empty data).
 
 ---
 
