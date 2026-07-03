@@ -12,6 +12,7 @@ refresh tokens are persisted, via the store.
 State machine (matches the §4.1 flow):
     CREDENTIALS --submit_credentials--> OTP  (or FINISH on trusted-device)
     OTP --verify_otp (loops on CHALLENGE_OTP)--> FINISH
+    BEARER --submit_bearer (live-ping verify, design State C fallback)--> FINISH
     any AuthError -> stays on the current step with `error` set, session UNTOUCHED
     sign_out -> CREDENTIALS (store cleared)
 
@@ -26,6 +27,7 @@ field for it. `send_otp` remains for an explicit operator-driven resend.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Awaitable, Callable
 
 from currentflow.dal.auth import AuthClient, OtpChannel
 from currentflow.dal.errors import AuthError, ExodusError
@@ -37,6 +39,7 @@ from currentflow.dal.session import (
 
 CREDENTIALS = "CREDENTIALS"
 OTP = "OTP"
+BEARER = "BEARER"
 FINISH = "FINISH"
 
 
@@ -203,6 +206,32 @@ class LoginController:
         self._verification_token = self._login_token = None
         self._otp_channel = self._otp_target = None
         return LoginView(CREDENTIALS)
+
+
+async def submit_bearer(
+    token: str,
+    *,
+    ping: Callable[[str], Awaitable[None]],
+    store: KeychainTokenStore | None = None,
+) -> LoginView:
+    """The Bearer-paste fallback (design State C, §9.1). Strips an optional
+    `Bearer ` prefix, verifies the candidate with a live `ping` BEFORE anything is
+    written — a rejected token is never stored — and persists it only on success.
+    The raw token is held only for this attempt, never rendered back or logged."""
+    store = store or KeychainTokenStore()
+    raw = (token or "").strip()
+    if raw.lower().startswith("bearer "):
+        raw = raw[len("bearer "):].strip()
+    if not raw:
+        return LoginView(BEARER, error="paste a session Bearer token")
+    try:
+        await ping(raw)
+    except AuthError as exc:
+        return LoginView(BEARER, error=f"rejected by the live ping — token not stored ({exc})")
+    except ExodusError as exc:
+        return LoginView(BEARER, error=f"connection error — token not stored ({exc})")
+    store.set(raw)
+    return LoginView(FINISH, username=None)
 
 
 def initial_view(store: KeychainTokenStore | None = None) -> LoginView:

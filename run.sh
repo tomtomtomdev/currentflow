@@ -98,10 +98,10 @@ case "$cmd" in
       log "no session yet — the terminal will open on the login form ('./run.sh login')"
     fi
     log "starting CurrentFlow terminal on http://localhost:$PORT"
+    # theme lives in .streamlit/config.toml (design tokens from design/README.md)
     exec "$PY" -m streamlit run "$APP" \
       --server.port "$PORT" \
-      --server.headless true \
-      --theme.base dark
+      --server.headless true
     ;;
   *)
     die "unknown command '$cmd' — use: serve | login | paste | check | ingest | log | test"

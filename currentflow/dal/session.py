@@ -58,6 +58,30 @@ def build_live_client(
     return exodus, transport
 
 
+# A liquid, always-trading name — a short window is enough to prove a token
+# authenticates without pulling meaningful data.
+PING_SYMBOL = "BBCA"
+
+
+async def verify_bearer(token: str, *, client=None) -> None:
+    """Prove a CANDIDATE Bearer authenticates with one short live request, without
+    storing it — the login UI's paste fallback verifies before it writes (§9.1 fail
+    loud, never store-then-discover). Raises AuthError (rejected) / ExodusError
+    (transport) on failure; returns None on success. `client` is an injectable
+    `httpx.AsyncClient` for tests."""
+    from datetime import date, timedelta
+
+    transport = HttpxTransport(token_provider=lambda: token, client=client)
+    exodus = ExodusClient(
+        transport.get, post_transport=transport.post, token_provider=lambda: token
+    )
+    try:
+        to = date.today()
+        await exodus.ohlcv_foreign(PING_SYMBOL, to - timedelta(days=7), to)
+    finally:
+        await transport.aclose()
+
+
 def build_session_refresh(
     store: KeychainTokenStore,
     *,

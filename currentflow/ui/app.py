@@ -13,6 +13,7 @@ until the module is VALIDATED.
 from __future__ import annotations
 
 import sys
+import time
 from datetime import datetime
 
 import pandas as pd
@@ -33,7 +34,11 @@ from currentflow.signals.broker_flow import analyze, buyer_seller_matrix
 from currentflow.signals.risk_monitor import Portfolio, Position
 from currentflow.store.db import Store
 from currentflow.ui.trap_view import ribbon_banner, ribbon_rows
-from currentflow.ui.accumulation_view import accumulation_panel, stealth_callout
+from currentflow.ui.accumulation_view import (
+    accumulation_panel,
+    chart_rows as accum_chart_rows,
+    stealth_callout,
+)
 from currentflow.ui.broker_flow_view import (
     DISCLAIMER,
     OBSERVATION_BADGE,
@@ -63,7 +68,7 @@ from currentflow.ui.risk_view import (
 )
 from currentflow.ui.sector_view import scatter_points, sector_rows
 from currentflow.ui.sms_view import GATE_BANNER, WATCHLIST_FRAMING, component_rows, score_display, state_label
-from currentflow.ui import daily_top_view, ml_view, ranking_view
+from currentflow.ui import daily_top_view, ml_view, ranking_view, watchlist_view
 from currentflow.validation.promotion import ValidationLedger
 
 MODULES = [
@@ -121,6 +126,37 @@ def _symbols(store: Store, table: str) -> list[str]:
             f'SELECT DISTINCT "symbol" FROM {table} ORDER BY "symbol"'
         ).fetchall()
     ]
+
+
+@st.cache_data(ttl=600, show_spinner="Evaluating ARMED watchlist…")
+def _watchlist_data(db_path: str, day: str, n_symbols: int) -> dict:
+    """One engine pass over every ingested name for the sidebar rail. Keyed on the
+    day and the symbol count so a bootstrap / new ingest invalidates the cache; the
+    TTL bounds intraday staleness. Returns primitives only (RULE-B-safe rows)."""
+    return watchlist_view.rows(_all_results(_store(db_path), "B", datetime.now()))
+
+
+def _render_watchlist_rail(store: Store) -> None:
+    """The design's ARMED-watchlist right rail, adapted to the sidebar: state word +
+    the five component strengths (DIV BRK FF RVOL BLK) — observation, never a number
+    or a verb (RULE B; the composite stays with the gated SMS/Rank module)."""
+    st.sidebar.divider()
+    st.sidebar.subheader("ARMED watchlist · track B")
+    syms = _symbols(store, "daily_bar")
+    if not syms:
+        st.sidebar.caption("no data ingested yet")
+        return
+    data = _watchlist_data(_db_path(), f"{datetime.now():%Y-%m-%d}", len(syms))
+    st.sidebar.caption(f"{data['framing']}.")
+    if not data["rows"]:
+        st.sidebar.caption("— nothing ARMED or watching today")
+        return
+    for row in data["rows"]:
+        dot = "🟠" if row["state"] == "ARMED" else "🔵"
+        st.sidebar.markdown(f"{dot} **{row['symbol']}** — {row['state']}")
+        st.sidebar.caption(watchlist_view.spark_line(row))
+    if data["dropped"]:
+        st.sidebar.caption(f"…and {data['dropped']} more (top {len(data['rows'])} shown)")
 
 
 def _trap_ribbon(store: Store, symbol: str, decision_ts: datetime) -> None:
@@ -310,20 +346,48 @@ def _render_accumulation(store: Store) -> None:
     symbol = st.sidebar.selectbox("Symbol", symbols)
     decision_ts = datetime.now()
     _trap_ribbon(store, symbol, decision_ts)
-    snap = accumulation.analyze(store, symbol, decision_ts)
+    bars = store.read_daily_bars(symbol, decision_ts)
+    broker_snap = analyze(store, symbol, decision_ts)
+    snap = accumulation.build_snapshot(symbol, bars, broker_snap, decision_ts=decision_ts)
 
     callout = stealth_callout(snap)
     if callout:
         st.info(callout)
     panel = accumulation_panel(snap)
     st.caption(f"{symbol} · {panel['window']}")
+
+    # design chart: price lane (+ accumulator-VWAP reference) over the cumulative
+    # smart-money accumulation lane. Broker-less days are a gap, never zero.
+    chart = pd.DataFrame(accum_chart_rows(bars, broker_snap))
+    if not chart.empty:
+        chart = chart.set_index("date")
+        price_cols = ["close"] + (
+            ["accumulator_vwap"] if chart["accumulator_vwap"].notna().any() else []
+        )
+        st.line_chart(chart[price_cols], height=220)
+        if chart["cum_accumulation_bn"].notna().any():
+            st.caption(
+                f"Cumulative net by {panel['accumulator']} (IDR bn) — smart-money accumulation lane"
+            )
+            st.line_chart(chart["cum_accumulation_bn"], height=140)
+
     c1, c2, c3 = st.columns(3)
     c1.metric("Price Δ over window", f"{panel['price_change_pct']}%" if panel['price_change_pct'] is not None else "—")
     c2.metric("Accumulator", panel["accumulator"] or "—",
               f"net {panel['net_accumulation_bn']} bn" if panel['net_accumulation_bn'] is not None else None)
     c3.metric("Accum. VWAP", panel["accumulator_vwap"] or "—",
               f"px vs vwap {panel['price_vs_vwap_pct']}%" if panel['price_vs_vwap_pct'] is not None else None)
-    st.write({k: panel[k] for k in ("accumulation_rising", "volume_dryup_ratio", "price_tightness_pct", "absorption")})
+
+    st.subheader("Stealth metrics — measured, not scored")
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Accumulation rising", "yes" if panel["accumulation_rising"] else "no")
+    dryup = panel["volume_dryup_ratio"]
+    m2.metric("Volume dry-up (recent/early)", f"{dryup}×" if dryup is not None else "—",
+              "dried up" if dryup is not None and dryup < 0.8 else None, delta_color="off")
+    tight = panel["price_tightness_pct"]
+    m3.metric("Consolidation tightness", f"{tight}%" if tight is not None else "—",
+              "tight" if tight is not None and tight < 12 else None, delta_color="off")
+    st.caption(f"Absorption: {panel['absorption']} — degrades gracefully, never faked (§10)")
 
 
 def _render_heatmap(store: Store) -> None:
@@ -554,10 +618,28 @@ def _run(coro):
     return loop.run_until_complete(coro)
 
 
+def _set_login_view(view) -> None:
+    """Store the next login view; entering an OTP round (re)starts the resend cooldown
+    from the server's `next_attempt_in` (design: 60s countdown, then resend enables)."""
+    from currentflow.ui import login_view as lv
+
+    st.session_state["login_view"] = view
+    if view.state == lv.OTP and view.otp_next_attempt_in:
+        st.session_state["_otp_cooldown_until"] = time.monotonic() + view.otp_next_attempt_in
+
+
+def _otp_cooldown() -> int:
+    """Seconds until resend re-enables (0 = enabled). Recomputed per rerun — the
+    caption is a snapshot, not a live countdown (Streamlit reruns on interaction)."""
+    until = st.session_state.get("_otp_cooldown_until", 0.0)
+    return max(0, int(until - time.monotonic()))
+
+
 def _render_login() -> None:
     """The login flow — rendered instead of the modules when there is no session.
-    Fail loud: never a blank/stale terminal (§9.1). Credentials/OTP held only in this
-    run, never persisted or echoed back."""
+    Fail loud: never a blank/stale terminal (§9.1). Credentials/OTP/Bearer held only
+    in this run, never persisted or echoed back."""
+    from currentflow.dal.session import verify_bearer
     from currentflow.dal.token_store import KeychainTokenStore
     from currentflow.ui import login_view as lv
 
@@ -582,10 +664,11 @@ def _render_login() -> None:
             user = st.text_input("Username / email")
             password = st.text_input("Password", type="password")
             if st.form_submit_button("Sign in"):
-                st.session_state["login_view"] = _run(
-                    ctl.submit_credentials(user, password)
-                )
+                _set_login_view(_run(ctl.submit_credentials(user, password)))
                 st.rerun()
+        if st.button("Prefer a token? Paste a session Bearer instead →"):
+            _set_login_view(lv.LoginView(lv.BEARER))
+            st.rerun()
     elif view.state == lv.OTP:
         # The code is sent immediately on entering each round (no "Send OTP" button).
         target = view.otp_target or (view.channels[0].target if view.channels else None)
@@ -598,8 +681,45 @@ def _render_login() -> None:
             # instead of carrying the just-verified email code over.
             code = st.text_input("OTP code", key=f"otp_code_{target or channel or 'x'}")
             if st.form_submit_button("Verify"):
-                st.session_state["login_view"] = _run(ctl.verify_otp(code))
+                _set_login_view(_run(ctl.verify_otp(code)))
                 st.rerun()
+
+        # design State B footer: channel choice + resend, disabled during the cooldown
+        cooldown = _otp_cooldown()
+        options = [c.channel for c in view.channels if c.channel] or ([channel] if channel else [])
+        if options:
+            left, right = st.columns([1.6, 1])
+            pick = left.selectbox(
+                "Resend via", options,
+                index=options.index(channel) if channel in options else 0,
+            )
+            if right.button("Resend code", disabled=cooldown > 0):
+                _set_login_view(_run(ctl.send_otp(pick)))
+                st.rerun()
+            if cooldown > 0:
+                st.caption(f"Resend available in ~{cooldown}s")
+        if st.button("← Different account"):
+            _set_login_view(lv.LoginView(lv.CREDENTIALS))
+            st.rerun()
+    elif view.state == lv.BEARER:
+        st.caption(
+            "Fallback — advanced (§10). The Bearer is verified with a live ping "
+            "before it is accepted; a rejected token is never stored."
+        )
+        with st.form("bearer"):
+            token = st.text_input(
+                "Session Bearer", type="password",
+                placeholder="Bearer eyJhbGciOi… — paste session token",
+            )
+            st.caption("A leading `Bearer ` prefix is stripped automatically.")
+            if st.form_submit_button("Verify & open terminal"):
+                _set_login_view(
+                    _run(lv.submit_bearer(token, store=store, ping=verify_bearer))
+                )
+                st.rerun()
+        if st.button("← Use username & password"):
+            _set_login_view(lv.LoginView(lv.CREDENTIALS))
+            st.rerun()
     elif view.state == lv.FINISH:
         st.session_state["login_view"] = view
         st.success(f"Signed in as {view.username or 'operator'} — loading terminal…")
@@ -730,6 +850,7 @@ def main() -> None:
     _maybe_bootstrap(store)  # slice 13: first-run auto-ingest into an empty store
 
     module = st.sidebar.radio("Module", MODULES, index=0)
+    _render_watchlist_rail(store)
     renderers = {
         MODULES[0]: _render_broker_flow,
         MODULES[1]: _render_foreign_flow,

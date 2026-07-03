@@ -1,0 +1,23 @@
+# CurrentFlow terminal theme — design tokens from design/README.md (§ Design Tokens),
+# applied as far as Streamlit theming reaches (per the 2026-07-01 stack decision:
+# approximate fidelity, no React/JS layer). Geist / Geist Mono are used when installed
+# on the machine; the fallbacks are system faces — no runtime font fetch (local-first).
+
+[theme]
+base = "dark"
+primaryColor = "#58c4dd"                 # brand accent
+backgroundColor = "#070a10"              # app background
+secondaryBackgroundColor = "#0d121b"     # panels / cards
+textColor = "#e6edf3"                    # primary text
+linkColor = "#58c4dd"
+borderColor = "#1c222c"                  # ~ rgba(255,255,255,0.07) over the app bg
+baseRadius = "10px"                      # panel radius
+font = "Geist, -apple-system, 'Segoe UI', sans-serif"
+headingFont = "Geist, -apple-system, 'Segoe UI', sans-serif"
+codeFont = "'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace"
+# categorical chart palette: brand, smart-money gold, foreign-inst blue, local-inst
+# violet, buy green, sell red, divergence purple, prop teal
+chartCategoricalColors = ["#58c4dd", "#e3b341", "#58a6ff", "#a371f7", "#3fb950", "#f85149", "#bc8cff", "#56d4bd"]
+
+[theme.sidebar]
+backgroundColor = "#0a0e14"              # rails
