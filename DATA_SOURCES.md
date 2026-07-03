@@ -104,8 +104,8 @@ The final `access.token` is the `Authorization: Bearer …` the rest of the DAL 
 
 **1 · `POST /login/v6/username`**
 - req: `{ user, password, recaptcha_token, recaptcha_version: "RECAPTCHA_VERSION_3", player_id }`
-- resp (new-device / MFA branch, observed): `data.new_device.multi_factor.{ login_token, verification_token }` (both 36-char).
-  *(Trusted-device path — where this call returns `access`/`refresh` directly with no MFA — was **not** captured; HAR-to-confirm.)*
+- resp (new-device / MFA branch): `data.new_device.multi_factor.{ login_token, verification_token }` (both 36-char). Returned when `player_id` is **unknown/new**.
+- resp (trusted-device branch, **confirmed by live probe 2026-07-03**): when `player_id` is a **previously-verified** device, this call returns a session directly — **no MFA**: `data.login.{ user, token_data.{ access.{token,expired_at}, refresh.{token,expired_at} }, support.id }`. Note the nesting differs from step 5 (`data.login.token_data.*` vs `data.*`); `_session_from_data` handles both.
 
 **2 · `POST /mfa/verification/v1/challenge/start`**
 - req: `{ verification_token }`
@@ -123,14 +123,20 @@ The final `access.token` is the `Authorization: Bearer …` the rest of the DAL 
 - req: `{ multi_factor: { login_token } }`  (the `login_token` from step 1)
 - resp: `data.access.{ token, expired_at }`, `data.refresh.{ token, expired_at }`, plus `data.user.{ id, username, email, exchange, privilege, … }`. Observed lifetimes: **access ≈ 24h, refresh ≈ 7d** (ISO-8601 `expired_at`).
 
-**Resolved — `recaptcha_token` is ENFORCED (probe closed 2026-07-03):**
-- reCAPTCHA **v3** (`recaptcha_version: RECAPTCHA_VERSION_3`), a ~2148-char token the browser generates *silently* via `grecaptcha.execute(siteKey, {action})`. v3 is **invisible** — no challenge is shown — but the token is required: a `login/v6/username` posted with an empty token is rejected **`400 "Permintaan tidak valid"`** (confirmed by comparing a failed empty-token attempt against a successful capture that carried a full token). A pure-Python login is therefore **not** possible.
-- **Site key** (public, client-side by design): `6LeBXZYqAAAAAIAqBYdAV5HuBc6i0YeVziSYrXAZ`. Pinned in `config.AUTH_RECAPTCHA_SITE_KEY`; action `"login"` (advisory — affects v3 score analytics, not validity).
-- **Chosen fork = operator-assisted token** (not a headless browser — that's a heavy dep against the stdlib-core posture). `dal/recaptcha.py` renders a DevTools-console snippet (`grecaptcha.execute(SITE_KEY,{action}).then(copy)`) that the operator runs on an open stockbit.com tab to mint a fresh token and paste it into the login prompt (CLI `login` and the Streamlit sign-in form). Token is **single-use, ~2 min TTL** — mint it right before submitting. The slice-10 Bearer `paste` remains as the fallback.
-- The login views **refuse an empty token** before any request fires (`LoginController.submit_credentials` / CLI), so an enforced-reject 400 can't be triggered by omission.
+**Resolved — `recaptcha_token` is PRESENCE-ONLY, not validated (live probe 2026-07-03, supersedes the earlier "enforced/browser-minted" conclusion):**
+- The server checks only that `recaptcha_token` is **present and non-empty** — NOT its content or freshness. Live-probed against the own account:
+  - reused stale HAR token → **200, logged in**
+  - arbitrary junk string (`"not-a-real-recaptcha-token…"`) → **200, logged in**
+  - empty / absent token → **`400 "Permintaan tidak valid"`**
+- So there is **no Google `siteverify`** on the backend to satisfy. A pure-Python login **is** possible: no browser, DevTools console snippet, bookmarklet, or headless engine is needed. The client sends a fixed non-empty placeholder (`config.AUTH_RECAPTCHA_PLACEHOLDER = "currentflow"`). `recaptcha_version` still sent as `RECAPTCHA_VERSION_3`.
+- The public v3 site key (`6LeBXZYqAAAAAIAqBYdAV5HuBc6i0YeVziSYrXAZ`) is retained in config for reference only; it is no longer used to mint anything. `dal/recaptcha.py` (the console-snippet module) was **removed**.
+
+**Resolved — `player_id` is the DEVICE-TRUST ANCHOR (live probe 2026-07-03):**
+- OneSignal-style device UUID (paired with the `onesignal_hash` the server returns in `new-device/verify` and `/user/profile`). It is **required** — an empty/absent `player_id` is rejected `400 "Permintaan tidak valid"`.
+- It selects the response branch: a **previously-verified** `player_id` → trusted-device direct session (no MFA); a **fresh** `player_id` → new-device MFA branch (one-time OTP). Confirmed by sending a random UUID (→ MFA handles) vs. the known one (→ direct session).
+- **Approach:** generate a random UUIDv4 **once**, persist it (Keychain, `KEYCHAIN_PLAYER_ID_ACCOUNT`), reuse forever. `KeychainTokenStore.player_id()` mints-on-first-read; it survives sign-out (`clear()`) so the device stays trusted; `clear_player_id()` forgets it to force a fresh MFA. First login on a new machine does the OTP loop once; every login after is direct.
 
 **Still open (not resolved by this HAR — do not guess in code):**
-- **`player_id`** — a OneSignal push id (UUID); the successful capture carried one (`dc98dc8f-…`). Whether it is *required* vs. accepts an arbitrary/empty UUID is still **unconfirmed** (reCAPTCHA was the decisive gate for the 400). Carried through verbatim; defaults empty.
 - **Refresh endpoint** — access was valid for the whole capture, so the refresh route + request/response shape are **unconfirmed**. Capture a token-refresh exchange (or an expiry) before wiring `dal/auth.refresh`.
 
 ---

@@ -10,6 +10,7 @@ guarantee that secrets never reach the logs.
 
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass
 
@@ -104,6 +105,20 @@ _NEW_DEVICE_RESP = {
         "user": {"id": 42, "username": "tommy", "email": "t@x.io"},
     }
 }
+# The real trusted-device (previously-verified player_id) shape — tokens nested under
+# `login.token_data`, user under `login.user` (confirmed 2026-07-03 by live probe).
+_TRUSTED_LOGIN_RESP = {
+    "data": {
+        "login": {
+            "user": {"id": 42, "username": "tommy", "email": "t@x.io"},
+            "token_data": {
+                "access": {"token": "ACCESS-JWT", "expired_at": "2026-07-04T08:39:44Z"},
+                "refresh": {"token": "REFRESH-JWT", "expired_at": "2026-07-10T08:39:44Z"},
+            },
+            "support": {"id": "zY-Az-x"},
+        }
+    }
+}
 
 
 def _flow_handler(rounds: int = 1):
@@ -166,14 +181,36 @@ async def test_otp_verify_loops_then_finishes_and_new_device_verify():
     await auth.aclose()
 
 
-async def test_trusted_device_shortcut_returns_direct_session():
+async def test_trusted_device_returns_direct_session_nested_shape():
+    """Trusted-device (stable player_id) branch: session nested under
+    `data.login.token_data` — no MFA. This is the shape a repeat login actually gets."""
     def handler(request):
-        return httpx.Response(200, json=_NEW_DEVICE_RESP)  # access present, no MFA
+        return httpx.Response(200, json=_TRUSTED_LOGIN_RESP)
 
     auth = AuthClient(client=_mock_client(handler))
-    start = await auth.login_username("tommy", "pw")
+    start = await auth.login_username("tommy", "pw", player_id="STABLE-PID")
     assert not start.needs_mfa and start.session is not None
     assert start.session.access_token == "ACCESS-JWT"
+    assert start.session.refresh_token == "REFRESH-JWT"
+    assert start.session.access_expires == "2026-07-04T08:39:44Z"
+    assert start.session.username == "tommy"
+    await auth.aclose()
+
+
+async def test_login_username_defaults_to_placeholder_recaptcha():
+    """No token is minted: the body carries the fixed placeholder, and the server
+    (which validates presence only, §4.1) accepts it. player_id is passed through."""
+    seen = {}
+
+    def handler(request):
+        seen.update(json.loads(request.content))
+        return httpx.Response(200, json=_USERNAME_RESP)
+
+    auth = AuthClient(client=_mock_client(handler))
+    await auth.login_username("tommy", "pw", player_id="PID-123")
+    assert seen["recaptcha_token"] == config.AUTH_RECAPTCHA_PLACEHOLDER
+    assert seen["recaptcha_token"]  # non-empty (clears the presence check)
+    assert seen["player_id"] == "PID-123"
     await auth.aclose()
 
 
@@ -330,7 +367,7 @@ async def test_401_then_refresh_fails_loud():
 async def test_view_credentials_to_otp_to_finish():
     store, _ = _store()
     ctl = lv.LoginController(AuthClient(client=_mock_client(_flow_handler(rounds=1))), store)
-    v1 = await ctl.submit_credentials("tommy", "pw", recaptcha_token="RECAP")
+    v1 = await ctl.submit_credentials("tommy", "pw")
     assert v1.state == lv.OTP and [c.channel for c in v1.channels] == ["CHANNEL_EMAIL", "CHANNEL_WHATSAPP"]
     await ctl.send_otp("CHANNEL_EMAIL")
     v2 = await ctl.verify_otp("123456")
@@ -341,7 +378,7 @@ async def test_view_credentials_to_otp_to_finish():
 async def test_view_otp_loop_over_two_channels():
     store, _ = _store()
     ctl = lv.LoginController(AuthClient(client=_mock_client(_flow_handler(rounds=2))), store)
-    await ctl.submit_credentials("tommy", "pw", recaptcha_token="RECAP")
+    await ctl.submit_credentials("tommy", "pw")
     await ctl.send_otp("CHANNEL_EMAIL")
     mid = await ctl.verify_otp("111111")
     assert mid.state == lv.OTP and mid.error is None  # second round requested
@@ -358,7 +395,7 @@ async def test_view_rejected_login_stores_nothing_and_surfaces_error():
         return httpx.Response(401, json={"message": "invalid credentials"})
 
     ctl = lv.LoginController(AuthClient(client=_mock_client(handler)), store)
-    v = await ctl.submit_credentials("tommy", "wrong", recaptcha_token="RECAP")
+    v = await ctl.submit_credentials("tommy", "wrong")
     assert v.state == lv.CREDENTIALS and v.error
     assert store.get_session() is None  # store untouched on rejection
 
@@ -377,35 +414,47 @@ async def test_view_wrong_otp_stays_on_otp_for_retry():
         return httpx.Response(404)
 
     ctl = lv.LoginController(AuthClient(client=_mock_client(handler)), store)
-    await ctl.submit_credentials("tommy", "pw", recaptcha_token="RECAP")
+    await ctl.submit_credentials("tommy", "pw")
     v = await ctl.verify_otp("000000")
     assert v.state == lv.OTP and v.error  # retryable, not kicked to credentials
     assert store.get_session() is None
 
 
-async def test_view_empty_recaptcha_is_refused_before_any_request():
-    """reCAPTCHA v3 is server-enforced (§4.1): an empty token must be refused in the
-    view-model, never posted (which the server rejects 400). No network is touched."""
+async def test_view_submit_needs_no_recaptcha_and_uses_stable_player_id():
+    """No reCAPTCHA token is required (§4.1 — presence-only, satisfied by the
+    placeholder). submit_credentials posts the store's stable player_id and reaches
+    the server (here: trusted-device → direct session)."""
     store, _ = _store()
+    pid = store.player_id()
+    seen = {}
 
-    def handler(request):  # must never be called
-        raise AssertionError(f"no request should fire: {request.url.path}")
+    def handler(request):
+        seen.update(json.loads(request.content))
+        return httpx.Response(200, json=_TRUSTED_LOGIN_RESP)
 
     ctl = lv.LoginController(AuthClient(client=_mock_client(handler)), store)
-    v = await ctl.submit_credentials("tommy", "pw", recaptcha_token="   ")
-    assert v.state == lv.CREDENTIALS and "reCAPTCHA" in (v.error or "")
-    assert store.get_session() is None
+    v = await ctl.submit_credentials("tommy", "pw")
+    assert v.state == lv.FINISH
+    assert seen["player_id"] == pid  # stable device id from the store
+    assert seen["recaptcha_token"] == config.AUTH_RECAPTCHA_PLACEHOLDER
 
 
-def test_recaptcha_snippet_carries_site_key_and_copies_token():
-    from currentflow.dal import recaptcha
+def test_player_id_generated_once_persisted_and_survives_clear():
+    """The device player_id is a UUID minted on first read, then stable forever —
+    identical across reads and across a session `clear()` (sign-out keeps the device
+    trusted). `clear_player_id()` forgets it so the next login re-triggers MFA."""
+    import uuid as _uuid
 
-    snippet = recaptcha.mint_snippet()
-    assert config.AUTH_RECAPTCHA_SITE_KEY in snippet
-    assert f"action:'{config.AUTH_RECAPTCHA_ACTION}'" in snippet
-    assert "grecaptcha.execute" in snippet and "copy(t)" in snippet
-    # instructions embed the runnable snippet for the operator
-    assert recaptcha.mint_snippet() in recaptcha.capture_instructions()
+    store, state = _store()
+    first = store.player_id()
+    uuid_obj = _uuid.UUID(first)  # well-formed UUID
+    assert uuid_obj.version == 4
+    assert store.player_id() == first                      # stable across reads
+    store.set_session(SessionData("ACC"))
+    store.clear()                                          # sign-out
+    assert store.player_id() == first                      # device identity survives
+    store.clear_player_id()
+    assert store.player_id() != first                      # forgotten → new device
 
 
 def test_view_sign_out_clears_and_returns_to_credentials():

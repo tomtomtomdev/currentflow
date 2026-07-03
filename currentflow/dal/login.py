@@ -10,8 +10,9 @@
 `login` establishes the operator's OWN authenticated Stockbit session (own risk, §15)
 from the verified `login/v6` + `mfa/verification/v1` contract (DATA_SOURCES §4.1).
 Credentials and OTP are held only for the duration of the prompt — never written to
-disk, never logged. Only the resulting access+refresh tokens reach the Keychain.
-`paste` remains as the out-of-band fallback (and the reCAPTCHA-enforced escape hatch).
+disk, never logged. Only the resulting access+refresh tokens (and the stable device
+`player_id`) reach the Keychain. reCAPTCHA content is not validated server-side (§4.1),
+so no token capture is needed. `paste` remains as the out-of-band Bearer fallback.
 """
 
 from __future__ import annotations
@@ -24,7 +25,6 @@ from getpass import getpass
 
 from currentflow import config
 from currentflow.logging_setup import configure_logging
-from currentflow.dal import recaptcha as recaptcha_capture
 from currentflow.dal.auth import AuthClient
 from currentflow.dal.errors import AuthError, ExodusError
 from currentflow.dal.session import build_live_client, session_status, store_auth_session
@@ -45,18 +45,16 @@ async def _run_login() -> int:
     if not user or not password:
         print("username and password required — nothing stored", file=sys.stderr)
         return 1
-    # reCAPTCHA v3 is enforced (§4.1) — the token can't be minted here, so guide the
-    # operator to mint a fresh one in the browser and paste it. Refuse an empty token
-    # rather than fire a request the server will reject 400.
-    print(recaptcha_capture.capture_instructions())
-    recaptcha = getpass("reCAPTCHA token (paste, hidden): ").strip()
-    if not recaptcha:
-        print(recaptcha_capture.REQUIRED_MESSAGE, file=sys.stderr)
-        return 1
+    # No reCAPTCHA capture: the server validates only presence, not content (§4.1), so
+    # AuthClient sends a fixed placeholder. The stable device `player_id` (generated
+    # once, persisted) is the trust anchor — a previously-verified device logs in
+    # straight through; the FIRST login on a new device does the OTP loop below once.
+    store = KeychainTokenStore()
+    player_id = store.player_id()
 
     auth = AuthClient()
     try:
-        start = await auth.login_username(user, password, recaptcha_token=recaptcha)
+        start = await auth.login_username(user, password, player_id=player_id)
         if not start.needs_mfa and start.session is not None:
             _store_session(start.session)  # trusted-device shortcut (unconfirmed)
             print(f"signed in (trusted device) — {session_status()['preview']}")

@@ -23,14 +23,17 @@ JSON. Error mapping mirrors the DAL taxonomy: bad creds / failed OTP → `AuthEr
 SECURITY: this module NEVER logs a password, OTP, recaptcha token, or any token body.
 Only endpoint paths and coarse outcomes are ever emitted.
 
-`recaptcha_token` (reCAPTCHA v3, invisible) is **required** — the server rejects an
-empty token 400 (confirmed 2026-07-03, §4.1). This client only carries it through; it
-never mints one. The operator mints a fresh token in the browser (see `dal.recaptcha`)
-and the login views supply it; an empty token is refused before this client is reached.
+`recaptcha_token`: the server checks only that it is PRESENT and non-empty, NOT its
+content or freshness (confirmed 2026-07-03 by live probe — a junk string and a reused
+stale token both log in 200; only empty/absent is rejected 400). So no browser/console
+token is needed — this client sends a fixed placeholder (`config`) by default.
 
-Two items in §4.1 remain unresolved by the HAR and MUST NOT be guessed in code:
-  * `player_id` (OneSignal UUID) — required-vs-optional unconfirmed; carried through.
-  * refresh route/shape — not captured. `refresh()` raises until pinned in config.
+`player_id` (OneSignal-style device UUID) is the server's **device-trust anchor**: a
+stable, previously-MFA-verified `player_id` logs in directly (trusted-device branch,
+`data.login.token_data`); a fresh one is treated as a new device and re-triggers the
+one-time OTP. The caller passes the stable id from the token store (generated once,
+persisted). An empty `player_id` is rejected 400. Refresh route/shape is still not
+captured — `refresh()` raises until pinned in config (§4.1 open item).
 """
 
 from __future__ import annotations
@@ -104,9 +107,19 @@ class LoginStart:
 
 
 def _session_from_data(data: dict) -> Session:
-    access = data.get("access") or {}
-    refresh = data.get("refresh") or {}
-    user = data.get("user") or {}
+    # Two confirmed shapes carry the same inner {token, expired_at}:
+    #   * step-5 new-device/verify:      data.{access, refresh, user}
+    #   * step-1 trusted-device login:   data.login.{token_data.{access, refresh}, user}
+    login = data.get("login")
+    if isinstance(login, dict):
+        token_data = login.get("token_data") or {}
+        access = token_data.get("access") or {}
+        refresh = token_data.get("refresh") or {}
+        user = login.get("user") or {}
+    else:
+        access = data.get("access") or {}
+        refresh = data.get("refresh") or {}
+        user = data.get("user") or {}
     return Session(
         access_token=access.get("token", ""),
         access_expires=access.get("expired_at"),
@@ -173,12 +186,16 @@ class AuthClient:
         user: str,
         password: str,
         *,
-        recaptcha_token: str = "",
+        recaptcha_token: str = config.AUTH_RECAPTCHA_PLACEHOLDER,
         player_id: str = "",
     ) -> LoginStart:
-        """Step 1. Returns the new-device MFA handles, or (trusted-device, unconfirmed)
-        a ready session. `recaptcha_token` is carried through verbatim — this client
-        does not mint one (§4.1 probe decides whether a real token is required)."""
+        """Step 1. Returns a ready session (trusted device — a previously-verified
+        `player_id`) or the new-device MFA handles (fresh `player_id` → one-time OTP).
+
+        `recaptcha_token` content is NOT validated server-side (§4.1) — only presence
+        is checked — so it defaults to a fixed placeholder; no browser is involved.
+        `player_id` is the device-trust anchor: pass the stable one from the token
+        store so repeat logins skip MFA. An empty `player_id` is rejected 400."""
         data = await self._post(
             config.AUTH_LOGIN_USERNAME_PATH,
             {
@@ -189,8 +206,9 @@ class AuthClient:
                 "player_id": player_id,
             },
         )
-        # trusted-device shortcut (HAR-unconfirmed): guard for a direct session.
-        if data.get("access"):
+        # Trusted-device shortcut (confirmed 2026-07-03): a direct session under either
+        # the nested `login.token_data` shape or a flat `access`.
+        if data.get("login") or data.get("access"):
             return LoginStart(None, None, session=_session_from_data(data))
         mf = ((data.get("new_device") or {}).get("multi_factor")) or {}
         login_token = mf.get("login_token")

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import uuid
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from typing import Callable, Protocol
@@ -76,6 +77,7 @@ class KeychainTokenStore:
     service: str = config.KEYCHAIN_SERVICE
     account: str = config.KEYCHAIN_ACCOUNT
     session_account: str = config.KEYCHAIN_SESSION_ACCOUNT
+    player_id_account: str = config.KEYCHAIN_PLAYER_ID_ACCOUNT
     runner: Runner = _default_runner
 
     # -- low-level, account-parametric --------------------------------------------
@@ -156,8 +158,29 @@ class KeychainTokenStore:
         present, else the pasted Bearer. Missing → None (never a blank header)."""
         return self.get_access() or self.get()
 
+    # -- device player_id (slice 12c) ---------------------------------------------
+
+    def player_id(self) -> str:
+        """The stable device `player_id` (OneSignal-style UUID). Generated ONCE on
+        first read and persisted; every later read returns the same value. This is the
+        server's device-trust anchor — a stable, previously-MFA-verified player_id
+        logs in directly, while a fresh one re-triggers the one-time OTP. Not a secret
+        (a device id), but kept in the Keychain so it survives across sign-out."""
+        existing = self._read(self.player_id_account)
+        if existing:
+            return existing
+        new_id = str(uuid.uuid4())
+        self._write(self.player_id_account, new_id)
+        return new_id
+
     def clear(self) -> None:
-        """Delete both the pasted Bearer and the login session. Missing items are
-        not an error (idempotent)."""
+        """Delete the pasted Bearer and the login session. The device `player_id` is
+        deliberately NOT cleared — sign-out ends the session but keeps the device
+        trusted, so the next login skips MFA. Missing items are not an error."""
         self._delete(self.account)
         self._delete(self.session_account)
+
+    def clear_player_id(self) -> None:
+        """Forget the device identity so the NEXT login is treated as a new device
+        (re-triggers the one-time MFA). Separate from `clear()` on purpose."""
+        self._delete(self.player_id_account)

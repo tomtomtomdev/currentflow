@@ -574,26 +574,16 @@ def _render_login() -> None:
         st.error(view.error)
 
     if view.state == lv.CREDENTIALS:
-        from currentflow.dal import recaptcha as rc
-
-        with st.expander("How to get a reCAPTCHA token (required)", expanded=True):
-            st.markdown(
-                "reCAPTCHA v3 is enforced — mint a **fresh** token to paste (single-use, "
-                "expires ~2 min):\n"
-                "1. Open [stockbit.com](https://stockbit.com) in a browser.\n"
-                "2. Open DevTools → Console.\n"
-                "3. Run this, then paste the copied token below:"
-            )
-            st.code(rc.mint_snippet(), language="javascript")
+        st.caption(
+            "First sign-in on this machine sends a one-time OTP to trust the device; "
+            "after that, login is direct."
+        )
         with st.form("credentials"):
             user = st.text_input("Username / email")
             password = st.text_input("Password", type="password")
-            recaptcha = st.text_input(
-                "reCAPTCHA token (paste fresh — required)", type="password"
-            )
             if st.form_submit_button("Sign in"):
                 st.session_state["login_view"] = _run(
-                    ctl.submit_credentials(user, password, recaptcha_token=recaptcha)
+                    ctl.submit_credentials(user, password)
                 )
                 st.rerun()
     elif view.state == lv.OTP:
