@@ -587,19 +587,19 @@ def _render_login() -> None:
                 )
                 st.rerun()
     elif view.state == lv.OTP:
-        labels = {f"{c.channel} → {c.target}": c.channel for c in view.channels}
-        pick = st.selectbox("OTP channel", list(labels)) if labels else None
-        col_send, col_verify = st.columns(2)
-        with col_send:
-            if st.button("Send OTP") and pick:
-                st.session_state["login_view"] = _run(ctl.send_otp(labels[pick]))
+        # The code is sent immediately on entering each round (no "Send OTP" button).
+        target = view.otp_target or (view.channels[0].target if view.channels else None)
+        channel = view.default_channel or (view.channels[0].channel if view.channels else None)
+        if target:
+            st.caption(f"Code sent to {channel or 'your device'} → {target}. Enter it below.")
+        with st.form("otp"):
+            # Key the field by the channel/target of THIS round, so when the server asks
+            # for a second factor (email → WhatsApp) the widget is re-created empty
+            # instead of carrying the just-verified email code over.
+            code = st.text_input("OTP code", key=f"otp_code_{target or channel or 'x'}")
+            if st.form_submit_button("Verify"):
+                st.session_state["login_view"] = _run(ctl.verify_otp(code))
                 st.rerun()
-        with col_verify:
-            with st.form("otp"):
-                code = st.text_input("OTP code")
-                if st.form_submit_button("Verify"):
-                    st.session_state["login_view"] = _run(ctl.verify_otp(code))
-                    st.rerun()
     elif view.state == lv.FINISH:
         st.session_state["login_view"] = view
         st.success(f"Signed in as {view.username or 'operator'} — loading terminal…")

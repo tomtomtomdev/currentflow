@@ -11,9 +11,16 @@ refresh tokens are persisted, via the store.
 
 State machine (matches the §4.1 flow):
     CREDENTIALS --submit_credentials--> OTP  (or FINISH on trusted-device)
-    OTP --send_otp/verify_otp (loops on CHALLENGE_OTP)--> FINISH
+    OTP --verify_otp (loops on CHALLENGE_OTP)--> FINISH
     any AuthError -> stays on the current step with `error` set, session UNTOUCHED
     sign_out -> CREDENTIALS (store cleared)
+
+The OTP code is **sent immediately** on entering each OTP round (no operator "send"
+step): `submit_credentials` and `verify_otp` fire the send for the challenge's default
+channel before handing back an OTP view. When the server asks for a second factor
+(email → WhatsApp), the next round auto-sends on the new channel, and the returned view
+reports the new `otp_target`/`default_channel` so the UI can render a fresh, empty code
+field for it. `send_otp` remains for an explicit operator-driven resend.
 """
 
 from __future__ import annotations
@@ -56,6 +63,10 @@ class LoginController:
         self._store = store or KeychainTokenStore()
         self._verification_token: str | None = None
         self._login_token: str | None = None
+        # The channel/target the current OTP was sent to — held so a wrong-code retry
+        # can keep showing "code sent to …" instead of dropping the context.
+        self._otp_channel: str | None = None
+        self._otp_target: str | None = None
 
     # -- step 1: credentials ------------------------------------------------------
 
@@ -88,24 +99,58 @@ class LoginController:
             challenge = await self._auth.challenge_start(self._verification_token or "")
         except ExodusError as exc:
             return LoginView(CREDENTIALS, error=str(exc))
-        return LoginView(
-            OTP,
-            channels=challenge.channels,
-            default_channel=challenge.default_channel,
-        )
+        return await self._enter_otp(challenge)
 
     # -- step 2/3: send an OTP ----------------------------------------------------
 
+    async def _enter_otp(self, challenge) -> LoginView:
+        """Transition into an OTP round, sending the code immediately (no operator
+        button) to the challenge's default channel — the server dictates which factor
+        is due (email first, then WhatsApp), so we honour `default_channel`. The full
+        channel list is preserved on the view for context; `default_channel`/`otp_target`
+        report the channel the code actually went to (drives the UI's per-round field)."""
+        channel = challenge.default_channel or (
+            challenge.channels[0].channel if challenge.channels else None
+        )
+        if not channel:
+            return LoginView(
+                OTP,
+                channels=challenge.channels,
+                default_channel=challenge.default_channel,
+                error="server offered no OTP channel",
+            )
+        try:
+            sent = await self._auth.otp_send(self._verification_token or "", channel)
+        except ExodusError as exc:
+            return LoginView(
+                OTP,
+                channels=challenge.channels,
+                default_channel=challenge.default_channel,
+                error=str(exc),
+            )
+        self._otp_channel, self._otp_target = sent.channel, sent.target
+        return LoginView(
+            OTP,
+            channels=challenge.channels or [OtpChannel(sent.channel, sent.target)],
+            default_channel=sent.channel,
+            otp_target=sent.target,
+            otp_next_attempt_in=sent.next_attempt_in,
+        )
+
     async def send_otp(self, channel: str) -> LoginView:
+        """Explicit operator-driven resend of the OTP (the automatic first send happens
+        on entering the round). Kept for a resend affordance / cooldown recovery."""
         if not self._verification_token:
             return LoginView(CREDENTIALS, error="session expired — sign in again")
         try:
             sent = await self._auth.otp_send(self._verification_token, channel)
         except ExodusError as exc:
             return LoginView(OTP, error=str(exc))
+        self._otp_channel, self._otp_target = sent.channel, sent.target
         return LoginView(
             OTP,
             channels=[OtpChannel(sent.channel, sent.target)],
+            default_channel=sent.channel,
             otp_target=sent.target,
             otp_next_attempt_in=sent.next_attempt_in,
         )
@@ -118,18 +163,17 @@ class LoginController:
         try:
             challenge = await self._auth.otp_verify(self._verification_token, otp)
         except AuthError as exc:
-            # wrong code — stay on OTP so the operator can retry; store nothing.
-            return LoginView(OTP, error=str(exc))
+            # wrong code — stay on OTP so the operator can retry; store nothing. Keep
+            # the current channel/target so the "code sent to …" context and field key
+            # survive the retry (same channel → field is preserved, not cleared).
+            return self._otp_error_view(str(exc))
         except ExodusError as exc:
-            return LoginView(OTP, error=str(exc))
+            return self._otp_error_view(str(exc))
 
         if not challenge.is_finished:
-            # another OTP round (a new channel). Remain on OTP with the new channels.
-            return LoginView(
-                OTP,
-                channels=challenge.channels,
-                default_channel=challenge.default_channel,
-            )
+            # another OTP round (a new channel, e.g. email → WhatsApp): auto-send the
+            # next code. The returned view's new otp_target drives a fresh, empty field.
+            return await self._enter_otp(challenge)
 
         try:
             session = await self._auth.new_device_verify(self._login_token or "")
@@ -137,13 +181,27 @@ class LoginController:
             return LoginView(OTP, error=str(exc))
         store_auth_session(self._store, session)
         self._verification_token = self._login_token = None  # drop handles
+        self._otp_channel = self._otp_target = None
         return LoginView(FINISH, username=session.username)
+
+    def _otp_error_view(self, error: str) -> LoginView:
+        """An OTP-step error view that keeps the current channel/target so the UI still
+        shows where the code went (and holds the field key stable across the retry)."""
+        channels = [OtpChannel(self._otp_channel, self._otp_target)] if self._otp_channel else []
+        return LoginView(
+            OTP,
+            channels=channels,
+            default_channel=self._otp_channel,
+            otp_target=self._otp_target,
+            error=error,
+        )
 
     # -- sign out -----------------------------------------------------------------
 
     def sign_out(self) -> LoginView:
         self._store.clear()
         self._verification_token = self._login_token = None
+        self._otp_channel = self._otp_target = None
         return LoginView(CREDENTIALS)
 
 

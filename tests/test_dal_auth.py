@@ -133,7 +133,11 @@ def _flow_handler(rounds: int = 1):
         if path == config.AUTH_CHALLENGE_START_PATH:
             return httpx.Response(200, json=_START_RESP)
         if path == config.AUTH_CHALLENGE_OTP_SEND_PATH:
-            return httpx.Response(200, json=_SEND_RESP)
+            channel = json.loads(request.content).get("channel", "CHANNEL_EMAIL")
+            target = "+62****789" if channel == "CHANNEL_WHATSAPP" else "tom****@gmail.com"
+            return httpx.Response(
+                200, json={"data": {"channel": channel, "target": target, "next_attempt_in": 60}}
+            )
         if path == config.AUTH_CHALLENGE_OTP_VERIFY_PATH:
             seen["verify"] += 1
             done = seen["verify"] >= rounds
@@ -364,26 +368,29 @@ async def test_401_then_refresh_fails_loud():
 # --- login view-model (pure; Streamlit runtime not exercised) --------------------
 
 
-async def test_view_credentials_to_otp_to_finish():
+async def test_view_credentials_to_otp_sends_immediately_then_finish():
     store, _ = _store()
     ctl = lv.LoginController(AuthClient(client=_mock_client(_flow_handler(rounds=1))), store)
     v1 = await ctl.submit_credentials("tommy", "pw")
+    # OTP is sent immediately on entering the round — no operator "send" step. The
+    # full channel list is kept for context; the target/default report where it went.
     assert v1.state == lv.OTP and [c.channel for c in v1.channels] == ["CHANNEL_EMAIL", "CHANNEL_WHATSAPP"]
-    await ctl.send_otp("CHANNEL_EMAIL")
+    assert v1.default_channel == "CHANNEL_EMAIL" and v1.otp_target == "tom****@gmail.com"
     v2 = await ctl.verify_otp("123456")
     assert v2.state == lv.FINISH and v2.username == "tommy"
     assert store.get_access() == "ACCESS-JWT"  # session persisted only on FINISH
 
 
-async def test_view_otp_loop_over_two_channels():
+async def test_view_otp_loop_auto_sends_second_channel():
     store, _ = _store()
     ctl = lv.LoginController(AuthClient(client=_mock_client(_flow_handler(rounds=2))), store)
-    await ctl.submit_credentials("tommy", "pw")
-    await ctl.send_otp("CHANNEL_EMAIL")
+    v1 = await ctl.submit_credentials("tommy", "pw")
+    assert v1.otp_target == "tom****@gmail.com"  # first factor sent on entry
     mid = await ctl.verify_otp("111111")
-    assert mid.state == lv.OTP and mid.error is None  # second round requested
+    # Second round is auto-sent to the new channel; the new target drives a fresh field.
+    assert mid.state == lv.OTP and mid.error is None
+    assert mid.default_channel == "CHANNEL_WHATSAPP" and mid.otp_target == "+62****789"
     assert store.get_session() is None  # nothing stored mid-loop
-    await ctl.send_otp("CHANNEL_WHATSAPP")
     done = await ctl.verify_otp("222222")
     assert done.state == lv.FINISH and store.get_access() == "ACCESS-JWT"
 
@@ -409,14 +416,19 @@ async def test_view_wrong_otp_stays_on_otp_for_retry():
             return httpx.Response(200, json=_USERNAME_RESP)
         if path == config.AUTH_CHALLENGE_START_PATH:
             return httpx.Response(200, json=_START_RESP)
+        if path == config.AUTH_CHALLENGE_OTP_SEND_PATH:
+            return httpx.Response(200, json=_SEND_RESP)
         if path == config.AUTH_CHALLENGE_OTP_VERIFY_PATH:
             return httpx.Response(400, json={"message": "wrong otp"})
         return httpx.Response(404)
 
     ctl = lv.LoginController(AuthClient(client=_mock_client(handler)), store)
-    await ctl.submit_credentials("tommy", "pw")
+    entered = await ctl.submit_credentials("tommy", "pw")
+    assert entered.otp_target == "tom****@gmail.com"  # sent on entry
     v = await ctl.verify_otp("000000")
     assert v.state == lv.OTP and v.error  # retryable, not kicked to credentials
+    # channel/target survive the wrong-code retry so the field key stays stable
+    assert v.default_channel == "CHANNEL_EMAIL" and v.otp_target == "tom****@gmail.com"
     assert store.get_session() is None
 
 
