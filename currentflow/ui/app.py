@@ -19,6 +19,7 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 
+from currentflow import config
 from currentflow.logging_setup import configure_logging
 from currentflow.signals import (
     accumulation,
@@ -40,7 +41,6 @@ from currentflow.ui.accumulation_view import (
     stealth_callout,
 )
 from currentflow.ui.broker_flow_view import (
-    DISCLAIMER,
     OBSERVATION_BADGE,
     broker_table,
     concentration_panel,
@@ -66,6 +66,7 @@ from currentflow.ui.risk_view import (
     scenario_rows,
     sector_exposure_rows,
 )
+from currentflow.ui import shell
 from currentflow.ui.sector_view import scatter_points, sector_rows
 from currentflow.ui.sms_view import GATE_BANNER, WATCHLIST_FRAMING, component_rows, score_display, state_label
 from currentflow.ui import daily_top_view, ml_view, ranking_view, watchlist_view
@@ -137,26 +138,32 @@ def _watchlist_data(db_path: str, day: str, n_symbols: int) -> dict:
 
 
 def _render_watchlist_rail(store: Store) -> None:
-    """The design's ARMED-watchlist right rail, adapted to the sidebar: state word +
-    the five component strengths (DIV BRK FF RVOL BLK) — observation, never a number
-    or a verb (RULE B; the composite stays with the gated SMS/Rank module)."""
-    st.sidebar.divider()
-    st.sidebar.subheader("ARMED watchlist · track B")
+    """The design's ARMED-watchlist right rail (design/screens: right 296px band):
+    state word + the five component spark-bars (DIV BRK FF RVOL BLK) — observation,
+    never a number or a verb (RULE B; the composite stays with the gated SMS/Rank
+    module). Rendered as shell HTML inside the right column."""
     syms = _symbols(store, "daily_bar")
     if not syms:
-        st.sidebar.caption("no data ingested yet")
+        st.markdown(
+            '<div class="cf-railhead">ARMED WATCHLIST</div>'
+            '<div class="cf-railnote">no data ingested yet</div>',
+            unsafe_allow_html=True,
+        )
         return
     data = _watchlist_data(_db_path(), f"{datetime.now():%Y-%m-%d}", len(syms))
-    st.sidebar.caption(f"{data['framing']}.")
-    if not data["rows"]:
-        st.sidebar.caption("— nothing ARMED or watching today")
-        return
-    for row in data["rows"]:
-        dot = "🟠" if row["state"] == "ARMED" else "🔵"
-        st.sidebar.markdown(f"{dot} **{row['symbol']}** — {row['state']}")
-        st.sidebar.caption(watchlist_view.spark_line(row))
-    if data["dropped"]:
-        st.sidebar.caption(f"…and {data['dropped']} more (top {len(data['rows'])} shown)")
+    st.markdown(shell.watchlist_rail_html(data), unsafe_allow_html=True)
+
+
+def _module_header(title: str, subtitle: str, kind: str, badge: str) -> None:
+    """Design module-header ribbon: title + framing subtitle + status pill."""
+    st.markdown(shell.module_header_html(title, subtitle, kind, badge), unsafe_allow_html=True)
+
+
+def _as_of(store: Store) -> str | None:
+    """Latest ingested trading day — the top bar's as-of stamp ('—' when empty;
+    a missing stamp is shown as absent, never faked)."""
+    row = store._con.execute('SELECT max("date") FROM daily_bar').fetchone()
+    return str(row[0]) if row and row[0] else None
 
 
 def _trap_ribbon(store: Store, symbol: str, decision_ts: datetime) -> None:
@@ -173,8 +180,12 @@ def _trap_ribbon(store: Store, symbol: str, decision_ts: datetime) -> None:
 
 
 def _render_broker_flow(store: Store) -> None:
-    st.title("Broker Flow Analyzer")
-    st.caption(f":green[{OBSERVATION_BADGE}] — here is the flow, you decide.")
+    _module_header(
+        "Broker Flow Analyzer",
+        "Per-stock broker net buy/sell · DNA classification · concentration & "
+        "persistence. The differentiator — pure observation, ships now.",
+        "observation", OBSERVATION_BADGE,
+    )
 
     symbols = _symbols(store, "broker_net")
     if not symbols:
@@ -211,8 +222,11 @@ def _render_broker_flow(store: Store) -> None:
 
 
 def _render_foreign_flow(store: Store) -> None:
-    st.title("Foreign Flow Dashboard")
-    st.caption(f":green[{OBSERVATION_BADGE}] — foreign-inst lens; here is the flow, you decide.")
+    _module_header(
+        "Foreign Flow Dashboard",
+        "Foreign-inst lens — here is the flow, you decide.",
+        "observation", "OBSERVATION",
+    )
 
     symbols = _symbols(store, "daily_bar")
     if not symbols:
@@ -287,8 +301,11 @@ def _render_foreign_flow(store: Store) -> None:
 
 
 def _render_replay(store: Store) -> None:
-    st.title("Money Flow Replay")
-    st.caption(f":green[{OBSERVATION_BADGE}] — reconstructing from stored `as_of`.")
+    _module_header(
+        "Money Flow Replay",
+        "Reconstructing from stored as_of — the look-ahead audit tool.",
+        "observation", "OBSERVATION",
+    )
 
     symbols = _symbols(store, "daily_bar")
     if not symbols:
@@ -336,8 +353,11 @@ def _render_replay(store: Store) -> None:
 
 
 def _render_accumulation(store: Store) -> None:
-    st.title("Institutional Accumulation Detector")
-    st.caption(f":green[{OBSERVATION_BADGE}] — stealth accumulation; here is the flow, you decide.")
+    _module_header(
+        "Institutional Accumulation Detector",
+        "Stealth accumulation — measured, not scored; here is the flow, you decide.",
+        "observation", "OBSERVATION",
+    )
 
     symbols = _symbols(store, "daily_bar")
     if not symbols:
@@ -391,8 +411,11 @@ def _render_accumulation(store: Store) -> None:
 
 
 def _render_heatmap(store: Store) -> None:
-    st.title("Smart Money Heatmap")
-    st.caption(f":green[{OBSERVATION_BADGE}] — direction & flow-as-%-of-cap; a rendering, not a score.")
+    _module_header(
+        "Smart Money Heatmap",
+        "Direction & flow-as-%-of-cap — a rendering, not a score.",
+        "derived", "DERIVED VIEW · rendering, no new claim",
+    )
 
     symbols = _symbols(store, "daily_bar")
     if not symbols:
@@ -421,9 +444,22 @@ def _render_heatmap(store: Store) -> None:
 
 
 def _render_sms(store: Store) -> None:
-    st.title("SMS / Rank")
-    st.caption(f":orange[GATED · RULE B] — {WATCHLIST_FRAMING}.")
-    st.info(GATE_BANNER)
+    from currentflow.validation.state import ModuleState
+
+    rec = _ledger().record("sms")
+    validated = rec.state is ModuleState.VALIDATED
+    _module_header(
+        "Smart Money Score / AI Ranking",
+        "Pre-validation: score computed internally, number withheld. Components shown "
+        "as observation; ranking framed as flow-derived, not a recommendation.",
+        "observation" if validated else "gated",
+        "CLAIM · paper-validated" if validated else "GATED · number withheld (RULE B)",
+    )
+    st.markdown(
+        shell.validation_bar_html(rec.months_accrued, config.PAPER_VALIDATION_MONTHS, validated),
+        unsafe_allow_html=True,
+    )
+    st.caption(GATE_BANNER)
 
     symbols = _symbols(store, "daily_bar")
     if not symbols:
@@ -447,9 +483,12 @@ def _render_sms(store: Store) -> None:
 
 
 def _render_ranking(store: Store) -> None:
-    st.title("AI Buy/Sell Ranking")
     registry = _ledger().states()
-    st.caption(f":orange[GATED · RULE B] — {ranking_view.framing(registry=registry)}.")
+    _module_header(
+        "AI Buy/Sell Ranking",
+        f"{ranking_view.framing(registry=registry)}.",
+        "gated", "GATED · number withheld (RULE B)",
+    )
 
     symbols = _symbols(store, "daily_bar")
     if not symbols:
@@ -469,7 +508,10 @@ def _render_daily_top(store: Store) -> None:
         return
     track = st.sidebar.radio("Track", ["A", "B"], index=1)
     dig = daily_top_view.digest(_all_results(store, track, datetime.now()), registry=registry)
-    st.caption(f":orange[GATED · RULE B] — {dig['framing']}.")
+    _module_header(
+        "Daily Top Opportunities", f"{dig['framing']}.",
+        "gated", "GATED · number withheld (RULE B)",
+    )
     st.metric("ARMED names today", dig["count"])
     for row in dig["names"]:
         st.subheader(f"{row['symbol']} · {row['track']}")
@@ -478,8 +520,11 @@ def _render_daily_top(store: Store) -> None:
 
 
 def _render_sector(store: Store) -> None:
-    st.title("Sector Rotation Map")
-    st.caption(":blue[DERIVED VIEW] — flow by sector on the RS-vs-flow quadrant; a rendering, not a score.")
+    _module_header(
+        "Sector Rotation Map",
+        "Flow by sector on the RS-vs-flow quadrant — a rendering, not a score.",
+        "derived", "DERIVED VIEW",
+    )
 
     symbols = _symbols(store, "daily_bar")
     if not symbols:
@@ -506,8 +551,7 @@ def _render_sector(store: Store) -> None:
 
 
 def _render_risk(store: Store) -> None:
-    st.title("Portfolio Risk Monitor")
-    st.caption(f":green[OBSERVATION] — {RISK_FRAMING}.")
+    _module_header("Portfolio Risk Monitor", f"{RISK_FRAMING}.", "observation", "OBSERVATION")
 
     symbols = _symbols(store, "daily_bar")
     if not symbols:
@@ -566,9 +610,12 @@ def _render_risk(store: Store) -> None:
 
 
 def _render_ml(store: Store) -> None:
-    st.title("ML Layer")
-    st.caption(":red[GATED · LD-8] — signal-weight optimizer / ranker; runs only after the "
-               "rules system earns ≥3mo positive forward-paper walk-forward Sharpe.")
+    _module_header(
+        "ML Layer",
+        "Signal-weight optimizer / ranker; runs only after the rules system earns "
+        "≥3mo positive forward-paper walk-forward Sharpe.",
+        "gated", "GATED · LD-8",
+    )
 
     status = ml_view.status(_ledger())
     (st.success if status["admitted"] else st.error)(status["banner"])
@@ -726,9 +773,10 @@ def _render_login() -> None:
         st.rerun()
 
 
-def _session_topbar() -> bool:
-    """Masked session status + sign-out in the sidebar. Returns True while a valid
-    session exists (module rendering proceeds), False after sign-out."""
+def _session_topbar() -> str | None:
+    """Masked session status + sign-out in the sidebar. Returns the masked operator
+    label while a valid session exists (module rendering proceeds; the label feeds
+    the design top bar), None after sign-out."""
     from currentflow.dal.session import session_status
     from currentflow.dal.token_store import KeychainTokenStore
     from currentflow.ui import login_view as lv
@@ -736,14 +784,14 @@ def _session_topbar() -> bool:
     store = KeychainTokenStore()
     st_status = session_status(store)
     if not st_status["has_token"]:
-        return False
+        return None
     who = st_status.get("username") or "operator"
     st.sidebar.caption(f"● {who} — {st_status['preview']} [{st_status['source']}]")
     if st.sidebar.button("Sign out"):
         _login_controller().sign_out() if "login_ctl" in st.session_state else store.clear()
         st.session_state["login_view"] = lv.LoginView(lv.CREDENTIALS)
         st.rerun()
-    return True
+    return f"{who} · {st_status['preview']}"
 
 
 def _maybe_bootstrap(store: Store) -> None:
@@ -838,19 +886,23 @@ def _maybe_bootstrap(store: Store) -> None:
 def main() -> None:
     configure_logging()  # persist dal `net-error` lines to logs/net.log
     st.set_page_config(page_title="CurrentFlow", layout="wide")
+    st.markdown(shell.shell_css(), unsafe_allow_html=True)
 
     # Auth gate (slice 11): no valid session → the login flow, never blank modules.
-    if not _session_topbar():
+    operator = _session_topbar()
+    if operator is None:
         _render_login()
-        st.divider()
-        st.caption(DISCLAIMER)
+        st.markdown(shell.ticker_html(), unsafe_allow_html=True)
         return
 
     store = _store(_db_path())
+    st.markdown(
+        shell.top_bar_html(as_of=_as_of(store), operator=operator),
+        unsafe_allow_html=True,
+    )
     _maybe_bootstrap(store)  # slice 13: first-run auto-ingest into an empty store
 
     module = st.sidebar.radio("Module", MODULES, index=0)
-    _render_watchlist_rail(store)
     renderers = {
         MODULES[0]: _render_broker_flow,
         MODULES[1]: _render_foreign_flow,
@@ -864,14 +916,18 @@ def main() -> None:
         MODULES[9]: _render_daily_top,
         MODULES[10]: _render_ml,
     }
-    if module in renderers:
-        renderers[module](store)
-    else:
-        st.subheader(module)
-        st.info("Not built yet — lands in a later slice (see PLAN.md).")
+    # design shell: main module pane + the 296px ARMED-watchlist right rail
+    main_col, rail_col = st.columns([2.55, 1], gap="medium")
+    with rail_col:
+        _render_watchlist_rail(store)
+    with main_col:
+        if module in renderers:
+            renderers[module](store)
+        else:
+            st.subheader(module)
+            st.info("Not built yet — lands in a later slice (see PLAN.md).")
 
-    st.divider()
-    st.caption(DISCLAIMER)
+    st.markdown(shell.ticker_html(), unsafe_allow_html=True)
 
 
 if __name__ == "__main__":
