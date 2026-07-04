@@ -117,3 +117,78 @@ class TestChrome:
     def test_html_is_escaped(self):
         row = dict(_ROW, symbol="<script>")
         assert "<script>" not in shell.watchlist_card_html(row)
+
+
+class TestBrokerFlowPanels:
+    _ROWS = [
+        {"#": 1, "broker": "BQ", "dna": "PROP", "net_idr_bn": 37.0,
+         "buy_idr_bn": 40.0, "sell_idr_bn": 3.0, "persist": "●●●●●●○",
+         "accum_vwap": 412.0},
+        {"#": 2, "broker": "CP", "dna": "RETAIL", "net_idr_bn": -10.6,
+         "buy_idr_bn": 1.0, "sell_idr_bn": 11.6, "persist": "○○○○○○○",
+         "accum_vwap": None},
+    ]
+
+    def test_broker_table_signed_colored_with_dna_chips(self):
+        html = shell.broker_table_html(self._ROWS)
+        assert "+37.00" in html and "-10.60" in html
+        assert shell.TOKENS["buy"] in html and shell.TOKENS["sell"] in html
+        text = _visible_text(html)
+        assert shell.DNA_LABELS["PROP"] in text and shell.DNA_LABELS["RETAIL"] in text
+        assert "PERSIST" in text  # 7-dot strip labeled
+
+    def test_concentration_missing_measurement_is_absent(self):
+        html = shell.concentration_html(
+            {"top2_share_pct": None, "hhi": None, "hhi_label": None, "top2_names": None}
+        )
+        assert "—" in _visible_text(html)
+        assert "0.00" not in html and "0%" not in html  # never faked as zero
+
+    def test_concentration_renders_share_bar_and_hhi_label(self):
+        html = shell.concentration_html(
+            {"top2_share_pct": 83.0, "hhi": 0.4, "hhi_label": "highly concentrated",
+             "top2_names": "BQ, NI"}
+        )
+        text = _visible_text(html)
+        assert "83%" in text and "0.40" in text
+        assert "highly concentrated" in text and "BQ, NI" in text
+
+    def test_veto_panel_marks_fired_vs_clear(self):
+        html = shell.veto_panel_html([
+            {"check": "RETAIL_FOMO", "label": "Retail-FOMO (buy ratio >60%)",
+             "fired": True, "detail": "retail brokers are 70% of buying"},
+            {"check": "WASH_CHURN", "label": "Wash / churn", "fired": False,
+             "detail": None},
+        ])
+        text = _visible_text(html)
+        assert "✕" in text and "✓" in text and "clear" in text
+        assert "70% of buying" in text
+
+    def test_matrix_missing_cell_is_absent_not_zero(self):
+        html = shell.matrix_html(
+            [{"broker": "KZ", "BRMS": 10.0, "PTRO": None}], ["BRMS", "PTRO"]
+        )
+        assert "+10.0" in html
+        assert "not a top participant" in html
+        assert "0.0" not in _visible_text(html).replace("+10.0", "")
+
+    def test_matrix_highlights_selected_column(self):
+        html = shell.matrix_html(
+            [{"broker": "KZ", "BRMS": 10.0, "PTRO": -4.0}],
+            ["BRMS", "PTRO"], selected="PTRO",
+        )
+        assert f'style="color:{shell.TOKENS["accent"]}">PTRO' in html
+
+    def test_stock_header_missing_price_is_absent(self):
+        html = shell.stock_header_html(symbol="BRMS", track="B")
+        assert "BRMS" in html and "TRACK B" in html
+        assert "cf-price" not in html and "ADV" not in html
+
+    def test_stock_header_full(self):
+        html = shell.stock_header_html(
+            symbol="BRMS", track="B", sector="Basic Materials",
+            price=412.0, change_pct=2.74, adv_bn=38.0,
+        )
+        text = _visible_text(html)
+        assert "412" in text and "+2.74%" in text and "38" in text
+        assert "Basic Materials" in text

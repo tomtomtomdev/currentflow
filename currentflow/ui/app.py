@@ -45,6 +45,8 @@ from currentflow.ui.broker_flow_view import (
     broker_table,
     concentration_panel,
     matrix_table,
+    stock_header,
+    veto_checks,
 )
 from currentflow.ui.foreign_flow_view import (
     cumulative_series,
@@ -197,27 +199,54 @@ def _render_broker_flow(store: Store) -> None:
     snap = analyze(store, symbol, decision_ts)
     _trap_ribbon(store, symbol, decision_ts)
 
+    # design stock-header row: ticker · TRACK chip · sector chip · price/Δ% · 20d ADV
+    st.markdown(
+        shell.stock_header_html(
+            symbol=symbol, track="B", sector=OPERATOR_SECTOR_MAP.get(symbol),
+            **stock_header(store.read_daily_bars(symbol, decision_ts)),
+        ),
+        unsafe_allow_html=True,
+    )
+
     left, right = st.columns([1.35, 1])
     with left:
-        st.subheader(f"{symbol} — broker net flow")
-        st.caption(f"{snap.start} → {snap.end} · as visible at {decision_ts:%Y-%m-%d %H:%M}")
-        st.dataframe(broker_table(snap), use_container_width=True)
+        st.markdown(
+            shell.panel_html(
+                "BROKER NET FLOW",
+                # every broker rides the panel; the fixed-height body scrolls
+                # (design proportions without a silent cap)
+                f'<div class="cf-scrollbody">{shell.broker_table_html(broker_table(snap))}</div>',
+                note=f"{snap.start} → {snap.end} · net value, IDR bn · as visible "
+                f"at {decision_ts:%Y-%m-%d %H:%M}",
+            ),
+            unsafe_allow_html=True,
+        )
 
     with right:
-        st.subheader("Concentration")
-        panel = concentration_panel(snap)
-        if panel["top2_share_pct"] is not None:
-            st.metric("Top-2 net-buy share", f"{panel['top2_share_pct']}%")
-            st.progress(min(panel["top2_share_pct"] / 100, 1.0))
-        if panel["hhi"] is not None:
-            st.metric("Herfindahl (HHI)", f"{panel['hhi']:.2f}", panel["hhi_label"])
-        if panel["top2_names"]:
-            st.caption(f"Top-2 buyers: {panel['top2_names']}")
+        st.markdown(
+            shell.concentration_html(concentration_panel(snap)), unsafe_allow_html=True
+        )
+        # §5 veto checks for this name (full pipeline pass — phase gate + vetoes)
+        res = engine.evaluate(store, symbol, decision_ts, track="B")
+        st.markdown(shell.veto_panel_html(veto_checks(res.veto)), unsafe_allow_html=True)
 
-    st.subheader("Broker × Stock matrix")
-    snaps = {s: analyze(store, s, decision_ts) for s in symbols}
-    st.dataframe(
-        matrix_table(buyer_seller_matrix(snaps), symbols), use_container_width=True
+    # design matrix: columns = the (≤7) watchlist names, never the whole universe;
+    # the cap is annotated, not silent. The selected symbol is always a column.
+    watch = _watchlist_data(_db_path(), f"{decision_ts:%Y-%m-%d}", len(_symbols(store, "daily_bar")))
+    cols = [symbol] + [r["symbol"] for r in watch["rows"]
+                       if r["symbol"] != symbol and r["symbol"] in symbols]
+    cols = cols[:7]
+    snaps = {s: (snap if s == symbol else analyze(store, s, decision_ts)) for s in cols}
+    st.markdown(
+        shell.panel_html(
+            "BROKER × STOCK MATRIX",
+            shell.matrix_html(
+                matrix_table(buyer_seller_matrix(snaps), cols), cols, selected=symbol
+            ),
+            note=f"net direction across the watchlist · {len(cols)} of "
+            f"{len(symbols)} ingested names shown (selected + ARMED/WATCH)",
+        ),
+        unsafe_allow_html=True,
     )
 
 

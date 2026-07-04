@@ -19,7 +19,15 @@ from currentflow.signals.broker_flow import (
     syndicate_nets,
     top_n_share,
 )
-from currentflow.ui.broker_flow_view import broker_table, concentration_panel, hhi_label
+from currentflow.signals.veto import Veto, VetoReason, VetoResult
+from currentflow.ui.broker_flow_view import (
+    broker_table,
+    concentration_panel,
+    hhi_label,
+    stock_header,
+    veto_checks,
+)
+from builders import Chart
 
 D1, D2, D3 = Date(2026, 6, 26), Date(2026, 6, 29), Date(2026, 6, 30)
 DECISION = datetime(2026, 7, 1, 9, 30)
@@ -184,3 +192,37 @@ def test_analyze_excludes_rows_not_yet_visible(store):
 
     later = analyze(store, "BRMS", decision_ts=datetime(2026, 7, 3))
     assert {b.broker_code for b in later.brokers} == {"KZ", "CC"}
+
+
+# --- veto-checks panel + stock header (design module 1) -----------------------------------------
+
+
+def test_veto_checks_cover_the_full_taxonomy_fired_first():
+    res = VetoResult(
+        "BRMS", DECISION,
+        vetoes=(Veto(VetoReason.RETAIL_FOMO, "retail brokers are 70% of buying"),),
+    )
+    rows = veto_checks(res)
+    assert len(rows) == len(VetoReason)  # no filter silently hidden
+    assert rows[0]["check"] == "RETAIL_FOMO" and rows[0]["fired"]
+    assert rows[0]["detail"].startswith("retail")
+    assert all(not r["fired"] and r["detail"] is None for r in rows[1:])
+
+
+def test_veto_checks_all_clear():
+    rows = veto_checks(VetoResult("BRMS", DECISION))
+    assert not any(r["fired"] for r in rows)
+
+
+def test_stock_header_price_change_and_adv():
+    ch = Chart("BRMS")
+    ch.add(o=100, h=102, l=98, c=100, v=1000)   # value = 100_000
+    ch.add(o=100, h=104, l=99, c=102, v=1000)   # value = 102_000
+    head = stock_header(ch.bars)
+    assert head["price"] == 102
+    assert head["change_pct"] == 2.0            # derived from prior close (feed Δ absent)
+    assert head["adv_bn"] == 0.0                # 101_000 IDR ≪ 1 bn → rounds to 0.0
+
+
+def test_stock_header_empty_is_absent_not_zero():
+    assert stock_header([]) == {"price": None, "change_pct": None, "adv_bn": None}

@@ -60,6 +60,24 @@ _BADGE = {
     "derived": (TOKENS["accent"], TOKENS["accent"]),
 }
 
+# Broker-DNA chip palette + labels — design/SCREENS_terminal.md § Design Tokens.
+DNA_COLORS = {
+    "FOREIGN_INST": TOKENS["foreign"],
+    "LOCAL_INST": "#a371f7",
+    "SMART_MONEY": "#e3b341",
+    "RETAIL": "#6e7681",
+    "PROP": "#56d4bd",
+    "UNKNOWN": TOKENS["text_faint"],
+}
+DNA_LABELS = {
+    "FOREIGN_INST": "Foreign Inst",
+    "LOCAL_INST": "Local Inst",
+    "SMART_MONEY": "Smart Money",
+    "RETAIL": "Retail",
+    "PROP": "Prop",
+    "UNKNOWN": "Unknown",
+}
+
 _MONO = "'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace"
 
 # Spark-bar order + colors: FF blue when positive else faded red; others take the
@@ -71,8 +89,39 @@ _STATE_DOT = {"ARMED": TOKENS["armed"], "WATCH": TOKENS["accent"]}
 
 def shell_css() -> str:
     """One-shot CSS: hairline-border/layered-background depth model (no shadows),
-    mono numerics, and the shell's keyframe animations."""
+    mono numerics, the shell's keyframe animations, and the Streamlit-chrome
+    overrides that pull the host app toward the design shell (hide the Streamlit
+    header/toolbar, kill the default page gutters, restyle the sidebar module
+    radio into the design's nav-rail items)."""
     return f"""<style>
+/* --- Streamlit chrome → design shell ------------------------------------- */
+header[data-testid="stHeader"], #MainMenu, footer,
+div[data-testid="stToolbar"], div[data-testid="stDecoration"],
+div[data-testid="stStatusWidget"] {{ display:none !important; }}
+.stApp {{ background:{TOKENS["bg_app"]}; }}
+.stMainBlockContainer, .block-container {{
+  padding:14px 18px 8px !important; max-width:100% !important;
+}}
+section[data-testid="stSidebar"] {{
+  background:{TOKENS["bg_rail"]}; border-right:1px solid {TOKENS["border_panel"]};
+}}
+section[data-testid="stSidebar"] div[data-testid="stRadio"] label {{
+  display:flex; align-items:center; border-radius:9px; padding:7px 10px;
+  margin:1px 0; border:1px solid transparent; color:{TOKENS["text_muted"]};
+  width:100%; cursor:pointer;
+}}
+section[data-testid="stSidebar"] div[data-testid="stRadio"] label:hover {{
+  color:{TOKENS["text"]};
+}}
+section[data-testid="stSidebar"] div[data-testid="stRadio"] label:has(input:checked) {{
+  background:rgba(88,196,221,0.10); border-color:rgba(88,196,221,0.25);
+  color:{TOKENS["text"]};
+}}
+section[data-testid="stSidebar"] div[data-testid="stRadio"] label[data-baseweb="radio"] > div:first-child {{
+  display:none;  /* the radio circle — the design nav has none */
+}}
+.cf-scrollbody {{ max-height:520px; overflow-y:auto; }}
+/* --- shell fragments ------------------------------------------------------ */
 .cf-topbar {{
   display:flex; align-items:center; gap:14px; height:52px; padding:0 14px;
   background:linear-gradient(180deg,#0d121b,#0a0e14);
@@ -140,6 +189,64 @@ def shell_css() -> str:
 }}
 .cf-ticker .cf-chip {{ color:{TOKENS["text_faint"]}; font-family:{_MONO}; flex:none; padding-left:10px; }}
 .cf-ticker .cf-scroll {{ display:inline-block; padding-left:100%; animation:cf-tickscroll 42s linear infinite; color:{TOKENS["text_muted"]}; }}
+/* --- module panels (design: bg #0d121b, hairline border, radius 10) ------ */
+.cf-panel {{
+  background:{TOKENS["bg_panel"]}; border:1px solid {TOKENS["border_panel"]};
+  border-radius:10px; padding:14px; margin-bottom:12px;
+}}
+.cf-panelhead {{
+  font-size:11px; font-weight:600; letter-spacing:0.06em;
+  color:{TOKENS["text"]}; margin-bottom:10px;
+}}
+.cf-panelhead small {{ color:{TOKENS["text_faint"]}; font-weight:400; letter-spacing:0; }}
+.cf-stockhead {{ display:flex; align-items:center; gap:10px; margin:8px 0 12px; flex-wrap:wrap; }}
+.cf-stockhead .cf-sym {{ font-size:26px; font-weight:700; color:{TOKENS["text"]}; line-height:1; }}
+.cf-chip {{
+  display:inline-block; border-radius:5px; padding:2px 7px; font-size:9.5px;
+  font-weight:600; letter-spacing:0.05em; white-space:nowrap;
+}}
+.cf-stockhead .cf-price {{ font-family:{_MONO}; font-size:20px; color:{TOKENS["text"]}; }}
+.cf-stockhead .cf-adv {{ font-size:10px; color:{TOKENS["text_muted"]}; text-align:right; }}
+.cf-table {{ width:100%; border-collapse:collapse; font-size:11.5px; }}
+.cf-table td, .cf-table th {{
+  padding:7px 10px; border-bottom:1px solid rgba(255,255,255,0.04);
+  text-align:left; vertical-align:middle;
+}}
+.cf-table th {{
+  font-size:9px; font-weight:600; letter-spacing:0.08em;
+  color:{TOKENS["text_faint"]}; font-family:{_MONO};
+}}
+.cf-table tr:last-child td {{ border-bottom:none; }}
+.cf-table .cf-rank {{ color:{TOKENS["text_faint"]}; font-family:{_MONO}; font-size:10px; }}
+.cf-table .cf-code {{ font-family:{_MONO}; font-weight:600; color:{TOKENS["text"]}; }}
+.cf-table .cf-num {{ font-family:{_MONO}; text-align:right; }}
+.cf-netbar {{ height:3px; border-radius:2px; margin-top:3px; margin-left:auto; }}
+.cf-dots {{ font-size:9px; letter-spacing:2px; white-space:nowrap; }}
+.cf-bigstat {{ font-family:{_MONO}; font-size:24px; font-weight:600; line-height:1.1; }}
+.cf-statlabel {{ font-size:10px; color:{TOKENS["text_muted"]}; }}
+.cf-bartrack {{ height:5px; border-radius:3px; background:rgba(255,255,255,0.07); margin-top:8px; }}
+.cf-bartrack span {{ display:block; height:5px; border-radius:3px; }}
+.cf-vetorow {{
+  display:flex; align-items:center; gap:9px; padding:6px 0; font-size:11px;
+  color:{TOKENS["text_secondary"]}; border-bottom:1px solid rgba(255,255,255,0.035);
+}}
+.cf-vetorow:last-child {{ border-bottom:none; }}
+.cf-vetorow .cf-vmark {{ font-family:{_MONO}; font-size:11px; flex:none; }}
+.cf-vetorow .cf-vval {{
+  margin-left:auto; font-family:{_MONO}; font-size:10px; color:{TOKENS["text_muted"]};
+  text-align:right; max-width:46%;
+}}
+.cf-matrix {{ width:100%; border-collapse:separate; border-spacing:4px 4px; font-size:11px; }}
+.cf-matrix th {{
+  font-family:{_MONO}; font-size:10px; font-weight:600; color:{TOKENS["text_muted"]};
+  padding:2px 6px; text-align:center;
+}}
+.cf-matrix th:first-child {{ text-align:left; }}
+.cf-matrix .cf-cell {{
+  font-family:{_MONO}; text-align:center; padding:7px 6px; border-radius:6px;
+  border:1px solid rgba(255,255,255,0.05); color:{TOKENS["text"]};
+}}
+.cf-matrix .cf-empty {{ border:1px dashed rgba(255,255,255,0.05); color:{TOKENS["text_faint"]}; }}
 @keyframes cf-livedot {{ 0%,100% {{ opacity:1; }} 50% {{ opacity:0.25; }} }}
 @keyframes cf-armedpulse {{
   0%,100% {{ box-shadow:0 0 0 0 rgba(210,153,34,0.5); }}
@@ -192,6 +299,192 @@ def module_header_html(title: str, subtitle: str, kind: str, badge: str) -> str:
         f'<div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap">'
         f'<span class="cf-modsub">{escape(subtitle)}</span>{badge_html(kind, badge)}'
         "</div></div>"
+    )
+
+
+def dna_chip_html(dna: str) -> str:
+    """A broker-DNA chip (Foreign Inst / Local Inst / Smart Money / Retail / Prop)."""
+    color = DNA_COLORS.get(dna, TOKENS["text_faint"])
+    label = DNA_LABELS.get(dna, dna)
+    return (
+        f'<span class="cf-chip" style="border:1px solid {color}44; '
+        f'background:{color}14; color:{color}">{escape(label)}</span>'
+    )
+
+
+def stock_header_html(
+    *,
+    symbol: str,
+    track: str,
+    sector: str | None = None,
+    price: float | None = None,
+    change_pct: float | None = None,
+    adv_bn: float | None = None,
+) -> str:
+    """The design's stock-header row: ticker (26px), track chip, sector chip,
+    price (mono 20px) + signed % change, 20-day ADV. Missing data renders as
+    absent — never faked (§10)."""
+    chips = (
+        f'<span class="cf-chip" style="border:1px solid {TOKENS["accent"]}44; '
+        f'background:{TOKENS["accent"]}14; color:{TOKENS["accent"]}">'
+        f"TRACK {escape(track)}</span>"
+    )
+    if sector and sector != "UNKNOWN":
+        chips += (
+            f'<span class="cf-chip" style="border:1px solid rgba(255,255,255,0.10); '
+            f'color:{TOKENS["text_muted"]}">{escape(sector)}</span>'
+        )
+    right = ""
+    if price is not None:
+        chg = ""
+        if change_pct is not None:
+            color = TOKENS["buy"] if change_pct >= 0 else TOKENS["sell"]
+            chg = (
+                f' <span class="cf-mono" style="font-size:12px; color:{color}">'
+                f"{change_pct:+.2f}%</span>"
+            )
+        right = f'<span class="cf-price">{price:,.0f}</span>{chg}'
+    adv = (
+        f'<div class="cf-adv">20d ADV<br><span class="cf-mono">IDR {adv_bn:,.0f} bn</span></div>'
+        if adv_bn is not None
+        else ""
+    )
+    return (
+        '<div class="cf-stockhead">'
+        f'<span class="cf-sym">{escape(symbol)}</span>{chips}'
+        f'<span style="flex:1"></span>{right}{adv}'
+        "</div>"
+    )
+
+
+def panel_html(title: str, body: str, *, note: str | None = None) -> str:
+    """A design module panel: 11px 600 header (muted trailing note) + body HTML."""
+    head_note = f" <small>· {escape(note)}</small>" if note else ""
+    return (
+        '<div class="cf-panel">'
+        f'<div class="cf-panelhead">{escape(title)}{head_note}</div>{body}</div>'
+    )
+
+
+def broker_table_html(rows: list[dict]) -> str:
+    """The Broker Net Flow table (design module 1): rank · broker code + DNA chip ·
+    signed NET in IDR bn (green/red, proportional under-bar) · 7-dot persistence
+    strip. Buy/sell/VWAP detail rides the row tooltip — raw observation only."""
+    max_abs = max((abs(r["net_idr_bn"]) for r in rows), default=0.0)
+    body = []
+    for r in rows:
+        net = r["net_idr_bn"]
+        color = TOKENS["buy"] if net >= 0 else TOKENS["sell"]
+        width = 0 if not max_abs else max(4, round(abs(net) / max_abs * 100))
+        filled = r["persist"].count("●")
+        dots = (
+            f'<span style="color:{color}">{"●" * filled}</span>'
+            f'<span style="color:rgba(255,255,255,0.12)">{"○" * (len(r["persist"]) - filled)}</span>'
+        )
+        vwap = f" · accum VWAP {r['accum_vwap']:,.0f}" if r.get("accum_vwap") else ""
+        tip = (
+            f"gross {r['buy_idr_bn']:+,.2f} / {r['sell_idr_bn']:+,.2f} IDR bn{vwap}"
+        )
+        body.append(
+            f'<tr title="{escape(tip)}">'
+            f'<td class="cf-rank">{r["#"]}</td>'
+            f'<td><span class="cf-code">{escape(r["broker"])}</span> '
+            f"{dna_chip_html(r['dna'])}</td>"
+            f'<td class="cf-num" style="color:{color}">{net:+,.2f}'
+            f'<div class="cf-netbar" style="width:{width}%; background:{color}66"></div></td>'
+            f'<td class="cf-dots">{dots}</td></tr>'
+        )
+    return (
+        '<table class="cf-table"><thead><tr>'
+        "<th>#</th><th>BROKER · DNA</th>"
+        '<th style="text-align:right">NET</th><th>PERSIST</th>'
+        f'</tr></thead><tbody>{"".join(body)}</tbody></table>'
+    )
+
+
+def concentration_html(panel: dict) -> str:
+    """The Concentration panel: Top-2 net-buy share (big cyan %, progress bar) +
+    Herfindahl (2 dp + dispersed/concentrated label) + top-2 buyer note.
+    A missing measurement renders as an em-dash — absent, never zero."""
+    share = panel["top2_share_pct"]
+    hhi = panel["hhi"]
+    share_stat = (
+        f'<div class="cf-bigstat" style="color:{TOKENS["accent"]}">{share:.0f}%</div>'
+        f'<div class="cf-bartrack"><span style="width:{min(share, 100):.0f}%; '
+        f'background:{TOKENS["accent"]}"></span></div>'
+        if share is not None
+        else f'<div class="cf-bigstat" style="color:{TOKENS["text_faint"]}">—</div>'
+    )
+    hhi_stat = (
+        f'<div class="cf-bigstat">{hhi:.2f}</div>'
+        f'<div class="cf-statlabel">{escape(panel["hhi_label"] or "")}</div>'
+        if hhi is not None
+        else f'<div class="cf-bigstat" style="color:{TOKENS["text_faint"]}">—</div>'
+    )
+    note = (
+        f'<div class="cf-statlabel" style="margin-top:10px">Top-2 buyers are '
+        f'<span class="cf-mono" style="color:{TOKENS["text"]}">{escape(panel["top2_names"])}</span>.</div>'
+        if panel["top2_names"]
+        else ""
+    )
+    body = (
+        '<div style="display:flex; gap:18px">'
+        f'<div style="flex:1.4"><div class="cf-statlabel">Top-2 net-buy share</div>{share_stat}</div>'
+        f'<div style="flex:1"><div class="cf-statlabel">Herfindahl (HHI)</div>{hhi_stat}</div>'
+        f"</div>{note}"
+    )
+    return panel_html("CONCENTRATION", body)
+
+
+def veto_panel_html(rows: list[dict]) -> str:
+    """The Veto Checks panel (§5 hard rejects): one row per filter, ✓ (clear,
+    green) or ✕ (fired, red) + the observation that tripped it. Categorical
+    reasons only — a veto is never a number (RULE B)."""
+    body = []
+    for r in rows:
+        mark, color = ("✕", TOKENS["sell"]) if r["fired"] else ("✓", TOKENS["buy"])
+        detail = escape(r["detail"]) if r["detail"] else "clear"
+        body.append(
+            '<div class="cf-vetorow">'
+            f'<span class="cf-vmark" style="color:{color}">{mark}</span>'
+            f'<span>{escape(r["label"])}</span>'
+            f'<span class="cf-vval">{detail}</span></div>'
+        )
+    return panel_html("VETO CHECKS", "".join(body), note="§5 hard rejects")
+
+
+def matrix_html(rows: list[dict], symbols: list[str], *, selected: str | None = None) -> str:
+    """The Broker × Stock matrix: cells tinted green/red with intensity = |net|
+    share of the largest cell; a name where the broker was not a top participant
+    is an empty slot (missing ≠ zero). The selected symbol's column is highlighted."""
+    cells = [
+        abs(r[s]) for r in rows for s in symbols if isinstance(r.get(s), (int, float))
+    ]
+    max_abs = max(cells, default=0.0)
+    head_cells = []
+    for s in symbols:
+        style = f' style="color:{TOKENS["accent"]}"' if s == selected else ""
+        head_cells.append(f"<th{style}>{escape(s)}</th>")
+    head = "<th>BROKER</th>" + "".join(head_cells)
+    body = []
+    for r in rows:
+        tds = [f'<td class="cf-code" style="padding:2px 6px">{escape(r["broker"])}</td>']
+        for s in symbols:
+            v = r.get(s)
+            if not isinstance(v, (int, float)):
+                tds.append('<td class="cf-cell cf-empty" title="not a top participant">·</td>')
+                continue
+            rgb = "63,185,80" if v >= 0 else "248,81,73"
+            alpha = 0.10 + (0.50 * abs(v) / max_abs if max_abs else 0)
+            ring = f"; outline:1px solid {TOKENS['accent']}55" if s == selected else ""
+            tds.append(
+                f'<td class="cf-cell" style="background:rgba({rgb},{alpha:.2f}){ring}" '
+                f'title="{escape(r["broker"])} → {escape(s)}: {v:+,.2f} IDR bn">{v:+,.1f}</td>'
+            )
+        body.append(f"<tr>{''.join(tds)}</tr>")
+    return (
+        f'<table class="cf-matrix"><thead><tr>{head}</tr></thead>'
+        f'<tbody>{"".join(body)}</tbody></table>'
     )
 
 
