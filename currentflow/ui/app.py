@@ -57,7 +57,13 @@ from currentflow.ui.foreign_flow_view import (
     stats_panel,
     tide_table,
 )
-from currentflow.ui.heatmap_view import divergence_alerts, heatmap_rows, sector_totals
+from currentflow.ui import charts
+from currentflow.ui.heatmap_view import (
+    divergence_rows,
+    grid_rows,
+    heatmap_rows,
+    sector_totals,
+)
 from currentflow.ui.replay_view import playhead_panel, visible_rows
 from currentflow.ui.risk_view import (
     FRAMING as RISK_FRAMING,
@@ -139,11 +145,31 @@ def _watchlist_data(db_path: str, day: str, n_symbols: int) -> dict:
     return watchlist_view.rows(_all_results(_store(db_path), "B", datetime.now()))
 
 
+def _select_symbol(symbol: str) -> None:
+    """`on_click` for a rail card — runs before the rerun renders, so the module
+    pane and the card highlight both see the new selection in the same pass."""
+    st.session_state["cf_symbol"] = symbol
+
+
+def _selected_symbol(store: Store, *, table: str = "daily_bar") -> str | None:
+    """The rail-selected symbol, validated against what `table` actually holds.
+    Selection lives in the right rail (design: click a watchlist card) — there is
+    no sidebar dropdown. Falls back to the first ingested name when nothing valid
+    is selected; None when the table is empty."""
+    symbols = _symbols(store, table)
+    if not symbols:
+        return None
+    sel = st.session_state.get("cf_symbol")
+    return sel if sel in symbols else symbols[0]
+
+
 def _render_watchlist_rail(store: Store) -> None:
     """The design's ARMED-watchlist right rail (design/screens: right 296px band):
     state word + the five component spark-bars (DIV BRK FF RVOL BLK) — observation,
     never a number or a verb (RULE B; the composite stays with the gated SMS/Rank
-    module). Rendered as shell HTML inside the right column."""
+    module). Each card is the terminal's symbol selector: a keyed container with an
+    invisible full-card button (shell CSS overlay); the selected card carries the
+    design's brightened border."""
     syms = _symbols(store, "daily_bar")
     if not syms:
         st.markdown(
@@ -153,7 +179,29 @@ def _render_watchlist_rail(store: Store) -> None:
         )
         return
     data = _watchlist_data(_db_path(), f"{datetime.now():%Y-%m-%d}", len(syms))
-    st.markdown(shell.watchlist_rail_html(data), unsafe_allow_html=True)
+    if data["rows"] and st.session_state.get("cf_symbol") not in syms:
+        # design default: the top rail name (ARMED first, strongest flow first)
+        st.session_state["cf_symbol"] = data["rows"][0]["symbol"]
+    selected = st.session_state.get("cf_symbol")
+
+    st.markdown(shell.rail_head_html(data["framing"]), unsafe_allow_html=True)
+    for row in data["rows"]:
+        sym = row["symbol"]
+        with st.container(key=f"cfwatch-{sym}"):
+            st.markdown(
+                shell.watchlist_card_html(row, selected=sym == selected),
+                unsafe_allow_html=True,
+            )
+            st.button(
+                sym, key=f"cfsel-{sym}", on_click=_select_symbol, args=(sym,),
+                help=f"View {sym} in the active module",
+            )
+    if not data["rows"]:
+        st.markdown(
+            '<div class="cf-railnote">— nothing ARMED or watching today</div>',
+            unsafe_allow_html=True,
+        )
+    st.markdown(shell.rail_foot_html(data), unsafe_allow_html=True)
 
 
 def _module_header(title: str, subtitle: str, kind: str, badge: str) -> None:
@@ -194,7 +242,13 @@ def _render_broker_flow(store: Store) -> None:
         st.warning("No broker data ingested yet — run the ingest pipeline first.")
         return
 
-    symbol = st.sidebar.selectbox("Symbol", symbols)
+    symbol = _selected_symbol(store, table="broker_net")
+    picked = st.session_state.get("cf_symbol")
+    if picked and picked != symbol:
+        st.caption(
+            f"{picked} has no broker rows ingested — showing {symbol}. "
+            "Pick another name from the ARMED rail."
+        )
     decision_ts = datetime.now()
     snap = analyze(store, symbol, decision_ts)
     _trap_ribbon(store, symbol, decision_ts)
@@ -237,12 +291,14 @@ def _render_broker_flow(store: Store) -> None:
                        if r["symbol"] != symbol and r["symbol"] in symbols]
     cols = cols[:7]
     snaps = {s: (snap if s == symbol else analyze(store, s, decision_ts)) for s in cols}
+    matrix_rows = matrix_table(buyer_seller_matrix(snaps), cols)
+    dna_map = {b.broker_code: b.dna.value for sn in snaps.values() for b in sn.brokers}
+    for r in matrix_rows:
+        r["dna"] = dna_map.get(r["broker"])
     st.markdown(
         shell.panel_html(
             "BROKER × STOCK MATRIX",
-            shell.matrix_html(
-                matrix_table(buyer_seller_matrix(snaps), cols), cols, selected=symbol
-            ),
+            shell.matrix_html(matrix_rows, cols, selected=symbol),
             note=f"net direction across the watchlist · {len(cols)} of "
             f"{len(symbols)} ingested names shown (selected + ARMED/WATCH)",
         ),
@@ -253,8 +309,9 @@ def _render_broker_flow(store: Store) -> None:
 def _render_foreign_flow(store: Store) -> None:
     _module_header(
         "Foreign Flow Dashboard",
-        "Foreign-inst lens — here is the flow, you decide.",
-        "observation", "OBSERVATION",
+        "Foreign net-buy magnitude & persistence vs float · foreign/domestic split · "
+        "KSEI ownership trend · flow-reversal detection.",
+        "observation", "OBSERVATION · ships now",
     )
 
     symbols = _symbols(store, "daily_bar")
@@ -262,71 +319,143 @@ def _render_foreign_flow(store: Store) -> None:
         st.warning("No OHLCV/foreign data ingested yet — run the ingest pipeline first.")
         return
 
-    symbol = st.sidebar.selectbox("Symbol", symbols)
+    symbol = _selected_symbol(store)
     decision_ts = datetime.now()
     snap = foreign_flow.analyze(store, symbol, decision_ts)
     _trap_ribbon(store, symbol, decision_ts)
+    stats = stats_panel(snap)
 
-    callout = reversal_callout(snap)
-    if callout:
-        st.info(callout)
+    # design header: ticker + FOREIGN-INST LENS chip, IDX-wide tide note right
+    tide = tide_table(foreign_flow.market_tide(store, symbols, decision_ts, day=snap.end))
+    market = next((r for r in tide if r["scope"] == "MARKET"), None)
+    fgn = shell.TOKENS["foreign"]
+    note = ""
+    if stats["net_today_bn"] is not None:
+        word = "buyers" if stats["net_today_bn"] >= 0 else "sellers"
+        note = f"Foreign net {word} on this name"
+        if market and market["net_foreign_bn"] is not None:
+            note += f"; IDX-wide foreign {market['net_foreign_bn']:+,.0f} IDR bn today"
+        note += "."
+    st.markdown(
+        '<div class="cf-stockhead">'
+        f'<span class="cf-sym">{symbol}</span>'
+        f'<span class="cf-chip" style="border:1px solid {fgn}44; '
+        f'background:{fgn}14; color:{fgn}">FOREIGN-INST LENS</span>'
+        '<span style="flex:1"></span>'
+        f'<span class="cf-mono" style="font-size:11px; '
+        f'color:{shell.TOKENS["text_muted"]}">{note}</span></div>',
+        unsafe_allow_html=True,
+    )
 
-    left, right = st.columns([1.6, 1])
+    left, right = st.columns([1.9, 1], gap="medium")
     with left:
-        st.subheader(f"{symbol} — cumulative foreign net (NBSA)")
-        cum = pd.DataFrame(cumulative_series(snap))
-        if not cum.empty:
-            st.area_chart(cum.set_index("date")["cumulative_bn"])
-        st.subheader("Daily foreign net")
-        daily = pd.DataFrame(daily_series(snap))
-        if not daily.empty:
-            st.bar_chart(daily.set_index("date")["net_foreign_bn"])
+        cum, daily = cumulative_series(snap), daily_series(snap)
+        with st.container(key="cfpanel_ffcharts"):
+            if cum:
+                st.altair_chart(charts.themed(charts.foreign_cumulative(cum)),
+                                use_container_width=True, theme=None)
+            if daily:
+                st.altair_chart(charts.themed(charts.foreign_daily(daily)),
+                                use_container_width=True, theme=None)
+            if not cum and not daily:
+                st.caption("No foreign-flow series visible in the window.")
+
+        callout = reversal_callout(snap)
+        if callout:
+            st.markdown(
+                shell.callout_html("FLOW-REVERSAL DETECTION", callout),
+                unsafe_allow_html=True,
+            )
 
         split = split_bar(snap)
         if split["foreign_net_bn"] is not None:
-            st.caption(
-                f"Today: foreign net {split['foreign_net_bn']} bn · domestic net "
-                f"{split['domestic_net_bn']} bn"
-                + (
-                    f" · foreign turnover share {split['foreign_turnover_share_pct']}%"
-                    if split["foreign_turnover_share_pct"] is not None
-                    else ""
-                )
+            share = split["foreign_turnover_share_pct"]
+            st.markdown(
+                shell.panel_html(
+                    "FOREIGN vs DOMESTIC — today",
+                    shell.split_bar_html(split["foreign_net_bn"], split["domestic_net_bn"]),
+                    note=(f"foreign turnover share {share}%" if share is not None else None),
+                ),
+                unsafe_allow_html=True,
             )
 
     with right:
-        st.subheader("Foreign flow stats")
-        stats = stats_panel(snap)
-        st.metric("Net today (IDR bn)", stats["net_today_bn"])
-        st.metric("5-day cumulative (IDR bn)", stats["cum_5d_bn"])
-        side = f" ({stats['persistence_side']})" if stats["persistence_side"] else ""
-        st.metric("Persistence", stats["persistence"] + side)
-        if stats["vs_20d_avg"] is not None:
-            st.metric(
-                f"vs {stats['avg_window_used']}d avg", f"{stats['vs_20d_avg']}×",
-                f"z = {stats['zscore_20d']}" if stats["zscore_20d"] is not None else None,
-            )
+        buy, sell = shell.TOKENS["buy"], shell.TOKENS["sell"]
 
-        st.subheader("KSEI ownership")
+        def _signed(v, unit=" bn"):
+            if v is None:
+                return None, None
+            return f"{v:+,.1f}{unit}", (buy if v >= 0 else sell)
+
+        net_s, net_c = _signed(stats["net_today_bn"])
+        cum_s, cum_c = _signed(stats["cum_5d_bn"])
+        side = f" {stats['persistence_side']}" if stats["persistence_side"] else ""
+        rows = [
+            {"label": "Foreign net · today", "value": net_s, "color": net_c},
+            {"label": "5-day cumulative", "value": cum_s, "color": cum_c},
+            {"label": "Net-buy persistence", "value": f"{stats['persistence']} d{side}"},
+            {
+                "label": f"vs {stats['avg_window_used'] or 20}-day avg",
+                "value": None if stats["vs_20d_avg"] is None else f"{stats['vs_20d_avg']}×",
+                "color": shell.TOKENS["armed_text"],
+            },
+        ]
+        st.markdown(
+            shell.panel_html("FOREIGN FLOW STATS", shell.kv_rows_html(rows)),
+            unsafe_allow_html=True,
+        )
+
         ksei = ksei_panel(snap)
-        if ksei["series"]:
-            spark = pd.DataFrame(ksei["series"])
-            st.line_chart(spark.set_index("month")["foreign_pct"])
-            st.caption(
-                f"Foreign own {ksei['foreign_own_pct']}%"
-                + (f" · {ksei['trend']}" if ksei["trend"] else "")
+        if ksei["foreign_own_pct"] is not None:
+            st.markdown(
+                shell.panel_html(
+                    "FOREIGN OWN — KSEI",
+                    shell.bigstat_bar_html(
+                        f"{ksei['foreign_own_pct']:.0f}%",
+                        "of KSEI-reported holdings · latest month",
+                        ksei["foreign_own_pct"], fgn,
+                    )
+                    + (
+                        shell.kv_rows_html([{
+                            "label": "Window NBSA as % of float value",
+                            "value": f"{ksei['nbsa_pct_of_float']}%",
+                        }])
+                        if ksei["nbsa_pct_of_float"] is not None
+                        else ""
+                    ),
+                ),
+                unsafe_allow_html=True,
+            )
+        if len(ksei["series"]) >= 2:
+            trend = ksei["trend"]
+            tag = (
+                f'<span class="cf-mono" style="font-size:10px; color:{fgn}">{trend}</span>'
+                if trend
+                else None
+            )
+            st.markdown(
+                shell.panel_html(
+                    "KSEI OWNERSHIP",
+                    shell.sparkline_svg([p["foreign_pct"] for p in ksei["series"]]),
+                    note=f"{len(ksei['series'])}mo", right=tag,
+                ),
+                unsafe_allow_html=True,
             )
         else:
-            st.caption("No KSEI ownership slices ingested yet.")
-        if ksei["nbsa_pct_of_float"] is not None:
-            st.metric("Window NBSA as % of float value", f"{ksei['nbsa_pct_of_float']}%")
+            st.markdown(
+                shell.panel_html(
+                    "KSEI OWNERSHIP",
+                    f'<div class="cf-statlabel" style="color:{shell.TOKENS["text_faint"]}">'
+                    "no monthly ownership slices ingested yet</div>",
+                ),
+                unsafe_allow_html=True,
+            )
 
-    st.subheader("Market tide")
-    tide = tide_table(
-        foreign_flow.market_tide(store, symbols, decision_ts, day=snap.end)
-    )
-    if tide:
-        st.dataframe(tide, use_container_width=True)
+    with st.expander("Market tide — aggregate NBSA by scope (observation)"):
+        if tide:
+            st.dataframe(pd.DataFrame(tide), use_container_width=True)
+        else:
+            st.caption("No visible flow to aggregate for the latest day.")
 
 
 def _render_replay(store: Store) -> None:
@@ -341,7 +470,7 @@ def _render_replay(store: Store) -> None:
         st.warning("No data ingested yet — run the ingest pipeline first.")
         return
 
-    symbol = st.sidebar.selectbox("Symbol", symbols)
+    symbol = _selected_symbol(store)
     _trap_ribbon(store, symbol, datetime.now())
     dates = [
         r[0]
@@ -384,65 +513,147 @@ def _render_replay(store: Store) -> None:
 def _render_accumulation(store: Store) -> None:
     _module_header(
         "Institutional Accumulation Detector",
-        "Stealth accumulation — measured, not scored; here is the flow, you decide.",
-        "observation", "OBSERVATION",
+        "Stealth divergence: price flat/down while net accumulation rises · "
+        "accumulator VWAP · volume dry-up in consolidation. Measured, not scored.",
+        "observation", "OBSERVATION · ships now",
     )
 
     symbols = _symbols(store, "daily_bar")
     if not symbols:
         st.warning("No data ingested yet — run the ingest pipeline first.")
         return
-    symbol = st.sidebar.selectbox("Symbol", symbols)
+    symbol = _selected_symbol(store)
     decision_ts = datetime.now()
     _trap_ribbon(store, symbol, decision_ts)
     bars = store.read_daily_bars(symbol, decision_ts)
     broker_snap = analyze(store, symbol, decision_ts)
     snap = accumulation.build_snapshot(symbol, bars, broker_snap, decision_ts=decision_ts)
-
-    callout = stealth_callout(snap)
-    if callout:
-        st.info(callout)
     panel = accumulation_panel(snap)
-    st.caption(f"{symbol} · {panel['window']}")
 
-    # design chart: price lane (+ accumulator-VWAP reference) over the cumulative
-    # smart-money accumulation lane. Broker-less days are a gap, never zero.
-    chart = pd.DataFrame(accum_chart_rows(bars, broker_snap))
-    if not chart.empty:
-        chart = chart.set_index("date")
-        price_cols = ["close"] + (
-            ["accumulator_vwap"] if chart["accumulator_vwap"].notna().any() else []
-        )
-        st.line_chart(chart[price_cols], height=220)
-        if chart["cum_accumulation_bn"].notna().any():
-            st.caption(
-                f"Cumulative net by {panel['accumulator']} (IDR bn) — smart-money accumulation lane"
+    # design header row: ticker + window chip, amber detection pill right
+    pill = (
+        shell.badge_html("gated", "STEALTH ACCUMULATION DETECTED")
+        if snap.stealth_divergence
+        else shell.badge_html("observation", "no stealth divergence in window")
+    )
+    st.markdown(
+        '<div class="cf-stockhead">'
+        f'<span class="cf-sym">{symbol}</span>'
+        f'<span class="cf-chip" style="border:1px solid rgba(255,255,255,0.10); '
+        f'color:{shell.TOKENS["text_muted"]}">{panel["window"]}</span>'
+        f'<span style="flex:1"></span>{pill}</div>',
+        unsafe_allow_html=True,
+    )
+
+    rows = accum_chart_rows(bars, broker_snap)
+    left, right = st.columns([1.9, 1], gap="medium")
+    with left:
+        with st.container(key="cfpanel_accum"):
+            if rows:
+                zone = None
+                if snap.stealth_divergence:
+                    # the divergence read compares the window's 2nd half to its 1st —
+                    # shade the half where rising accumulation was measured
+                    dates = [r["date"] for r in rows]
+                    zone = (dates[len(dates) // 2], dates[-1])
+                st.altair_chart(
+                    charts.themed(charts.accumulation_combined(
+                        rows, vwap=snap.accumulator_vwap, stealth_zone=zone,
+                    )),
+                    use_container_width=True, theme=None,
+                )
+                st.markdown(
+                    f'<div class="cf-legend"><span><span class="cf-swatch" '
+                    f'style="background:{shell.TOKENS["accent"]}"></span>price</span>'
+                    f'<span><span class="cf-swatch" style="background:{shell.TOKENS["smart"]}">'
+                    "</span>cumulative accumulation</span></div>",
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.caption("No complete traded bars in the window.")
+
+        callout = stealth_callout(snap)
+        if callout:
+            st.markdown(
+                shell.callout_html(
+                    "STEALTH-DIVERGENCE DETECTION", callout,
+                    color=shell.TOKENS["armed"],
+                ),
+                unsafe_allow_html=True,
             )
-            st.line_chart(chart["cum_accumulation_bn"], height=140)
 
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Price Δ over window", f"{panel['price_change_pct']}%" if panel['price_change_pct'] is not None else "—")
-    c2.metric("Accumulator", panel["accumulator"] or "—",
-              f"net {panel['net_accumulation_bn']} bn" if panel['net_accumulation_bn'] is not None else None)
-    c3.metric("Accum. VWAP", panel["accumulator_vwap"] or "—",
-              f"px vs vwap {panel['price_vs_vwap_pct']}%" if panel['price_vs_vwap_pct'] is not None else None)
+    with right:
+        buy, sell = shell.TOKENS["buy"], shell.TOKENS["sell"]
+        pc = panel["price_change_pct"]
+        dryup = panel["volume_dryup_ratio"]
+        tight = panel["price_tightness_pct"]
+        metric_rows = [
+            {
+                "label": "Price Δ over window",
+                "value": None if pc is None else f"{pc:+.1f}%",
+                "color": None if pc is None else (buy if pc >= 0 else sell),
+            },
+            {
+                "label": "Accumulation rising",
+                "value": "yes" if panel["accumulation_rising"] else "no",
+                "color": buy if panel["accumulation_rising"] else shell.TOKENS["text_muted"],
+            },
+            {
+                "label": "Volume dry-up (recent/early)",
+                "value": None if dryup is None else
+                f"{dryup}×{' · dried up' if dryup < 0.8 else ''}",
+                "color": shell.TOKENS["accent"],
+            },
+            {
+                "label": "Consolidation tightness",
+                "value": None if tight is None else
+                f"{tight:.1f}%{' · tight' if tight < 12 else ' · wide'}",
+                "color": buy if tight is not None and tight < 12 else shell.TOKENS["text_muted"],
+            },
+        ]
+        st.markdown(
+            shell.panel_html(
+                "STEALTH METRICS", shell.kv_rows_html(metric_rows),
+                note="measured, not scored",
+            ),
+            unsafe_allow_html=True,
+        )
 
-    st.subheader("Stealth metrics — measured, not scored")
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Accumulation rising", "yes" if panel["accumulation_rising"] else "no")
-    dryup = panel["volume_dryup_ratio"]
-    m2.metric("Volume dry-up (recent/early)", f"{dryup}×" if dryup is not None else "—",
-              "dried up" if dryup is not None and dryup < 0.8 else None, delta_color="off")
-    tight = panel["price_tightness_pct"]
-    m3.metric("Consolidation tightness", f"{tight}%" if tight is not None else "—",
-              "tight" if tight is not None and tight < 12 else None, delta_color="off")
-    st.caption(f"Absorption: {panel['absorption']} — degrades gracefully, never faked (§10)")
+        vwap = panel["accumulator_vwap"]
+        pvv = panel["price_vs_vwap_pct"]
+        if vwap is not None:
+            who = panel["accumulator"] or "top broker"
+            net = panel["net_accumulation_bn"]
+            body = shell.bigstat_bar_html(
+                f"{vwap:,.0f}",
+                f"{who} est. buy VWAP"
+                + (f" · net {net:+,.1f} bn over window" if net is not None else ""),
+                None, shell.TOKENS["smart"],
+            )
+            if pvv is not None:
+                body += shell.kv_rows_html([{
+                    "label": "Last close vs VWAP",
+                    "value": f"{pvv:+.1f}%",
+                    "color": buy if pvv >= 0 else sell,
+                }])
+            st.markdown(
+                shell.panel_html("ACCUMULATOR VWAP", body), unsafe_allow_html=True
+            )
+        st.markdown(
+            shell.callout_html(
+                "ABSORPTION",
+                f"{panel['absorption']} — degrades gracefully, never faked (§10).",
+                color=shell.TOKENS["text_faint"],
+            ),
+            unsafe_allow_html=True,
+        )
 
 
 def _render_heatmap(store: Store) -> None:
     _module_header(
         "Smart Money Heatmap",
-        "Direction & flow-as-%-of-cap — a rendering, not a score.",
+        "Aggregate flow across the universe. Colour = direction, intensity = flow "
+        "as % of cap. Sector → stock drill-down with divergence alerts.",
         "derived", "DERIVED VIEW · rendering, no new claim",
     )
 
@@ -452,24 +663,27 @@ def _render_heatmap(store: Store) -> None:
         return
     decision_ts = datetime.now()
     cells = heatmap.heatmap(store, symbols, decision_ts)
-    for alert in divergence_alerts(cells):
-        st.warning("◆ " + alert)
 
-    st.subheader("Distribution / decay watch")
-    watch_rows = []
-    for s in symbols:
-        banner = ribbon_banner(distribution.monitor(store, s, decision_ts))
-        if banner:
-            watch_rows.append({"symbol": s, "flag": banner})
-    if watch_rows:
-        st.dataframe(pd.DataFrame(watch_rows), use_container_width=True)
-    else:
-        st.caption(":green[✓ no trap or decay flags across the heatmap]")
+    st.markdown(
+        shell.panel_html("SECTOR × STOCK", shell.heatmap_grid_html(grid_rows(cells))),
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        shell.divergence_panel_html(divergence_rows(cells)), unsafe_allow_html=True
+    )
 
-    st.subheader("By sector")
-    st.dataframe(pd.DataFrame(sector_totals(cells)), use_container_width=True)
-    st.subheader("By stock")
-    st.dataframe(pd.DataFrame(heatmap_rows(cells)), use_container_width=True)
+    with st.expander("Distribution / decay watch + full tables (observation)"):
+        watch_rows = []
+        for s in symbols:
+            banner = ribbon_banner(distribution.monitor(store, s, decision_ts))
+            if banner:
+                watch_rows.append({"symbol": s, "flag": banner})
+        if watch_rows:
+            st.dataframe(pd.DataFrame(watch_rows), use_container_width=True)
+        else:
+            st.caption(":green[✓ no trap or decay flags across the heatmap]")
+        st.dataframe(pd.DataFrame(sector_totals(cells)), use_container_width=True)
+        st.dataframe(pd.DataFrame(heatmap_rows(cells)), use_container_width=True)
 
 
 def _render_sms(store: Store) -> None:
@@ -494,7 +708,7 @@ def _render_sms(store: Store) -> None:
     if not symbols:
         st.warning("No data ingested yet — run the ingest pipeline first.")
         return
-    symbol = st.sidebar.selectbox("Symbol", symbols)
+    symbol = _selected_symbol(store)
     track = st.sidebar.radio("Track", ["A", "B"], index=1)
     decision_ts = datetime.now()
     res = engine.evaluate(store, symbol, decision_ts, track=track)
@@ -548,11 +762,15 @@ def _render_daily_top(store: Store) -> None:
         st.dataframe(pd.DataFrame(row["components"]), use_container_width=True)
 
 
+_QUADRANT_ORDER = {"LEADERS": 0, "EARLY_RECOVERY": 1, "DISTRIBUTION_WARN": 2, "AVOID": 3}
+
+
 def _render_sector(store: Store) -> None:
     _module_header(
         "Sector Rotation Map",
-        "Flow by sector on the RS-vs-flow quadrant — a rendering, not a score.",
-        "derived", "DERIVED VIEW",
+        "Flow aggregated by sector on a relative-strength × flow quadrant. "
+        "Leaders / Early Recovery / Distribution Warning / Avoid.",
+        "derived", "DERIVED VIEW · rendering, no new claim",
     )
 
     symbols = _symbols(store, "daily_bar")
@@ -565,22 +783,44 @@ def _render_sector(store: Store) -> None:
     rotations = sector_rotation.build_sector_rotation(
         store, symbols, decision_ts, sector_map=OPERATOR_SECTOR_MAP, start=start
     )
-    st.caption(
-        f"{start} → {max_date} · sectors from operator map (illustrative); RS vs the universe (proxy), not IHSG."
-    )
 
-    pts = pd.DataFrame(scatter_points(rotations))
-    if not pts.empty:
-        st.scatter_chart(
-            pts, x="x_relative_strength_pct", y="y_net_flow_bn",
-            size="radius_flow_bn", color="quadrant",
+    left, right = st.columns([1.9, 1], gap="medium")
+    with left:
+        pts = scatter_points(rotations)
+        with st.container(key="cfpanel_quadrant"):
+            if pts:
+                st.altair_chart(
+                    charts.themed(charts.sector_quadrant(pts)),
+                    use_container_width=True, theme=None,
+                )
+            else:
+                st.caption("No sector carries both axes yet (flow + RS) — nothing to place.")
+        st.caption(
+            f"{start} → {max_date} · sectors from operator map (illustrative); "
+            "RS vs the universe (proxy), not IHSG."
         )
-    st.subheader("By sector")
-    st.dataframe(pd.DataFrame(sector_rows(rotations)), use_container_width=True)
+    with right:
+        cards = sorted(
+            sector_rows(rotations),
+            key=lambda r: (
+                _QUADRANT_ORDER.get(r["quadrant"], 9),
+                -(r["net_foreign_flow_bn"] or 0),
+            ),
+        )
+        for row in cards:
+            st.markdown(shell.sector_card_html(row), unsafe_allow_html=True)
+
+    with st.expander("By sector — full table (observation)"):
+        st.dataframe(pd.DataFrame(sector_rows(rotations)), use_container_width=True)
 
 
 def _render_risk(store: Store) -> None:
-    _module_header("Portfolio Risk Monitor", f"{RISK_FRAMING}.", "observation", "OBSERVATION")
+    _module_header(
+        "Portfolio Risk Monitor",
+        "Crowding · beta vs universe proxy · sector concentration · VaR · "
+        f"days-to-exit. {RISK_FRAMING.capitalize()} — they feed the §6 exposure caps.",
+        "observation", "OBSERVATION · ships now",
+    )
 
     symbols = _symbols(store, "daily_bar")
     if not symbols:
@@ -612,30 +852,98 @@ def _render_risk(store: Store) -> None:
     report = risk_monitor.build_risk_report(store, portfolio, decision_ts, benchmark_returns=benchmark)
 
     cards = metric_cards(report)
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Portfolio β (universe proxy)", cards["portfolio_beta"] if cards["portfolio_beta"] is not None else "—")
-    c2.metric("VaR (95% · 1d)", f"{cards['var_1d_pct']}%" if cards["var_1d_pct"] is not None else "—",
-              f"{cards['var_1d_bn']} bn" if cards["var_1d_bn"] is not None else None)
-    c3.metric("Sector HHI", cards["sector_hhi"] if cards["sector_hhi"] is not None else "—", cards["sector_hhi_label"])
-    c4.metric("Invested / cash (bn)", f"{cards['invested_bn']} / {cards['cash_bn']}")
+    beta = cards["portfolio_beta"]
+    beta_sub = (
+        None if beta is None
+        else "high-beta tilt" if beta > 1.1 else "low-beta tilt" if beta < 0.9 else "market-like"
+    )
+    var_pct = cards["var_1d_pct"]
+    st.markdown(
+        shell.stat_cards_html([
+            {"label": "Portfolio β vs universe proxy",
+             "value": None if beta is None else f"{beta:.2f}", "sub": beta_sub},
+            {"label": "VaR (95% · 1d)",
+             "value": None if var_pct is None else f"−{abs(var_pct):.1f}%",
+             "sub": None if cards["var_1d_bn"] is None else f"IDR {cards['var_1d_bn']} bn at risk",
+             "color": shell.TOKENS["sell"]},
+            {"label": "Sector HHI",
+             "value": cards["sector_hhi"], "sub": cards["sector_hhi_label"]},
+            {"label": "Invested / cash",
+             "value": f"{cards['invested_bn']} / {cards['cash_bn']}", "sub": "IDR bn"},
+        ]),
+        unsafe_allow_html=True,
+    )
 
-    left, right = st.columns(2)
+    name_rows = name_exposure_rows(report)
+    dte = {r["symbol"]: r["days_to_exit"] for r in liquidity_rows(report)}
+    positions_rows = [
+        {
+            "symbol": e["key"],
+            "sector": OPERATOR_SECTOR_MAP.get(e["key"], "UNKNOWN"),
+            "weight_pct": e["weight_pct"],
+            "cap_pct": e["cap_pct"],
+            "status": e["status"],
+            "days_to_exit": dte.get(e["key"]),
+        }
+        for e in name_rows
+    ]
+
+    left, right = st.columns([1.25, 1], gap="medium")
     with left:
-        st.subheader("Name exposure vs 10% cap (§6)")
-        st.dataframe(pd.DataFrame(name_exposure_rows(report)), use_container_width=True)
-        st.subheader("Sector exposure vs 30% cap (§6)")
-        st.dataframe(pd.DataFrame(sector_exposure_rows(report)), use_container_width=True)
-    with right:
-        st.subheader("Crowding — same-bandar correlated pairs (§6)")
-        crowd = crowding_rows(report)
-        st.dataframe(pd.DataFrame(crowd), use_container_width=True) if crowd else st.caption(
-            ":green[✓ no correlated pairs above threshold]"
+        st.markdown(
+            shell.panel_html(
+                "OPEN PAPER POSITIONS",
+                f'<div class="cf-scrollbody">{shell.positions_table_html(positions_rows)}</div>',
+                note="preview book · equal lots · %-equity vs the §6 10% cap · "
+                "P&L withheld (no fills yet)",
+            ),
+            unsafe_allow_html=True,
         )
-        st.subheader("Liquidity — days to exit")
-        st.dataframe(pd.DataFrame(liquidity_rows(report)), use_container_width=True)
+        st.markdown(
+            shell.panel_html(
+                "EXPOSURE CAPS", shell.cap_bars_html(sector_exposure_rows(report)),
+                note="§6 · sector ≤ 30%",
+            ),
+            unsafe_allow_html=True,
+        )
+    with right:
+        # design crowding matrix — bounded to the heaviest names, cap annotated
+        matrix_syms = [r["symbol"] for r in positions_rows[:6]]
+        matrix = risk_monitor.crowding_matrix(store, matrix_syms, decision_ts)
+        crowd = crowding_rows(report)
+        crowd_note = (
+            f'{crowd[0]["pair"]} share lead broker {crowd[0]["shared_lead_broker"]} — '
+            f'ρ={crowd[0]["rho"]}. The §6 correlated-pair check flags this.'
+            if crowd
+            else "No same-bandar pair at or above the §6 threshold."
+        )
+        st.markdown(
+            shell.panel_html(
+                "CROWDING MATRIX",
+                shell.crowding_matrix_html(
+                    matrix, threshold=config.CROWDING_CORR_THRESHOLD
+                )
+                + f'<div class="cf-statlabel" style="margin-top:8px">{crowd_note}</div>',
+                note=f"same-bandar ρ · top {len(matrix_syms)} of {len(positions_rows)} "
+                "names by weight",
+            ),
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            shell.panel_html(
+                "SCENARIO STRESS", shell.scenario_rows_html(scenario_rows(report)),
+                note="hypothetical shocks, not forecasts",
+            ),
+            unsafe_allow_html=True,
+        )
 
-    st.subheader("Scenario stress (hypothetical shocks, not forecasts)")
-    st.dataframe(pd.DataFrame(scenario_rows(report)), use_container_width=True)
+    with st.expander("Full tables — exposures, crowding pairs, liquidity (observation)"):
+        st.dataframe(pd.DataFrame(name_rows), use_container_width=True)
+        st.dataframe(pd.DataFrame(sector_exposure_rows(report)), use_container_width=True)
+        crowd_df = crowding_rows(report)
+        if crowd_df:
+            st.dataframe(pd.DataFrame(crowd_df), use_container_width=True)
+        st.dataframe(pd.DataFrame(liquidity_rows(report)), use_container_width=True)
 
 
 def _render_ml(store: Store) -> None:
@@ -714,7 +1022,8 @@ def _otp_cooldown() -> int:
 def _render_login() -> None:
     """The login flow — rendered instead of the modules when there is no session.
     Fail loud: never a blank/stale terminal (§9.1). Credentials/OTP/Bearer held only
-    in this run, never persisted or echoed back."""
+    in this run, never persisted or echoed back. Layout follows the session-gate
+    handoff (design/SCREENS_login.md): hero left, floating operator card right."""
     from currentflow.dal.session import verify_bearer
     from currentflow.dal.token_store import KeychainTokenStore
     from currentflow.ui import login_view as lv
@@ -723,83 +1032,119 @@ def _render_login() -> None:
     store = KeychainTokenStore()
     view = st.session_state.get("login_view") or lv.initial_view(store)
 
-    st.title("CurrentFlow — sign in")
-    st.caption(
-        "Your own Stockbit session (own risk, §15). Credentials and OTP are used only "
-        "to sign in — never stored, never logged. Only the session token is kept."
+    # minimal session-gate top bar (design: no as-of / RULE-B chrome before auth)
+    st.markdown(
+        '<div class="cf-topbar">'
+        '<div class="cf-logo">V</div>'
+        '<div><div class="cf-word">VECTOR·LAB</div>'
+        '<div class="cf-sub">IDX SMART-MONEY FLOW TERMINAL</div></div>'
+        '<div style="flex:1"></div>'
+        f'<div><span class="cf-livedot" style="background:{shell.TOKENS["armed"]}"></span>'
+        "&nbsp; Session gate — sign-in required</div>"
+        '<div class="cf-mono">LOCAL · SINGLE-USER · PAPER</div></div>',
+        unsafe_allow_html=True,
     )
-    if view.error:
-        st.error(view.error)
 
-    if view.state == lv.CREDENTIALS:
-        st.caption(
-            "First sign-in on this machine sends a one-time OTP to trust the device; "
-            "after that, login is direct."
-        )
-        with st.form("credentials"):
-            user = st.text_input("Username / email")
-            password = st.text_input("Password", type="password")
-            if st.form_submit_button("Sign in"):
-                _set_login_view(_run(ctl.submit_credentials(user, password)))
-                st.rerun()
-        if st.button("Prefer a token? Paste a session Bearer instead →"):
-            _set_login_view(lv.LoginView(lv.BEARER))
-            st.rerun()
-    elif view.state == lv.OTP:
-        # The code is sent immediately on entering each round (no "Send OTP" button).
-        target = view.otp_target or (view.channels[0].target if view.channels else None)
-        channel = view.default_channel or (view.channels[0].channel if view.channels else None)
-        if target:
-            st.caption(f"Code sent to {channel or 'your device'} → {target}. Enter it below.")
-        with st.form("otp"):
-            # Key the field by the channel/target of THIS round, so when the server asks
-            # for a second factor (email → WhatsApp) the widget is re-created empty
-            # instead of carrying the just-verified email code over.
-            code = st.text_input("OTP code", key=f"otp_code_{target or channel or 'x'}")
-            if st.form_submit_button("Verify"):
-                _set_login_view(_run(ctl.verify_otp(code)))
-                st.rerun()
+    hero_col, card_col = st.columns([1.5, 1], gap="large")
+    with hero_col:
+        st.markdown(shell.login_hero_html(), unsafe_allow_html=True)
 
-        # design State B footer: channel choice + resend, disabled during the cooldown
-        cooldown = _otp_cooldown()
-        options = [c.channel for c in view.channels if c.channel] or ([channel] if channel else [])
-        if options:
-            left, right = st.columns([1.6, 1])
-            pick = left.selectbox(
-                "Resend via", options,
-                index=options.index(channel) if channel in options else 0,
-            )
-            if right.button("Resend code", disabled=cooldown > 0):
-                _set_login_view(_run(ctl.send_otp(pick)))
-                st.rerun()
-            if cooldown > 0:
-                st.caption(f"Resend available in ~{cooldown}s")
-        if st.button("← Different account"):
-            _set_login_view(lv.LoginView(lv.CREDENTIALS))
-            st.rerun()
-    elif view.state == lv.BEARER:
-        st.caption(
-            "Fallback — advanced (§10). The Bearer is verified with a live ping "
-            "before it is accepted; a rejected token is never stored."
+    card_heads = {
+        lv.CREDENTIALS: ("Operator sign-in", "Use your own Stockbit credentials.", "1"),
+        lv.OTP: ("One-time code", "Multi-factor challenge — enter the code to clear the gate.", "2"),
+        lv.BEARER: ("Session Bearer", "Fallback — advanced (§10). Verified with a live ping before it is accepted.", "1"),
+        lv.FINISH: ("Signed in", "", "2"),
+    }
+    title, sub, step = card_heads.get(view.state, card_heads[lv.CREDENTIALS])
+
+    with card_col, st.container(key="cflogincard"):
+        st.markdown(
+            f'<div style="font-size:16px; font-weight:700; color:{shell.TOKENS["text"]}">'
+            f"{title}"
+            f'<span class="cf-mono" style="float:right; font-size:9.5px; '
+            f'color:{shell.TOKENS["text_faint"]}">STEP {step} · 2</span></div>'
+            f'<div class="cf-statlabel" style="margin-bottom:10px">{sub}</div>',
+            unsafe_allow_html=True,
         )
-        with st.form("bearer"):
-            token = st.text_input(
-                "Session Bearer", type="password",
-                placeholder="Bearer eyJhbGciOi… — paste session token",
+        if view.error:
+            st.error(view.error)
+
+        if view.state == lv.CREDENTIALS:
+            with st.form("credentials"):
+                user = st.text_input("Username", placeholder="username or email")
+                password = st.text_input("Password", type="password", placeholder="········")
+                if st.form_submit_button("Sign in", type="primary", use_container_width=True):
+                    _set_login_view(_run(ctl.submit_credentials(user, password)))
+                    st.rerun()
+            st.caption(
+                "First sign-in on this machine sends a one-time OTP to trust the "
+                "device; after that, login is direct."
             )
-            st.caption("A leading `Bearer ` prefix is stripped automatically.")
-            if st.form_submit_button("Verify & open terminal"):
-                _set_login_view(
-                    _run(lv.submit_bearer(token, store=store, ping=verify_bearer))
+            if st.button("Prefer a token? Paste a session Bearer instead →"):
+                _set_login_view(lv.LoginView(lv.BEARER))
+                st.rerun()
+        elif view.state == lv.OTP:
+            # The code is sent immediately on entering each round (no "Send OTP" button).
+            target = view.otp_target or (view.channels[0].target if view.channels else None)
+            channel = view.default_channel or (view.channels[0].channel if view.channels else None)
+            if target:
+                st.caption(f"Code sent to {channel or 'your device'} → {target}. Enter it below.")
+            with st.form("otp"):
+                # Key the field by the channel/target of THIS round, so when the server asks
+                # for a second factor (email → WhatsApp) the widget is re-created empty
+                # instead of carrying the just-verified email code over.
+                code = st.text_input("OTP code", key=f"otp_code_{target or channel or 'x'}")
+                if st.form_submit_button("Verify", type="primary", use_container_width=True):
+                    _set_login_view(_run(ctl.verify_otp(code)))
+                    st.rerun()
+
+            # design State B footer: channel choice + resend, disabled during the cooldown
+            cooldown = _otp_cooldown()
+            options = [c.channel for c in view.channels if c.channel] or ([channel] if channel else [])
+            if options:
+                left, right = st.columns([1.6, 1])
+                pick = left.selectbox(
+                    "Resend via", options,
+                    index=options.index(channel) if channel in options else 0,
                 )
+                if right.button("Resend code", disabled=cooldown > 0):
+                    _set_login_view(_run(ctl.send_otp(pick)))
+                    st.rerun()
+                if cooldown > 0:
+                    st.caption(f"Resend available in ~{cooldown}s")
+            if st.button("← Different account"):
+                _set_login_view(lv.LoginView(lv.CREDENTIALS))
                 st.rerun()
-        if st.button("← Use username & password"):
-            _set_login_view(lv.LoginView(lv.CREDENTIALS))
+        elif view.state == lv.BEARER:
+            with st.form("bearer"):
+                token = st.text_input(
+                    "Session Bearer", type="password",
+                    placeholder="Bearer eyJhbGciOi… — paste session token",
+                )
+                st.caption("A leading `Bearer ` prefix is stripped automatically.")
+                if st.form_submit_button(
+                    "Verify & open terminal", type="primary", use_container_width=True
+                ):
+                    _set_login_view(
+                        _run(lv.submit_bearer(token, store=store, ping=verify_bearer))
+                    )
+                    st.rerun()
+            if st.button("← Use username & password"):
+                _set_login_view(lv.LoginView(lv.CREDENTIALS))
+                st.rerun()
+        elif view.state == lv.FINISH:
+            st.session_state["login_view"] = view
+            st.success(f"Signed in as {view.username or 'operator'} — loading terminal…")
             st.rerun()
-    elif view.state == lv.FINISH:
-        st.session_state["login_view"] = view
-        st.success(f"Signed in as {view.username or 'operator'} — loading terminal…")
-        st.rerun()
+
+        st.markdown(
+            f'<div style="font-size:10px; color:{shell.TOKENS["text_faint"]}; '
+            'line-height:1.5; margin-top:6px">On success, access + refresh tokens are '
+            "written to the Keychain and the terminal reruns. Credentials and the "
+            "one-time code are held only for this attempt — never persisted, rendered "
+            "back, or logged.</div>",
+            unsafe_allow_html=True,
+        )
 
 
 def _session_topbar() -> str | None:

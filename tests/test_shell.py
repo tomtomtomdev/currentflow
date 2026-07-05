@@ -65,6 +65,16 @@ class TestWatchlistCard:
         assert shell.TOKENS["accent"] in html
         assert "WATCH" in _visible_text(html)
 
+    def test_selected_card_carries_the_brightened_border(self):
+        # design: the rail card is the symbol selector; the active name's card
+        # gets a brightened border (see design screens: PTRO / CUAN / NCKL).
+        plain = shell.watchlist_card_html(_ROW)
+        selected = shell.watchlist_card_html(_ROW, selected=True)
+        assert "border-color:rgba(255,255,255,0.30)" in selected
+        assert "border-color:rgba(255,255,255,0.30)" not in plain
+        # selection styling never adds a number, rank, or verb (RULE B)
+        assert not re.search(r"\d", _visible_text(selected))
+
 
 class TestWatchlistRail:
     def test_cap_is_never_silent(self):
@@ -75,6 +85,24 @@ class TestWatchlistRail:
     def test_empty_rail_says_so(self):
         data = {"rows": [], "total": 0, "dropped": 0, "framing": "observation framing"}
         assert "nothing ARMED or watching today" in shell.watchlist_rail_html(data)
+
+    def test_rail_highlights_the_selected_symbol_only(self):
+        other = dict(_ROW, symbol="PTRO")
+        data = {"rows": [_ROW, other], "total": 2, "dropped": 0,
+                "framing": "observation framing"}
+        html = shell.watchlist_rail_html(data, selected="PTRO")
+        assert html.count("border-color:rgba(255,255,255,0.30)") == 1
+
+    def test_rail_head_and_foot_compose_the_static_rail(self):
+        # the app renders head/cards/foot separately (clickable cards); the pieces
+        # must reassemble into exactly the static whole-rail blob.
+        data = {"rows": [_ROW], "total": 9, "dropped": 8, "framing": "observation framing"}
+        composed = (
+            shell.rail_head_html(data["framing"])
+            + shell.watchlist_card_html(_ROW)
+            + shell.rail_foot_html(data)
+        )
+        assert composed == shell.watchlist_rail_html(data)
 
 
 class TestValidationBar:
@@ -192,3 +220,107 @@ class TestBrokerFlowPanels:
         text = _visible_text(html)
         assert "412" in text and "+2.74%" in text and "38" in text
         assert "Basic Materials" in text
+
+    def test_matrix_rows_carry_dna_chips_when_known(self):
+        html = shell.matrix_html(
+            [{"broker": "KZ", "dna": "FOREIGN_INST", "BRMS": 10.0}], ["BRMS"]
+        )
+        assert shell.DNA_LABELS["FOREIGN_INST"] in _visible_text(html)
+        # unknown DNA row renders without a chip, not with a fake one
+        plain = shell.matrix_html([{"broker": "KZ", "BRMS": 10.0}], ["BRMS"])
+        assert "cf-chip" not in plain
+
+
+class TestDesignPanels:
+    def test_kv_rows_missing_value_is_absent_not_zero(self):
+        html = shell.kv_rows_html([{"label": "vs prior average", "value": None}])
+        assert "—" in _visible_text(html)
+        assert "None" not in html and "0" not in _visible_text(html)
+
+    def test_split_bar_signed_labels(self):
+        html = shell.split_bar_html(1.2, -0.8)
+        text = _visible_text(html)
+        assert "FGN+1.2" in text and "DOM-0.8" in text
+
+    def test_sparkline_needs_two_points_and_scales(self):
+        svg = shell.sparkline_svg([36.2, 36.8, 37.1])
+        assert svg.startswith("<svg") and "polyline" in svg
+
+    def test_callout_carries_label_and_text(self):
+        html = shell.callout_html("FLOW-REVERSAL DETECTION", "reversed on 26 May.")
+        text = _visible_text(html)
+        assert "FLOW-REVERSAL DETECTION" in text and "reversed on 26 May." in text
+
+    def test_heat_tile_missing_intensity_is_absent(self):
+        grid = shell.heatmap_grid_html([{
+            "sector": "Energy",
+            "tiles": [{"symbol": "PTRO", "direction": "BUY",
+                       "intensity_pct_of_cap": None, "divergence": False,
+                       "foreign_net_bn": None, "local_smart_net_bn": 1.0}],
+        }])
+        assert "—" in _visible_text(grid)
+
+    def test_heat_tile_divergence_ring_and_intensity(self):
+        grid = shell.heatmap_grid_html([{
+            "sector": "Energy",
+            "tiles": [
+                {"symbol": "PTRO", "direction": "BUY", "intensity_pct_of_cap": 0.8,
+                 "divergence": True, "foreign_net_bn": 2.0, "local_smart_net_bn": 1.0},
+                {"symbol": "RAJA", "direction": "SELL", "intensity_pct_of_cap": 0.4,
+                 "divergence": False, "foreign_net_bn": -1.0, "local_smart_net_bn": 0.2},
+            ],
+        }])
+        assert "cf-div" in grid
+        assert "+0.80%" in grid and "−0.40%" in grid
+        assert "net sell" in _visible_text(grid)  # legend rides the grid
+
+    def test_divergence_panel_empty_says_clear(self):
+        assert "no divergence alerts" in _visible_text(shell.divergence_panel_html([]))
+
+    def test_sector_card_chip_and_stats(self):
+        html = shell.sector_card_html({
+            "sector": "Technology", "quadrant": "DISTRIBUTION_WARN",
+            "note": "strength persisting while flow leaves (watch)",
+            "net_foreign_flow_bn": -0.35, "relative_strength_pct": 0.6, "tide": None,
+        })
+        text = _visible_text(html)
+        assert "DISTRIBUTION WARN" in text and "-0.35" in text
+        assert shell.TOKENS["sell"] in html
+
+    def test_stat_cards_missing_is_dash(self):
+        html = shell.stat_cards_html([{"label": "Portfolio β", "value": None, "sub": None}])
+        assert "—" in _visible_text(html)
+
+    def test_positions_pnl_is_withheld_never_faked(self):
+        html = shell.positions_table_html([{
+            "symbol": "BRMS", "sector": "Basic Materials", "weight_pct": 8.2,
+            "cap_pct": 10.0, "status": "WARN", "days_to_exit": 2.1,
+        }])
+        assert "no paper fills yet" in html
+        assert "8.2%" in _visible_text(html) and "2.1d" in _visible_text(html)
+
+    def test_crowding_matrix_missing_is_empty_slot(self):
+        html = shell.crowding_matrix_html(
+            {"A": {"A": 1.0, "B": None}, "B": {"A": None, "B": None}}, threshold=0.7
+        )
+        assert "no broker flow" in html
+
+    def test_crowding_matrix_flags_threshold(self):
+        html = shell.crowding_matrix_html(
+            {"A": {"A": 1.0, "B": 0.72}, "B": {"A": 0.72, "B": 1.0}}, threshold=0.7
+        )
+        assert "outline" in html and "0.72" in _visible_text(html)
+
+    def test_scenario_rows_signed_and_colored(self):
+        html = shell.scenario_rows_html([{
+            "scenario": "IHSG −5% gap", "detail": "β 1.24 × −5%",
+            "impact_bn": -3.2, "impact_pct_of_equity": -6.4,
+        }])
+        assert "-6.4%" in _visible_text(html)
+        assert shell.TOKENS["sell"] in html
+
+    def test_login_hero_carries_rule_b_and_no_advice_verbs(self):
+        text = _visible_text(shell.login_hero_html())
+        assert "Sign in to open the terminal." in text
+        assert "RULE B" in text
+        assert not _FORBIDDEN_VERBS.search(text.replace("Sign in", ""))

@@ -39,6 +39,21 @@ TOKENS = {
     "accent": "#58c4dd",
     "divergence": "#bc8cff",
     "foreign": "#58a6ff",
+    "smart": "#e3b341",
+}
+
+# Quadrant → state color (design: Sector Rotation Map + sector cards).
+QUADRANT_COLORS = {
+    "LEADERS": TOKENS["buy"],
+    "EARLY_RECOVERY": TOKENS["accent"],
+    "DISTRIBUTION_WARN": TOKENS["sell"],
+    "AVOID": TOKENS["text_faint"],
+}
+QUADRANT_LABELS = {
+    "LEADERS": "LEADERS",
+    "EARLY_RECOVERY": "EARLY RECOVERY",
+    "DISTRIBUTION_WARN": "DISTRIBUTION WARN",
+    "AVOID": "AVOID",
 }
 
 # §15 disclaimers, cycled by the bottom ticker (LOCKED_SPEC.md §15).
@@ -121,6 +136,106 @@ section[data-testid="stSidebar"] div[data-testid="stRadio"] label[data-baseweb="
   display:none;  /* the radio circle — the design nav has none */
 }}
 .cf-scrollbody {{ max-height:520px; overflow-y:auto; }}
+/* --- clickable watchlist cards (design: rail card IS the symbol selector) --
+   Each card is a keyed st.container holding the card HTML plus an invisible
+   st.button stretched over it (label hidden) — full-card click, no JS layer. */
+div[class*="st-key-cfwatch-"] {{ position:relative; margin-bottom:-6px; }}
+div[class*="st-key-cfwatch-"] .cf-card {{ margin-bottom:0; }}
+div[class*="st-key-cfsel-"] {{ position:absolute; inset:0; z-index:2; }}
+div[class*="st-key-cfsel-"] button {{
+  width:100%; height:100%; min-height:0; padding:0; background:transparent;
+  border:1px solid transparent; border-radius:9px; color:transparent;
+}}
+div[class*="st-key-cfsel-"] button:hover,
+div[class*="st-key-cfsel-"] button:focus-visible {{
+  border-color:rgba(88,196,221,0.40); background:rgba(88,196,221,0.04);
+  color:transparent;
+}}
+div[class*="st-key-cfsel-"] button:active {{ color:transparent; }}
+div[class*="st-key-cfsel-"] button p {{ display:none; }}
+/* --- keyed panel containers (native charts inside design panels) ---------- */
+div[class*="st-key-cfpanel"] {{
+  background:{TOKENS["bg_panel"]}; border:1px solid {TOKENS["border_panel"]};
+  border-radius:10px; padding:14px 14px 8px; margin-bottom:12px;
+}}
+div[class*="st-key-cfpanel"] div[data-testid="stVerticalBlock"] {{ gap:0.35rem; }}
+div[class*="st-key-cfpanel"] canvas, div[class*="st-key-cfpanel"] svg {{ border-radius:6px; }}
+/* --- kv stat rows / callouts / split bar ---------------------------------- */
+.cf-kvrow {{
+  display:flex; justify-content:space-between; align-items:baseline; gap:12px;
+  padding:5px 0; font-size:11px; color:{TOKENS["text_secondary"]};
+  border-bottom:1px solid rgba(255,255,255,0.035);
+}}
+.cf-kvrow:last-child {{ border-bottom:none; }}
+.cf-kvrow .cf-kvval {{ font-family:{_MONO}; font-size:11.5px; color:{TOKENS["text"]}; white-space:nowrap; }}
+.cf-callout {{
+  display:flex; gap:10px; align-items:baseline; background:{TOKENS["bg_panel"]};
+  border:1px solid {TOKENS["border_panel"]}; border-radius:10px;
+  padding:11px 14px; margin-bottom:12px; font-size:12px; color:{TOKENS["text_secondary"]};
+}}
+.cf-callout .cf-calldot {{ flex:none; width:7px; height:7px; border-radius:50%; align-self:center; }}
+.cf-callout .cf-calllabel {{
+  font-family:{_MONO}; font-size:9.5px; letter-spacing:0.08em; color:{TOKENS["text_faint"]};
+  display:block; margin-bottom:2px;
+}}
+.cf-splitbar {{ display:flex; height:18px; border-radius:5px; overflow:hidden; margin-top:6px; }}
+.cf-splitbar span {{
+  display:flex; align-items:center; font-family:{_MONO}; font-size:9.5px;
+  color:#04121a; padding:0 8px; white-space:nowrap;
+}}
+/* --- heatmap tile grid ----------------------------------------------------- */
+.cf-heatrow {{ display:grid; grid-template-columns:110px repeat(6, 1fr); gap:6px; margin-bottom:6px; }}
+.cf-heatrow .cf-heatsector {{
+  font-size:11px; color:{TOKENS["text_secondary"]}; align-self:center; padding-right:6px;
+}}
+.cf-tile {{
+  border-radius:7px; padding:9px 6px; text-align:center; position:relative;
+  border:1px solid rgba(255,255,255,0.05);
+}}
+.cf-tile .cf-tilesym {{ font-family:{_MONO}; font-size:11px; font-weight:700; color:{TOKENS["text"]}; }}
+.cf-tile .cf-tileval {{ font-family:{_MONO}; font-size:9.5px; color:{TOKENS["text_secondary"]}; margin-top:2px; }}
+.cf-tile.cf-div {{ outline:1.5px solid {TOKENS["divergence"]}99; }}
+.cf-tile.cf-div::after {{
+  content:"◆"; position:absolute; top:2px; right:5px; font-size:7px; color:{TOKENS["divergence"]};
+}}
+.cf-legend {{ display:flex; gap:14px; align-items:center; font-size:10px; color:{TOKENS["text_muted"]}; margin-bottom:10px; }}
+.cf-legend .cf-swatch {{ display:inline-block; width:18px; height:9px; border-radius:2px; margin-right:5px; vertical-align:-1px; }}
+/* --- sector cards / stat cards --------------------------------------------- */
+.cf-seccard {{
+  background:{TOKENS["bg_panel"]}; border:1px solid {TOKENS["border_panel"]};
+  border-radius:9px; padding:11px 13px; margin-bottom:9px;
+}}
+.cf-seccard .cf-secname {{ font-size:12.5px; font-weight:600; color:{TOKENS["text"]}; }}
+.cf-seccard .cf-secnote {{ font-size:10.5px; color:{TOKENS["text_muted"]}; margin:3px 0 6px; }}
+.cf-seccard .cf-secstats {{ font-family:{_MONO}; font-size:10px; color:{TOKENS["text_muted"]}; }}
+.cf-statcards {{ display:flex; gap:10px; margin-bottom:12px; }}
+.cf-statcards .cf-statcard {{
+  flex:1; background:{TOKENS["bg_panel"]}; border:1px solid {TOKENS["border_panel"]};
+  border-radius:10px; padding:12px 14px;
+}}
+.cf-statcards .cf-cardlabel {{ font-size:9.5px; color:{TOKENS["text_faint"]}; font-family:{_MONO}; }}
+.cf-statcards .cf-bigstat {{ margin-top:4px; }}
+/* --- login hero + floating card -------------------------------------------- */
+.cf-hero {{ max-width:56ch; padding:9vh 0 0 2vw; }}
+.cf-hero .cf-herolabel {{
+  font-family:{_MONO}; font-size:10px; letter-spacing:0.22em; color:{TOKENS["accent"]};
+  margin-bottom:14px;
+}}
+.cf-hero h1 {{ font-size:40px; line-height:1.15; font-weight:700; color:{TOKENS["text"]}; margin:0 0 16px; }}
+.cf-hero .cf-herosub {{ font-size:13px; color:{TOKENS["text_muted"]}; line-height:1.6; margin-bottom:22px; }}
+.cf-checkrow {{ display:flex; gap:11px; margin-bottom:13px; font-size:12px; color:{TOKENS["text_muted"]}; line-height:1.5; }}
+.cf-checkrow .cf-checkbox {{
+  flex:none; width:17px; height:17px; border-radius:4px; margin-top:1px;
+  border:1px solid rgba(63,185,80,0.4); background:rgba(63,185,80,0.10);
+  color:{TOKENS["buy"]}; font-size:10px; display:flex; align-items:center; justify-content:center;
+}}
+.cf-checkrow b {{ color:{TOKENS["text_secondary"]}; }}
+div[class*="st-key-cflogincard"] {{
+  background:{TOKENS["bg_panel"]}; border:1px solid rgba(255,255,255,0.09);
+  border-radius:13px; padding:20px 22px; margin-top:9vh;
+  box-shadow:0 18px 48px rgba(0,0,0,0.5);
+}}
+div[class*="st-key-cflogincard"] div[data-testid="stForm"] {{ border:none; padding:0; }}
 /* --- shell fragments ------------------------------------------------------ */
 .cf-topbar {{
   display:flex; align-items:center; gap:14px; height:52px; padding:0 14px;
@@ -357,12 +472,16 @@ def stock_header_html(
     )
 
 
-def panel_html(title: str, body: str, *, note: str | None = None) -> str:
-    """A design module panel: 11px 600 header (muted trailing note) + body HTML."""
+def panel_html(
+    title: str, body: str, *, note: str | None = None, right: str | None = None
+) -> str:
+    """A design module panel: 11px 600 header (muted trailing note, optional
+    right-aligned tag HTML) + body HTML."""
     head_note = f" <small>· {escape(note)}</small>" if note else ""
+    tag = f'<span style="float:right">{right}</span>' if right else ""
     return (
         '<div class="cf-panel">'
-        f'<div class="cf-panelhead">{escape(title)}{head_note}</div>{body}</div>'
+        f'<div class="cf-panelhead">{escape(title)}{head_note}{tag}</div>{body}</div>'
     )
 
 
@@ -468,7 +587,11 @@ def matrix_html(rows: list[dict], symbols: list[str], *, selected: str | None = 
     head = "<th>BROKER</th>" + "".join(head_cells)
     body = []
     for r in rows:
-        tds = [f'<td class="cf-code" style="padding:2px 6px">{escape(r["broker"])}</td>']
+        chip = f"&nbsp;{dna_chip_html(r['dna'])}" if r.get("dna") else ""
+        tds = [
+            '<td style="padding:2px 6px; white-space:nowrap">'
+            f'<span class="cf-code">{escape(r["broker"])}</span>{chip}</td>'
+        ]
         for s in symbols:
             v = r.get(s)
             if not isinstance(v, (int, float)):
@@ -504,18 +627,26 @@ def _spark_bar(label: str, value: int | None, state: str) -> str:
     return f'<span title="{label} {value}" style="height:{h}px; background:{color}"></span>'
 
 
-def watchlist_card_html(row: dict) -> str:
+def watchlist_card_html(row: dict, *, selected: bool = False) -> str:
     """One ARMED-watchlist card from `watchlist_view.rows()`: status dot, ticker,
     track chip, state WORD, five component spark-bars. No composite number, no rank,
-    no verb (RULE B) — exact component values live only in the bar tooltips."""
+    no verb (RULE B) — exact component values live only in the bar tooltips.
+
+    The card doubles as the terminal's symbol selector (design: no sidebar dropdown);
+    `selected` draws the design's brightened border around the active name."""
     state = row["state"]
     dot = _STATE_DOT.get(state, TOKENS["text_faint"])
     pulse = " armed" if state == "ARMED" else ""
     comps = row["components"]
     bars = "".join(_spark_bar(k, comps.get(k), state) for k in SPARK_ORDER)
     labels = "".join(f"<span>{k}</span>" for k in SPARK_ORDER)
+    ring = (
+        ' style="border-color:rgba(255,255,255,0.30); background:#10161f"'
+        if selected
+        else ""
+    )
     return (
-        '<div class="cf-card">'
+        f'<div class="cf-card"{ring}>'
         f'<span class="cf-dot{pulse}" style="background:{dot}"></span>'
         f'<span class="cf-tick">{escape(row["symbol"])}</span>'
         f'<span class="cf-track">{escape(row["track"])}</span>'
@@ -526,11 +657,17 @@ def watchlist_card_html(row: dict) -> str:
     )
 
 
-def watchlist_rail_html(data: dict) -> str:
-    """The full right rail: header, framing, cards, and the never-silent cap note."""
-    body = "".join(watchlist_card_html(r) for r in data["rows"]) or (
-        '<div class="cf-railnote">— nothing ARMED or watching today</div>'
+def rail_head_html(framing: str) -> str:
+    """Rail header + framing note (rendered once, above the clickable cards)."""
+    return (
+        '<div class="cf-railhead">ARMED WATCHLIST</div>'
+        f'<div class="cf-railnote">{escape(framing.capitalize())}. '
+        "Internal ARMED state; score withheld (RULE B).</div>"
     )
+
+
+def rail_foot_html(data: dict) -> str:
+    """Rail footer: the never-silent cap note + the RULE-B framing reminder."""
     dropped = (
         f'<div class="cf-railnote">…and {data["dropped"]} more '
         f'(top {len(data["rows"])} shown of {data["total"]})</div>'
@@ -538,13 +675,20 @@ def watchlist_rail_html(data: dict) -> str:
         else ""
     )
     return (
-        '<div class="cf-railhead">ARMED WATCHLIST</div>'
-        f'<div class="cf-railnote">{escape(data["framing"].capitalize())}. '
-        "Internal ARMED state; score withheld (RULE B).</div>"
-        f"{body}{dropped}"
+        f"{dropped}"
         '<div class="cf-railnote">Components are raw observation — no probability '
         "or verb until validated.</div>"
     )
+
+
+def watchlist_rail_html(data: dict, *, selected: str | None = None) -> str:
+    """The full right rail as one static blob: header, framing, cards, cap note.
+    The app renders the cards individually (clickable containers); this composition
+    keeps the whole-rail contract in one place for tests and static rendering."""
+    body = "".join(
+        watchlist_card_html(r, selected=r["symbol"] == selected) for r in data["rows"]
+    ) or '<div class="cf-railnote">— nothing ARMED or watching today</div>'
+    return f"{rail_head_html(data['framing'])}{body}{rail_foot_html(data)}"
 
 
 def validation_bar_html(months_accrued: float, required_months: int, validated: bool) -> str:
@@ -562,6 +706,359 @@ def validation_bar_html(months_accrued: float, required_months: int, validated: 
         f'<span class="cf-vallabel">PER-MODULE VALIDATION STATE · PAPER_VALIDATION_MONTHS = {required_months}</span>'
         f'<span class="cf-valstate" style="float:right; color:{color}">{escape(state)}</span>'
         f'<div class="cf-valtrack"><span style="width:{frac * 100:.0f}%; background:{color}"></span></div>'
+        "</div>"
+    )
+
+
+def kv_rows_html(rows: list[dict]) -> str:
+    """Label-left / mono-value-right stat rows (design right-column panels).
+    A missing value renders as an em-dash — absent, never zero."""
+    out = []
+    for r in rows:
+        color = r.get("color") or TOKENS["text"]
+        value = r["value"] if r["value"] is not None else "—"
+        if r["value"] is None:
+            color = TOKENS["text_faint"]
+        out.append(
+            '<div class="cf-kvrow">'
+            f'<span>{escape(r["label"])}</span>'
+            f'<span class="cf-kvval" style="color:{color}">{escape(str(value))}</span></div>'
+        )
+    return "".join(out)
+
+
+def bigstat_bar_html(
+    value: str, note: str, frac_pct: float | None, color: str
+) -> str:
+    """Big mono stat + sub-note + proportional bar (design: FOREIGN OWN vs FREE-FLOAT)."""
+    bar = (
+        f'<div class="cf-bartrack"><span style="width:{min(max(frac_pct, 0), 100):.0f}%; '
+        f'background:{color}"></span></div>'
+        if frac_pct is not None
+        else ""
+    )
+    return (
+        f'<div class="cf-bigstat" style="color:{color}">{escape(value)}</div>'
+        f'<div class="cf-statlabel">{escape(note)}</div>{bar}'
+    )
+
+
+def sparkline_svg(
+    values: list[float], *, width: int = 220, height: int = 46, color: str | None = None
+) -> str:
+    """Inline-SVG sparkline (design: KSEI OWNERSHIP · 6mo). Needs ≥2 points;
+    otherwise the caller renders the missing-data note instead."""
+    color = color or TOKENS["foreign"]
+    lo, hi = min(values), max(values)
+    span = (hi - lo) or 1.0
+    pad = 4
+    pts = " ".join(
+        f"{pad + i * (width - 2 * pad) / (len(values) - 1):.1f},"
+        f"{height - pad - (v - lo) / span * (height - 2 * pad):.1f}"
+        for i, v in enumerate(values)
+    )
+    return (
+        f'<svg width="100%" viewBox="0 0 {width} {height}" preserveAspectRatio="none" '
+        f'style="display:block; height:{height}px">'
+        f'<polyline points="{pts}" fill="none" stroke="{color}" stroke-width="2" '
+        'stroke-linejoin="round" stroke-linecap="round"/></svg>'
+    )
+
+
+def split_bar_html(fgn_bn: float, dom_bn: float) -> str:
+    """FOREIGN vs DOMESTIC split bar: blue foreign segment / purple domestic segment,
+    widths by share of |flow|, signed mono labels at the ends (design bottom strip)."""
+    total = abs(fgn_bn) + abs(dom_bn)
+    f_pct = 50.0 if total == 0 else abs(fgn_bn) / total * 100
+    return (
+        '<div class="cf-splitbar">'
+        f'<span style="flex:0 0 {f_pct:.1f}%; '
+        f'background:linear-gradient(90deg,{TOKENS["accent"]},{TOKENS["foreign"]}); '
+        f'justify-content:flex-start">FGN{fgn_bn:+.1f}</span>'
+        f'<span style="flex:1; '
+        f'background:linear-gradient(90deg,#8957e5,{TOKENS["divergence"]}); '
+        f'justify-content:flex-end">DOM{dom_bn:+.1f}</span></div>'
+    )
+
+
+def callout_html(label: str, text: str, *, color: str | None = None) -> str:
+    """A detection callout strip: colored dot + small-caps label + observation text
+    (design: FLOW-REVERSAL DETECTION / the accumulation bottom note)."""
+    color = color or TOKENS["accent"]
+    return (
+        '<div class="cf-callout">'
+        f'<span class="cf-calldot" style="background:{color}"></span>'
+        f'<span><span class="cf-calllabel">{escape(label)}</span>{escape(text)}</span></div>'
+    )
+
+
+def heatmap_legend_html() -> str:
+    """Heatmap legend strip: net-sell/net-buy swatches, intensity note, divergence key."""
+    return (
+        '<div class="cf-legend">'
+        f'<span><span class="cf-swatch" style="background:{TOKENS["sell"]}"></span>net sell</span>'
+        f'<span><span class="cf-swatch" style="background:{TOKENS["buy"]}"></span>net buy</span>'
+        "<span>intensity = flow as % of cap</span>"
+        f'<span style="flex:1"></span><span style="color:{TOKENS["divergence"]}">'
+        "◆ divergence: local buy + foreign sell</span></div>"
+    )
+
+
+def _tile_html(cell: dict) -> str:
+    """One heatmap tile. Direction colors the tile, intensity sets its alpha against
+    the grid max; a missing intensity renders the tile faint with an em-dash."""
+    sym = escape(cell["symbol"])
+    intensity = cell["intensity_pct_of_cap"]
+    direction = cell["direction"]
+    div_cls = " cf-div" if cell["divergence"] else ""
+    fgn = cell["foreign_net_bn"]
+    smart = cell["local_smart_net_bn"]
+    tip = escape(
+        f"{cell['symbol']}: foreign net "
+        + (f"{fgn:+,.2f} bn" if fgn is not None else "—")
+        + (f" · local smart {smart:+,.2f} bn" if smart is not None else "")
+    )
+    if intensity is None or direction == "NEUTRAL":
+        return (
+            f'<div class="cf-tile{div_cls}" title="{tip}" '
+            'style="background:rgba(255,255,255,0.02)">'
+            f'<div class="cf-tilesym">{sym}</div>'
+            f'<div class="cf-tileval" style="color:{TOKENS["text_faint"]}">'
+            f'{"—" if intensity is None else "·"}</div></div>'
+        )
+    rgb = "63,185,80" if direction == "BUY" else "248,81,73"
+    alpha = 0.12 + 0.5 * min(intensity / cell["_max_intensity"], 1.0)
+    sign = "+" if direction == "BUY" else "−"
+    return (
+        f'<div class="cf-tile{div_cls}" title="{tip}" '
+        f'style="background:rgba({rgb},{alpha:.2f})">'
+        f'<div class="cf-tilesym">{sym}</div>'
+        f'<div class="cf-tileval">{sign}{intensity:.2f}%</div></div>'
+    )
+
+
+def heatmap_grid_html(sectors: list[dict]) -> str:
+    """The sector → stock tile grid (design module 5): one row per sector, tiles
+    colored by direction with intensity = flow-as-%-of-cap alpha; divergence tiles
+    carry the purple ring + ◆. Pure rendering — no score, no rank (RULE B)."""
+    max_i = max(
+        (c["intensity_pct_of_cap"] or 0.0 for s in sectors for c in s["tiles"]),
+        default=0.0,
+    ) or 1.0
+    rows = []
+    for s in sectors:
+        tiles = "".join(_tile_html({**c, "_max_intensity": max_i}) for c in s["tiles"])
+        rows.append(
+            '<div class="cf-heatrow">'
+            f'<div class="cf-heatsector">{escape(s["sector"])}</div>{tiles}</div>'
+        )
+    return heatmap_legend_html() + "".join(rows)
+
+
+def divergence_panel_html(rows: list[dict]) -> str:
+    """DIVERGENCE ALERTS panel: mono ticker + categorical observation per row."""
+    if not rows:
+        body = (
+            f'<div class="cf-statlabel" style="color:{TOKENS["buy"]}">'
+            "✓ no divergence alerts across the grid</div>"
+        )
+    else:
+        body = "".join(
+            '<div class="cf-kvrow" style="justify-content:flex-start; gap:16px">'
+            f'<span class="cf-mono" style="color:{TOKENS["text"]}; flex:0 0 52px; '
+            f'font-weight:600">{escape(r["symbol"])}</span>'
+            f'<span>{escape(r["note"])}</span></div>'
+            for r in rows
+        )
+    return panel_html(
+        "◆ DIVERGENCE ALERTS", body, note="observation, not a recommendation"
+    )
+
+
+def quadrant_chip_html(quadrant: str) -> str:
+    """A sector-card state chip (LEADERS / EARLY RECOVERY / …), quadrant-colored."""
+    color = QUADRANT_COLORS.get(quadrant, TOKENS["text_faint"])
+    label = QUADRANT_LABELS.get(quadrant, quadrant)
+    return (
+        f'<span class="cf-chip" style="border:1px solid {color}44; '
+        f'background:{color}14; color:{color}">{escape(label)}</span>'
+    )
+
+
+def sector_card_html(row: dict) -> str:
+    """One Sector-Rotate right-column card: name + quadrant chip, observation note,
+    mono flow/RS/tide stats. Missing measurements render as em-dashes."""
+    flow = row["net_foreign_flow_bn"]
+    rs = row["relative_strength_pct"]
+    flow_s = (
+        f'<span style="color:{TOKENS["buy"] if flow >= 0 else TOKENS["sell"]}">{flow:+.2f}</span>'
+        if flow is not None
+        else "—"
+    )
+    rs_s = f"{rs:+.2f}" if rs is not None else "—"
+    tide = f" &nbsp;{escape(row['tide'])}" if row.get("tide") else ""
+    return (
+        '<div class="cf-seccard">'
+        f'<span class="cf-secname">{escape(row["sector"])}</span>'
+        f'<span style="float:right">{quadrant_chip_html(row["quadrant"])}</span>'
+        f'<div class="cf-secnote">{escape(row["note"].capitalize())}.</div>'
+        f'<div class="cf-secstats">flow {flow_s} &nbsp;RS {rs_s}{tide}</div></div>'
+    )
+
+
+def stat_cards_html(cards: list[dict]) -> str:
+    """The Risk-Monitor top strip: label / big mono value / sub-label cards.
+    A missing measurement is an em-dash, never a zero."""
+    out = []
+    for c in cards:
+        color = c.get("color") or TOKENS["text"]
+        value = c["value"] if c["value"] is not None else "—"
+        if c["value"] is None:
+            color = TOKENS["text_faint"]
+        sub = f'<div class="cf-statlabel">{escape(c["sub"])}</div>' if c.get("sub") else ""
+        out.append(
+            '<div class="cf-statcard">'
+            f'<div class="cf-cardlabel">{escape(c["label"])}</div>'
+            f'<div class="cf-bigstat" style="color:{color}">{escape(str(value))}</div>'
+            f"{sub}</div>"
+        )
+    return f'<div class="cf-statcards">{"".join(out)}</div>'
+
+
+_CAP_COLORS = {"OK": TOKENS["buy"], "WARN": TOKENS["armed"], "OVER CAP": TOKENS["sell"]}
+
+
+def cap_bars_html(rows: list[dict]) -> str:
+    """Exposure-cap bars (§6): weight-vs-cap fill, colored OK/WARN/OVER CAP."""
+    out = []
+    for r in rows:
+        w, cap = r["weight_pct"], r["cap_pct"]
+        frac = 0.0 if not cap else min(w / cap * 100, 100)
+        color = _CAP_COLORS.get(r["status"], TOKENS["text_faint"])
+        out.append(
+            '<div style="margin-bottom:9px">'
+            f'<span style="font-size:11px; color:{TOKENS["text_secondary"]}">{escape(r["key"])}</span>'
+            f'<span class="cf-mono" style="float:right; font-size:11px; color:{color}">'
+            f"{w:.1f}%</span>"
+            f'<div class="cf-bartrack"><span style="width:{frac:.0f}%; background:{color}"></span></div>'
+            "</div>"
+        )
+    return "".join(out)
+
+
+def positions_table_html(rows: list[dict]) -> str:
+    """OPEN PAPER POSITIONS table: name · sector · %-equity (bar vs the §6 cap) ·
+    days-to-exit. P&L stays withheld until real paper fills exist — an em-dash with
+    the reason in the tooltip, never a fabricated number."""
+    body = []
+    for r in rows:
+        w, cap = r["weight_pct"], r["cap_pct"]
+        frac = 0.0 if not cap else min((w or 0) / cap * 100, 100)
+        color = _CAP_COLORS.get(r["status"], TOKENS["text_faint"])
+        dte = f'{r["days_to_exit"]:.1f}d' if r.get("days_to_exit") is not None else "—"
+        pnl = (
+            f'<span style="color:{TOKENS["text_faint"]}" '
+            'title="withheld — no paper fills yet (preview book, no entry price)">—</span>'
+        )
+        body.append(
+            "<tr>"
+            f'<td class="cf-code">{escape(r["symbol"])}</td>'
+            f'<td style="color:{TOKENS["text_muted"]}">{escape(r["sector"])}</td>'
+            f'<td class="cf-num" style="color:{color}">{w:.1f}%'
+            f'<div class="cf-netbar" style="width:{frac:.0f}%; background:{color}66"></div></td>'
+            f'<td class="cf-num">{dte}</td>'
+            f'<td class="cf-num">{pnl}</td></tr>'
+        )
+    return (
+        '<table class="cf-table"><thead><tr>'
+        "<th>NAME</th><th>SECTOR</th>"
+        '<th style="text-align:right">% EQUITY</th>'
+        '<th style="text-align:right">DTE</th>'
+        '<th style="text-align:right">P&amp;L</th>'
+        f'</tr></thead><tbody>{"".join(body)}</tbody></table>'
+    )
+
+
+def crowding_matrix_html(matrix: dict[str, dict[str, float | None]], *, threshold: float) -> str:
+    """CROWDING MATRIX (same-bandar ρ): red alpha rises with ρ; pairs at/over the §6
+    threshold get the ring. None (no broker flow) is an empty slot — missing ≠ zero."""
+    symbols = list(matrix)
+    head = "<th></th>" + "".join(f"<th>{escape(s)}</th>" for s in symbols)
+    body = []
+    for a in symbols:
+        tds = [f'<td class="cf-code" style="padding:2px 6px">{escape(a)}</td>']
+        for b in symbols:
+            rho = matrix[a].get(b)
+            if rho is None:
+                tds.append('<td class="cf-cell cf-empty" title="no broker flow">·</td>')
+                continue
+            if a == b:
+                tds.append(
+                    '<td class="cf-cell" style="background:rgba(255,255,255,0.04); '
+                    f'color:{TOKENS["text_faint"]}">1.00</td>'
+                )
+                continue
+            alpha = 0.06 + 0.5 * max(rho, 0.0)
+            ring = f"; outline:1px solid {TOKENS['sell']}88" if rho >= threshold else ""
+            tds.append(
+                f'<td class="cf-cell" style="background:rgba(248,81,73,{alpha:.2f}){ring}" '
+                f'title="{escape(a)} × {escape(b)}: ρ = {rho:.2f}">{rho:.2f}</td>'
+            )
+        body.append(f"<tr>{''.join(tds)}</tr>")
+    return (
+        f'<table class="cf-matrix"><thead><tr>{head}</tr></thead>'
+        f'<tbody>{"".join(body)}</tbody></table>'
+    )
+
+
+def scenario_rows_html(rows: list[dict]) -> str:
+    """SCENARIO STRESS rows: shock name + detail, signed impact right (red when
+    negative). Hypothetical what-ifs, not forecasts."""
+    out = []
+    for r in rows:
+        pct = r["impact_pct_of_equity"]
+        if pct is None:
+            val, color = "—", TOKENS["text_faint"]
+        else:
+            val = f"{pct:+.1f}%"
+            color = TOKENS["sell"] if pct < 0 else TOKENS["buy"]
+        bn = f' title="{r["impact_bn"]:+,.2f} IDR bn"' if r["impact_bn"] is not None else ""
+        out.append(
+            '<div class="cf-kvrow">'
+            f'<span>{escape(r["scenario"])}'
+            f'<span style="color:{TOKENS["text_faint"]}"> · {escape(r["detail"])}</span></span>'
+            f'<span class="cf-kvval" style="color:{color}"{bn}>{val}</span></div>'
+        )
+    return "".join(out)
+
+
+def login_hero_html() -> str:
+    """The session-gate hero (design/SCREENS_login.md): headline, framing, the three
+    checkmark rows, and the RULE-B pill. Copy matches the pixel target."""
+    checks = (
+        ("Credentialed sign-in.", "Your own Stockbit login drives the verified "
+         "login/v6 flow — no hand-pasted token."),
+        ("Multi-factor by OTP.", "A one-time code by email, WhatsApp, or SMS; the "
+         "challenge can loop across channels before it clears."),
+        ("Keychain-backed session.", "Access + refresh tokens held in the OS "
+         "Keychain, read fresh, never written in plaintext (§10). Auth only — it "
+         "gates no signal or RULE A/B behaviour."),
+    )
+    rows = "".join(
+        '<div class="cf-checkrow"><span class="cf-checkbox">✓</span>'
+        f"<span><b>{escape(title)}</b> {escape(text)}</span></div>"
+        for title, text in checks
+    )
+    return (
+        '<div class="cf-hero">'
+        '<div class="cf-herolabel">SESSION GATE</div>'
+        "<h1>Sign in to open the terminal.</h1>"
+        '<div class="cf-herosub">Establish <b>your own authenticated Stockbit '
+        "session</b> — username, password, and a one-time code. The resulting "
+        "session lives on this machine only; nothing is republished.</div>"
+        f"{rows}"
+        f'<div class="cf-ruleb" style="display:inline-block; margin-top:10px">'
+        "RULE B · Observation-only — scores stay gated until paper-validated</div>"
         "</div>"
     )
 

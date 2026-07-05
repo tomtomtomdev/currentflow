@@ -52,3 +52,41 @@ def divergence_alerts(cells: list[HeatCell]) -> list[str]:
         f"{c.symbol} ({c.sector}): local smart-money buying while foreign sells"
         for c in cells if c.divergence_alert
     ]
+
+
+def grid_rows(cells: list[HeatCell]) -> list[dict]:
+    """Sector → tiles structure for the design tile grid: one entry per sector,
+    tiles strongest-intensity first (None-intensity tiles last, still shown —
+    missing ≠ dropped)."""
+    return [
+        {
+            "sector": sector,
+            "tiles": sorted(
+                (
+                    {
+                        "symbol": c.symbol,
+                        "direction": c.direction,
+                        "intensity_pct_of_cap": c.intensity_pct_of_cap,
+                        "divergence": c.divergence_alert,
+                        "foreign_net_bn": _bn(c.foreign_net),
+                        "local_smart_net_bn": _bn(c.local_smart_net),
+                    }
+                    for c in group
+                ),
+                key=lambda t: -(t["intensity_pct_of_cap"] or -1.0),
+            ),
+        }
+        for sector, group in sorted(by_sector(cells).items())
+    ]
+
+
+def divergence_rows(cells: list[HeatCell]) -> list[dict]:
+    """DIVERGENCE ALERTS panel rows: mono ticker + categorical observation."""
+    return [
+        {
+            "symbol": c.symbol,
+            "note": f"local smart-money accumulating while foreign sells ({c.sector})",
+        }
+        for c in cells
+        if c.divergence_alert
+    ]
