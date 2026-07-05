@@ -138,12 +138,30 @@ section[data-testid="stSidebar"] div[data-testid="stRadio"] label[data-baseweb="
 .cf-scrollbody {{ max-height:520px; overflow-y:auto; }}
 /* --- clickable watchlist cards (design: rail card IS the symbol selector) --
    Each card is a keyed st.container holding the card HTML plus an invisible
-   st.button stretched over it (label hidden) — full-card click, no JS layer. */
+   st.button stretched over it (label hidden) — full-card click, no JS layer.
+   Streamlit 1.58 sizes a button's element container to its content (explicit
+   width beats `inset:0`) and, with `help=`, nests the button two auto-height
+   wrappers deep — so every layer of the chain is pinned absolute/full-size,
+   with !important against the inline/emotion sizing. Streamlit also puts
+   margin-bottom:-16px on stMarkdownContainer, which shrinks the keyed wrap
+   below the card's height — zeroed here so the overlay covers the whole card. */
 div[class*="st-key-cfwatch-"] {{ position:relative; margin-bottom:-6px; }}
 div[class*="st-key-cfwatch-"] .cf-card {{ margin-bottom:0; }}
-div[class*="st-key-cfsel-"] {{ position:absolute; inset:0; z-index:2; }}
+div[class*="st-key-cfwatch-"] div[data-testid="stMarkdownContainer"] {{
+  margin:0 !important;
+}}
+div[class*="st-key-cfsel-"] {{
+  position:absolute; inset:0; z-index:2;
+  width:100% !important; height:100% !important;
+}}
+div[class*="st-key-cfsel-"] div[data-testid="stButton"],
+div[class*="st-key-cfsel-"] div[data-testid="stButton"] > div {{
+  position:absolute; inset:0; width:100% !important; height:100% !important;
+  min-height:0; margin:0; padding:0;
+}}
 div[class*="st-key-cfsel-"] button {{
-  width:100%; height:100%; min-height:0; padding:0; background:transparent;
+  position:absolute; inset:0; width:100% !important; height:100% !important;
+  min-height:0; padding:0; background:transparent;
   border:1px solid transparent; border-radius:9px; color:transparent;
 }}
 div[class*="st-key-cfsel-"] button:hover,
