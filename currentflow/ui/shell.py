@@ -109,10 +109,32 @@ def shell_css() -> str:
     header/toolbar, kill the default page gutters, restyle the sidebar module
     radio into the design's nav-rail items)."""
     return f"""<style>
-/* --- Streamlit chrome → design shell ------------------------------------- */
-header[data-testid="stHeader"], #MainMenu, footer,
-div[data-testid="stToolbar"], div[data-testid="stDecoration"],
-div[data-testid="stStatusWidget"] {{ display:none !important; }}
+/* --- Streamlit chrome → design shell -------------------------------------
+   Keep the header element in the DOM. When the sidebar is collapsed Streamlit
+   renders the ">>" expand control INSIDE the header toolbar, so the old blanket
+   `display:none` on the header left no way to reopen the nav rail. Instead
+   neutralize the header visually, hide only the chrome noise (menu, deploy,
+   status, decoration), and surface the expand button as a styled floating
+   control that's always reachable. */
+#MainMenu, footer,
+div[data-testid="stMainMenu"], div[data-testid="stDecoration"],
+div[data-testid="stStatusWidget"], div[data-testid="stToolbarActions"],
+div[data-testid="stAppDeployButton"],
+div[data-testid="stHeaderActionElements"] {{ display:none !important; }}
+header[data-testid="stHeader"] {{
+  background:transparent !important; height:0 !important; min-height:0 !important;
+  box-shadow:none !important;
+}}
+div[data-testid="stToolbar"] {{ background:transparent !important; right:auto; }}
+button[data-testid="stExpandSidebarButton"] {{
+  display:inline-flex !important; position:fixed !important; top:9px; left:9px;
+  z-index:1000; width:30px; height:30px; align-items:center; justify-content:center;
+  background:{TOKENS["bg_panel"]} !important; border:1px solid {TOKENS["border_panel"]} !important;
+  border-radius:8px; color:{TOKENS["text"]} !important;
+}}
+button[data-testid="stExpandSidebarButton"]:hover {{
+  border-color:rgba(88,196,221,0.40) !important; background:rgba(88,196,221,0.08) !important;
+}}
 .stApp {{ background:{TOKENS["bg_app"]}; }}
 .stMainBlockContainer, .block-container {{
   padding:14px 18px 8px !important; max-width:100% !important;
