@@ -80,19 +80,34 @@ from currentflow.ui.sms_view import GATE_BANNER, WATCHLIST_FRAMING, component_ro
 from currentflow.ui import daily_top_view, ml_view, ranking_view, watchlist_view
 from currentflow.validation.promotion import ValidationLedger
 
-MODULES = [
-    "⇄ Broker Flow",
-    "⌖ Foreign Flow",
-    "◱ Accum. Detect",
-    "⟲ Money Replay",
-    "▦ Smart Heatmap",
-    "✦ Sector Rotate",
-    "◈ Risk Monitor",
-    "∑ SMS / Rank 🔒",
-    "◇ AI Ranking 🔒",
-    "☰ Daily Top 🔒",
-    "⚙ ML Layer 🔒",
+# (icon glyph, title, gated?) — the nav rail. Rendered with st.radio's native
+# `captions=`: the icon is the option label, the title its caption directly below,
+# so the item stacks vertically (icon over title) — design: leftmost rail. The
+# stable full "icon title" string is the option value / renderer key.
+_MODULE_DEFS = [
+    ("⇄", "Broker Flow", False),
+    ("⌖", "Foreign Flow", False),
+    ("◱", "Accum. Detect", False),
+    ("⟲", "Money Replay", False),
+    ("▦", "Smart Heatmap", False),
+    ("✦", "Sector Rotate", False),
+    ("◈", "Risk Monitor", False),
+    ("∑", "SMS / Rank", True),
+    ("◇", "AI Ranking", True),
+    ("☰", "Daily Top", True),
+    ("⚙", "ML Layer", True),
 ]
+MODULES = [f"{icon} {title}" for icon, title, _ in _MODULE_DEFS]
+_MODULE_ICON = {k: icon for k, (icon, _, _) in zip(MODULES, _MODULE_DEFS)}
+_MODULE_CAPTION = {
+    k: f"{title}{' 🔒' if locked else ''}"
+    for k, (_, title, locked) in zip(MODULES, _MODULE_DEFS)
+}
+
+# IHSG (Jakarta Composite) is display-only top-bar chrome — signals never benchmark
+# to it (§8). Read a real level if a composite series happens to be ingested under
+# any of these symbols; otherwise the top bar shows it absent (never faked, §10).
+_IHSG_SYMBOLS = ("IHSG", "COMPOSITE", "^JKSE", "JKSE")
 
 # Operator sector map — ILLUSTRATIVE, seeded from the design handoff ticker reference
 # (design/SCREENS_terminal.md). Like the broker-DNA registry, it is operator knowledge to verify
@@ -214,6 +229,24 @@ def _as_of(store: Store) -> str | None:
     a missing stamp is shown as absent, never faked)."""
     row = store._con.execute('SELECT max("date") FROM daily_bar').fetchone()
     return str(row[0]) if row and row[0] else None
+
+
+def _ihsg(store: Store) -> tuple[float | None, float | None]:
+    """Latest IHSG level + day-over-day %-change for the top bar, read from a
+    composite series if one is ingested (any of `_IHSG_SYMBOLS`). Not a benchmark
+    (§8) — display chrome only. Absent when not ingested (never faked, §10)."""
+    for sym in _IHSG_SYMBOLS:
+        rows = store._con.execute(
+            'SELECT "close" FROM daily_bar WHERE "symbol" = ? '
+            'ORDER BY "date" DESC LIMIT 2',
+            [sym],
+        ).fetchall()
+        if rows and rows[0][0] is not None:
+            last = float(rows[0][0])
+            prev = rows[1][0] if len(rows) > 1 and rows[1][0] else None
+            pct = (last - float(prev)) / float(prev) * 100 if prev else None
+            return last, pct
+    return None, None
 
 
 def _trap_ribbon(store: Store, symbol: str, decision_ts: datetime) -> None:
@@ -1147,25 +1180,40 @@ def _render_login() -> None:
         )
 
 
-def _session_topbar() -> str | None:
-    """Masked session status + sign-out in the sidebar. Returns the masked operator
-    label while a valid session exists (module rendering proceeds; the label feeds
-    the design top bar), None after sign-out."""
+def _session_info() -> dict | None:
+    """Masked session status: `{who, preview, source}` while a valid session exists,
+    None when there is no token (→ the login gate). No rendering — the operator head
+    and sign-out control render at the top of the watchlist rail (`_render_session_head`)."""
     from currentflow.dal.session import session_status
+    from currentflow.dal.token_store import KeychainTokenStore
+
+    st_status = session_status(KeychainTokenStore())
+    if not st_status["has_token"]:
+        return None
+    return {
+        "who": st_status.get("username") or "operator",
+        "preview": st_status["preview"],
+        "source": st_status["source"],
+    }
+
+
+def _render_session_head(info: dict) -> None:
+    """Operator identity + sign-out at the top of the ARMED watchlist rail (design:
+    masked token above the rail, not in the sidebar). Sign-out clears the local
+    session and drops back to the login gate (fail loud — same path as a 401)."""
     from currentflow.dal.token_store import KeychainTokenStore
     from currentflow.ui import login_view as lv
 
-    store = KeychainTokenStore()
-    st_status = session_status(store)
-    if not st_status["has_token"]:
-        return None
-    who = st_status.get("username") or "operator"
-    st.sidebar.caption(f"● {who} — {st_status['preview']} [{st_status['source']}]")
-    if st.sidebar.button("Sign out"):
-        _login_controller().sign_out() if "login_ctl" in st.session_state else store.clear()
-        st.session_state["login_view"] = lv.LoginView(lv.CREDENTIALS)
-        st.rerun()
-    return f"{who} · {st_status['preview']}"
+    st.markdown(
+        shell.operator_head_html(info["who"], info["preview"], info["source"]),
+        unsafe_allow_html=True,
+    )
+    with st.container(key="cfsignout"):
+        if st.button("Sign out", key="cf_signout_btn", use_container_width=True):
+            (_login_controller().sign_out() if "login_ctl" in st.session_state
+             else KeychainTokenStore().clear())
+            st.session_state["login_view"] = lv.LoginView(lv.CREDENTIALS)
+            st.rerun()
 
 
 def _maybe_bootstrap(store: Store) -> None:
@@ -1263,20 +1311,26 @@ def main() -> None:
     st.markdown(shell.shell_css(), unsafe_allow_html=True)
 
     # Auth gate (slice 11): no valid session → the login flow, never blank modules.
-    operator = _session_topbar()
-    if operator is None:
+    info = _session_info()
+    if info is None:
         _render_login()
         st.markdown(shell.ticker_html(), unsafe_allow_html=True)
         return
 
     store = _store(_db_path())
+    ihsg, ihsg_chg = _ihsg(store)
     st.markdown(
-        shell.top_bar_html(as_of=_as_of(store), operator=operator),
+        shell.top_bar_html(as_of=_as_of(store), ihsg=ihsg, ihsg_change_pct=ihsg_chg),
         unsafe_allow_html=True,
     )
     _maybe_bootstrap(store)  # slice 13: first-run auto-ingest into an empty store
 
-    module = st.sidebar.radio("Module", MODULES, index=0)
+    module = st.sidebar.radio(
+        "Module", MODULES, index=0,
+        format_func=lambda k: _MODULE_ICON[k],   # icon is the label…
+        captions=[_MODULE_CAPTION[k] for k in MODULES],  # …title stacks beneath it
+        label_visibility="collapsed",
+    )
     renderers = {
         MODULES[0]: _render_broker_flow,
         MODULES[1]: _render_foreign_flow,
@@ -1291,8 +1345,10 @@ def main() -> None:
         MODULES[10]: _render_ml,
     }
     # design shell: main module pane + the 296px ARMED-watchlist right rail
+    # (operator token + sign-out sit at the top of the rail, above the cards)
     main_col, rail_col = st.columns([2.55, 1], gap="medium")
     with rail_col:
+        _render_session_head(info)
         _render_watchlist_rail(store)
     with main_col:
         if module in renderers:

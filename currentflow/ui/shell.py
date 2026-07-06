@@ -142,13 +142,30 @@ button[data-testid="stExpandSidebarButton"]:hover {{
 section[data-testid="stSidebar"] {{
   background:{TOKENS["bg_rail"]}; border-right:1px solid {TOKENS["border_panel"]};
 }}
+/* nav-rail items stack vertically — icon glyph over title, centered (design:
+   the leftmost rail is icon-on-top-of-label, not a horizontal row). st.radio's
+   `captions=` renders the title directly beneath the icon label; the flex-column
+   label just centers the two and hides the radio circle. */
 section[data-testid="stSidebar"] div[data-testid="stRadio"] label {{
-  display:flex; align-items:center; border-radius:9px; padding:7px 10px;
-  margin:1px 0; border:1px solid transparent; color:{TOKENS["text_muted"]};
+  display:flex; flex-direction:column; align-items:center; text-align:center;
+  gap:1px; border-radius:9px; padding:9px 4px; line-height:1.2;
+  margin:2px 0; border:1px solid transparent; color:{TOKENS["text_muted"]};
   width:100%; cursor:pointer;
+}}
+section[data-testid="stSidebar"] div[data-testid="stRadio"] label div[data-testid="stMarkdownContainer"] p {{
+  margin:0; font-size:17px; line-height:1.4;  /* the icon label */
+}}
+section[data-testid="stSidebar"] div[data-testid="stRadio"] label div[data-testid="stCaptionContainer"] {{
+  text-align:center;
+}}
+section[data-testid="stSidebar"] div[data-testid="stRadio"] label div[data-testid="stCaptionContainer"] p {{
+  margin:0; font-size:10px; letter-spacing:0.01em; line-height:1.2;  /* the title */
 }}
 section[data-testid="stSidebar"] div[data-testid="stRadio"] label:hover {{
   color:{TOKENS["text"]};
+}}
+section[data-testid="stSidebar"] div[data-testid="stRadio"] label:hover div[data-testid="stCaptionContainer"] p {{
+  color:{TOKENS["text_secondary"]};
 }}
 section[data-testid="stSidebar"] div[data-testid="stRadio"] label:has(input:checked) {{
   background:rgba(88,196,221,0.10); border-color:rgba(88,196,221,0.25);
@@ -156,6 +173,26 @@ section[data-testid="stSidebar"] div[data-testid="stRadio"] label:has(input:chec
 }}
 section[data-testid="stSidebar"] div[data-testid="stRadio"] label[data-baseweb="radio"] > div:first-child {{
   display:none;  /* the radio circle — the design nav has none */
+}}
+/* --- operator head + sign-out (top of the ARMED watchlist rail) ------------ */
+.cf-ophead {{
+  display:flex; align-items:center; gap:7px; flex-wrap:wrap;
+  padding:2px 0 8px; font-size:11px; color:{TOKENS["text_secondary"]};
+}}
+.cf-ophead .cf-opname {{ color:{TOKENS["text"]}; font-weight:600; }}
+.cf-ophead .cf-optoken {{ color:{TOKENS["text_muted"]}; font-size:10.5px; }}
+.cf-ophead .cf-opsrc {{
+  margin-left:auto; font-size:9px; letter-spacing:0.06em; color:{TOKENS["text_faint"]};
+  border:1px solid {TOKENS["border_panel"]}; border-radius:4px; padding:1px 5px;
+}}
+div[class*="st-key-cfsignout"] div[data-testid="stButton"] {{ margin:-4px 0 12px; }}
+div[class*="st-key-cfsignout"] button {{
+  width:100%; background:transparent; border:1px solid {TOKENS["border_panel"]};
+  border-radius:8px; color:{TOKENS["text_muted"]}; font-size:11px; padding:4px 0;
+}}
+div[class*="st-key-cfsignout"] button:hover {{
+  border-color:rgba(248,81,73,0.40); color:{TOKENS["sell"]};
+  background:rgba(248,81,73,0.06);
 }}
 .cf-scrollbody {{ max-height:520px; overflow-y:auto; }}
 /* --- clickable watchlist cards (design: rail card IS the symbol selector) --
@@ -411,17 +448,35 @@ div[class*="st-key-cflogincard"] div[data-testid="stForm"] {{ border:none; paddi
 </style>"""
 
 
+def ihsg_html(value: float | None, change_pct: float | None) -> str:
+    """The top-bar IHSG (Jakarta Composite) quote: label + mono index level + signed
+    %-change (green/red). The level is display-only chrome — signals never benchmark
+    to IHSG (§8, LQ45/sector only). Not ingested → the slot renders an em-dash;
+    a missing datum is shown as absent, never faked (§10)."""
+    if value is None:
+        return (
+            f'IHSG <span class="cf-mono" style="color:{TOKENS["text_faint"]}">—</span>'
+        )
+    chg = ""
+    if change_pct is not None:
+        color = TOKENS["buy"] if change_pct >= 0 else TOKENS["sell"]
+        chg = f' <span class="cf-mono" style="color:{color}">{change_pct:+.2f}%</span>'
+    return (
+        f'IHSG <span class="cf-mono" style="color:{TOKENS["text"]}">{value:,.1f}</span>{chg}'
+    )
+
+
 def top_bar_html(
     *,
     as_of: str | None,
     track: str = "B",
-    operator: str | None = None,
+    ihsg: float | None = None,
+    ihsg_change_pct: float | None = None,
     published: str = "Broker summary published · T+1",
 ) -> str:
     """The 52px top status bar: logo/wordmark, live publish note, as-of stamp,
-    RULE-B pill, track chip, masked operator. No IHSG quote — the feed is not
-    ingested, and a missing datum is shown as absent, never faked."""
-    who = escape(operator) if operator else "operator"
+    RULE-B pill, IHSG quote, track chip. The masked operator + sign-out live at the
+    top of the ARMED watchlist rail (`operator_head_html`), not here."""
     stamp = escape(as_of) if as_of else "—"
     return (
         '<div class="cf-topbar">'
@@ -431,8 +486,22 @@ def top_bar_html(
         f'<div><span class="cf-livedot"></span>&nbsp; {escape(published)}</div>'
         f'<div>as-of <span class="cf-mono">{stamp}</span> WIB</div>'
         f'<div style="flex:1"></div><div class="cf-ruleb">{RULE_B_PILL}</div>'
+        f'<div>{ihsg_html(ihsg, ihsg_change_pct)}</div>'
         f'<div>Track <span class="cf-mono">{escape(track)}</span></div>'
-        f'<div><span class="cf-livedot"></span>&nbsp; <span class="cf-mono">{who}</span></div>'
+        "</div>"
+    )
+
+
+def operator_head_html(who: str, preview: str, source: str) -> str:
+    """Masked session identity at the top of the ARMED watchlist rail: live dot +
+    operator name + masked token preview + capture source. Confirms which session
+    is live without leaking it; the sign-out control renders beneath it in the app."""
+    return (
+        '<div class="cf-ophead">'
+        '<span class="cf-livedot"></span>'
+        f'<span class="cf-opname">{escape(who)}</span>'
+        f'<span class="cf-mono cf-optoken">{escape(preview)}</span>'
+        f'<span class="cf-opsrc">{escape(source)}</span>'
         "</div>"
     )
 

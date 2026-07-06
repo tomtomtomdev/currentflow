@@ -122,12 +122,25 @@ class TestValidationBar:
 
 class TestChrome:
     def test_top_bar_carries_rule_b_pill_and_as_of(self):
-        html = shell.top_bar_html(as_of="2026-07-03", operator="op · ····a1f9")
+        html = shell.top_bar_html(as_of="2026-07-03")
         assert shell.RULE_B_PILL in html
         assert "2026-07-03" in html and "WIB" in html
 
     def test_top_bar_missing_as_of_shows_absent(self):
         assert ">—</span> WIB" in shell.top_bar_html(as_of=None)
+
+    def test_top_bar_renders_ihsg_when_ingested(self):
+        html = shell.top_bar_html(as_of="2026-07-03", ihsg=7241.6, ihsg_change_pct=-0.42)
+        assert "IHSG" in html and "7,241.6" in html and "-0.42%" in html
+
+    def test_top_bar_ihsg_absent_when_not_ingested(self):
+        # not benchmarked to IHSG (§8); a missing datum is shown absent, never faked.
+        assert "IHSG <span" in shell.top_bar_html(as_of="2026-07-03")
+        assert "%" not in shell.ihsg_html(None, None)
+
+    def test_operator_head_masks_the_session(self):
+        html = shell.operator_head_html("op", "····a1f9", "keychain")
+        assert "op" in html and "····a1f9" in html and "keychain" in html
 
     def test_ticker_cycles_every_section_15_disclaimer(self):
         html = shell.ticker_html()
