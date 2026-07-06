@@ -117,6 +117,7 @@ class ForeignFlowSnapshot:
     avg_window_used: int                         # prior days actually available (≤ 20)
     foreign_turnover_share: float | None         # (fbuy+fsell)/(2·value), last day
     nbsa_pct_of_float: float | None              # cum_window / (free_float%·mcap) · 100
+    free_float_pct: float | None                 # SCR-0 free-float %, the ownership denominator
     ksei: tuple[OwnershipSlice, ...]             # monthly overlay, look-ahead-safe
 
     @property
@@ -198,6 +199,7 @@ def build_snapshot(
         avg_window_used=avg_used,
         foreign_turnover_share=turnover_share,
         nbsa_pct_of_float=pct_of_float,
+        free_float_pct=free_float_pct,
         ksei=ksei,
     )
 

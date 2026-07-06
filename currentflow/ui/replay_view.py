@@ -24,6 +24,19 @@ _PHASE_LABEL = {
 
 _IDR_BN = 1e9
 
+# Short WYCKOFF PHASE box copy (design 06): title + note + semantic color key.
+# C/D are the only tradeable window (RULE A); everything else is context, no claim.
+_PHASE_BOX = {
+    "UNKNOWN": ("Insufficient history", "Not enough range to confirm a phase.", "faint"),
+    "DOWNTREND": ("Downtrend", "No stopping action yet — not a setup.", "sell"),
+    "A": ("Phase A", "Stopping action — selling climax / secondary test.", "accent"),
+    "B": ("Phase B", "Building cause — cause accumulates inside the range.", "accent"),
+    "C": ("Phase C", "Spring / test — the shakeout. Tradeable.", "buy"),
+    "D": ("Phase D", "Signs of strength / LPS → markup. Tradeable.", "buy"),
+    "E": ("Phase E", "Markup out of the range — too late to enter.", "armed"),
+    "DISTRIBUTION": ("Distribution", "Topping structure — avoid.", "sell"),
+}
+
 
 def _bn(v: float | None) -> float | None:
     return None if v is None else round(v / _IDR_BN, 2)
@@ -31,6 +44,13 @@ def _bn(v: float | None) -> float | None:
 
 def phase_label(phase: str | None) -> str:
     return _PHASE_LABEL.get(phase or "UNKNOWN", "Wyckoff phase — unavailable")
+
+
+def phase_box(phase: str | None) -> dict:
+    """Short phase title + note + semantic color key for the design WYCKOFF PHASE box.
+    Not a number — the RULE A gate *label* reconstructed at the frame's decision moment."""
+    title, note, color = _PHASE_BOX.get(phase or "UNKNOWN", _PHASE_BOX["UNKNOWN"])
+    return {"title": title, "note": note, "color": color}
 
 
 def playhead_panel(frame: ReplayFrame) -> dict:

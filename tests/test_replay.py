@@ -21,7 +21,7 @@ from currentflow.dal.models import (
 from currentflow.dal.timing import broker_as_of, ohlcv_as_of
 from currentflow.signals import broker_flow, foreign_flow
 from currentflow.signals.replay import build_frame, build_replay
-from currentflow.ui.replay_view import phase_label, playhead_panel, visible_rows
+from currentflow.ui.replay_view import phase_box, phase_label, playhead_panel, visible_rows
 
 SYM = "TEST"
 D = [Date(2026, 6, 22) + timedelta(days=i) for i in range(5)]  # Mon–Fri
@@ -166,3 +166,16 @@ def test_playhead_panel_shows_measurements_and_phase_label(seeded):
     # phase lane now carries the classifier's verdict (UNKNOWN on 5 bars), no number
     assert panel["phase"] == phase_label("UNKNOWN")
     assert "insufficient history" in panel["phase"]
+
+
+def test_phase_box_maps_verdict_to_title_note_and_color_key():
+    """Design 06 WYCKOFF PHASE box: a label (title + note + semantic color), no number.
+    Only C/D are the tradeable window (RULE A)."""
+    d = phase_box("D")
+    assert d["title"] == "Phase D" and d["color"] == "buy" and "Tradeable" in d["note"]
+    assert phase_box("C")["color"] == "buy"          # spring/test — tradeable
+    assert phase_box("DISTRIBUTION")["color"] == "sell"
+    assert phase_box("E")["color"] == "armed"        # markup — too late
+    # unknown / missing verdict stays faint, never fabricated as tradeable
+    assert phase_box(None)["color"] == "faint"
+    assert phase_box("nonsense")["title"] == "Insufficient history"

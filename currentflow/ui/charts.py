@@ -147,6 +147,62 @@ def accumulation_combined(
     return combined.properties(height=height)
 
 
+def replay_price_flow(rows: list[dict]) -> alt.VConcatChart:
+    """Money-Flow-Replay canvas (design 06): three x-aligned lanes reconstructed up
+    to the playhead — cyan price area, net-buy/sell volume bars, and the foreign
+    (blue) / smart-money (amber) flow lines. Future frames are simply absent."""
+    df = pd.DataFrame(rows)
+    x = _date_x()
+
+    price = (
+        alt.Chart(df, height=150, title="PRICE").mark_area(
+            line={"color": TOKENS["accent"], "strokeWidth": 2},
+            color=alt.Gradient(
+                gradient="linear",
+                stops=[
+                    alt.GradientStop(color="rgba(88,196,221,0.22)", offset=1),
+                    alt.GradientStop(color="rgba(88,196,221,0.02)", offset=0),
+                ],
+                x1=1, x2=1, y1=1, y2=0,
+            ),
+        ).encode(
+            x=x,
+            y=alt.Y("close:Q", scale=alt.Scale(zero=False), axis=alt.Axis(title=None)),
+            tooltip=[alt.Tooltip("date:T"), alt.Tooltip("close:Q")],
+        )
+    )
+    volume = (
+        alt.Chart(df, height=70, title="VOLUME").mark_bar(size=6).encode(
+            x=x,
+            y=alt.Y("volume:Q", axis=alt.Axis(title=None)),
+            color=alt.value(TOKENS["accent"]),
+            tooltip=[alt.Tooltip("date:T"), alt.Tooltip("volume:Q")],
+        )
+    )
+    flow_df = df.melt(
+        id_vars=["date"], value_vars=["net_foreign_bn", "smart_money_net_bn"],
+        var_name="series", value_name="bn",
+    )
+    flow = (
+        alt.Chart(flow_df, height=110, title="FLOW (IDR bn) — foreign · smart-money")
+        .mark_line(strokeWidth=2, interpolate="monotone")
+        .encode(
+            x=x,
+            y=alt.Y("bn:Q", scale=alt.Scale(zero=True), axis=alt.Axis(title=None)),
+            color=alt.Color(
+                "series:N", legend=None,
+                scale=alt.Scale(
+                    domain=["net_foreign_bn", "smart_money_net_bn"],
+                    range=[TOKENS["foreign"], TOKENS["smart"]],
+                ),
+            ),
+            tooltip=[alt.Tooltip("date:T"), alt.Tooltip("series:N"),
+                     alt.Tooltip("bn:Q", title="IDR bn")],
+        )
+    )
+    return alt.vconcat(price, volume, flow, spacing=6)
+
+
 def sector_quadrant(points: list[dict], *, height: int = 420) -> alt.LayerChart:
     """The RS × flow quadrant map: tinted LEADERS / DISTRIBUTION WARN halves, zero
     axes, one labeled bubble per sector (radius = |flow|)."""

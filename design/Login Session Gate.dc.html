@@ -27,6 +27,210 @@
 </style>
 </helmet>
 
+<!-- ============================ SESSION GATE (§9.1) ============================ -->
+<sc-if value="{{ showLogin }}" hint-placeholder-val="{{ true }}">
+<div style="width:100%; height:100vh; min-height:760px; display:flex; flex-direction:column; background:#070a10; color:#e6edf3; font-family:'Geist',sans-serif; overflow:hidden;">
+
+  <!-- minimal top bar -->
+  <div style="height:52px; flex:0 0 52px; display:flex; align-items:center; gap:14px; padding:0 18px; background:linear-gradient(180deg,#0d121b,#0a0e14); border-bottom:1px solid rgba(255,255,255,0.07);">
+    <div style="display:flex; align-items:center; gap:10px;">
+      <div style="width:26px; height:26px; border-radius:6px; background:linear-gradient(135deg,#58c4dd,#3a8fb0); display:flex; align-items:center; justify-content:center; font-weight:700; color:#04121a; font-size:15px;">V</div>
+      <div style="line-height:1;">
+        <div style="font-weight:600; font-size:15px; letter-spacing:0.02em;">VECTOR<span style="color:#58c4dd;">·</span>LAB</div>
+        <div style="font-size:10px; color:#5a6675; letter-spacing:0.14em; margin-top:2px;">IDX SMART-MONEY FLOW TERMINAL</div>
+      </div>
+    </div>
+    <div style="flex:1;"></div>
+    <div style="display:flex; align-items:center; gap:7px; font-size:11px; color:#8b98a9;">
+      <span style="width:7px; height:7px; border-radius:50%; background:#d29922; animation:livedot 1.8s infinite;"></span>
+      Session gate — sign-in required
+    </div>
+    <div style="font-family:'Geist Mono'; font-size:9.5px; color:#5a6675; letter-spacing:0.08em; padding-left:14px; border-left:1px solid rgba(255,255,255,0.08);">LOCAL · SINGLE-USER · PAPER</div>
+  </div>
+
+  <!-- body: brand / auth split -->
+  <div style="flex:1; display:flex; min-height:0;">
+
+    <!-- LEFT: brand + posture -->
+    <div style="flex:1; min-width:0; display:flex; flex-direction:column; justify-content:center; padding:0 clamp(30px,5vw,76px); border-right:1px solid rgba(255,255,255,0.06); background:radial-gradient(130% 100% at 10% 6%, rgba(88,196,221,0.07), transparent 58%);">
+      <div style="font-family:'Geist Mono'; font-size:11px; letter-spacing:0.22em; color:#58c4dd; margin-bottom:18px;">SESSION&nbsp;GATE</div>
+      <div style="font-family:'Geist'; font-weight:600; font-size:clamp(28px,3.4vw,42px); line-height:1.1; letter-spacing:-0.01em; max-width:15ch;">Sign in to open the terminal.</div>
+      <div style="font-size:13.5px; color:#8b98a9; line-height:1.6; max-width:52ch; margin-top:18px;">Establish <span style="color:#c2ccd8;">your own authenticated Stockbit session</span> — username, password, and a one-time code. The resulting session lives on this machine only; nothing is republished.</div>
+
+      <div style="display:flex; flex-direction:column; gap:14px; margin-top:34px; max-width:56ch;">
+        <div style="display:flex; align-items:flex-start; gap:12px;">
+          <span style="flex:0 0 auto; margin-top:2px; width:18px; height:18px; border-radius:5px; background:rgba(88,196,221,0.12); border:1px solid rgba(88,196,221,0.3); color:#58c4dd; font-size:10px; display:flex; align-items:center; justify-content:center;">✓</span>
+          <div style="font-size:12.5px; color:#c2ccd8; line-height:1.5;"><span style="color:#e6edf3; font-weight:500;">Credentialed sign-in.</span> Your own Stockbit login drives the verified <span style="font-family:'Geist Mono'; color:#8b98a9;">login/v6</span> flow — no hand-pasted token.</div>
+        </div>
+        <div style="display:flex; align-items:flex-start; gap:12px;">
+          <span style="flex:0 0 auto; margin-top:2px; width:18px; height:18px; border-radius:5px; background:rgba(88,196,221,0.12); border:1px solid rgba(88,196,221,0.3); color:#58c4dd; font-size:10px; display:flex; align-items:center; justify-content:center;">✓</span>
+          <div style="font-size:12.5px; color:#c2ccd8; line-height:1.5;"><span style="color:#e6edf3; font-weight:500;">Multi-factor by OTP.</span> A one-time code via email, WhatsApp, or SMS; the challenge can loop across channels before it clears.</div>
+        </div>
+        <div style="display:flex; align-items:flex-start; gap:12px;">
+          <span style="flex:0 0 auto; margin-top:2px; width:18px; height:18px; border-radius:5px; background:rgba(88,196,221,0.12); border:1px solid rgba(88,196,221,0.3); color:#58c4dd; font-size:10px; display:flex; align-items:center; justify-content:center;">✓</span>
+          <div style="font-size:12.5px; color:#c2ccd8; line-height:1.5;"><span style="color:#e6edf3; font-weight:500;">Keychain-backed session.</span> Access + refresh tokens held in the OS Keychain, read fresh, never written in plaintext (§10). Auth only — it gates no signal or RULE&nbsp;A/B behaviour.</div>
+        </div>
+      </div>
+
+      <div style="display:inline-flex; align-self:flex-start; align-items:center; gap:8px; margin-top:34px; padding:6px 12px; border:1px solid rgba(210,153,34,0.32); background:rgba(210,153,34,0.08); border-radius:6px; font-size:10.5px; color:#e8c168; letter-spacing:0.03em;">
+        <span style="font-family:'Geist Mono'; font-weight:600;">RULE&nbsp;B</span>
+        <span style="color:#b99a54;">·</span>
+        Observation-only — scores stay gated until paper-validated
+      </div>
+    </div>
+
+    <!-- RIGHT: auth card -->
+    <div style="flex:0 0 clamp(380px,34%,468px); display:flex; flex-direction:column; justify-content:center; padding:0 clamp(26px,3vw,46px); background:#0a0e14;">
+      <div style="background:#0d121b; border:1px solid rgba(255,255,255,0.07); border-radius:12px; padding:26px 24px;">
+
+        <!-- STEP 1 · CREDENTIALS -->
+        <sc-if value="{{ showCredentials }}" hint-placeholder-val="{{ true }}">
+        <div>
+          <div style="display:flex; align-items:center; justify-content:space-between;">
+            <div style="font-family:'Geist'; font-weight:600; font-size:16px; letter-spacing:0.01em;">Operator sign-in</div>
+            <span style="font-family:'Geist Mono'; font-size:9px; letter-spacing:0.08em; color:#5a6675;">STEP 1 · 2</span>
+          </div>
+          <div style="font-size:11.5px; color:#8b98a9; margin-top:5px; line-height:1.5;">Use your own Stockbit credentials.</div>
+
+          <div style="font-family:'Geist Mono'; font-size:10px; letter-spacing:0.1em; color:#5a6675; margin:22px 0 8px;">USERNAME</div>
+          <input type="text" autocomplete="off" spellcheck="false" placeholder="username or email" onInput="{{ onCredUser }}" onKeyDown="{{ onCredKey }}" style="width:100%; box-sizing:border-box; background:#070a10; border:1px solid rgba(255,255,255,0.12); border-radius:8px; padding:12px 13px; color:#e6edf3; font-family:'Geist Mono',monospace; font-size:12.5px; letter-spacing:0.03em; outline:none;" style-focus="border-color:rgba(88,196,221,0.6); box-shadow:0 0 0 1px rgba(88,196,221,0.3);">
+
+          <div style="font-family:'Geist Mono'; font-size:10px; letter-spacing:0.1em; color:#5a6675; margin:14px 0 8px;">PASSWORD</div>
+          <input type="password" autocomplete="off" spellcheck="false" placeholder="••••••••" onInput="{{ onCredPass }}" onKeyDown="{{ onCredKey }}" style="width:100%; box-sizing:border-box; background:#070a10; border:1px solid rgba(255,255,255,0.12); border-radius:8px; padding:12px 13px; color:#e6edf3; font-family:'Geist Mono',monospace; font-size:12.5px; letter-spacing:0.04em; outline:none;" style-focus="border-color:rgba(88,196,221,0.6); box-shadow:0 0 0 1px rgba(88,196,221,0.3);">
+
+          <sc-if value="{{ hasCredError }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex; align-items:flex-start; gap:9px; margin-top:14px; padding:10px 12px; border-radius:8px; background:rgba(248,81,73,0.10); border:1px solid rgba(248,81,73,0.32);">
+              <span style="flex:0 0 auto; margin-top:1px; color:#f85149; font-size:12px;">✕</span>
+              <span style="font-size:11.5px; color:#f6a9a4; line-height:1.45;">{{ credError }}</span>
+            </div>
+          </sc-if>
+
+          <div onClick="{{ submitCredentials }}" style="{{ credBtnStyle }}">{{ credBtnLabel }}</div>
+
+          <div style="display:flex; align-items:center; gap:7px; margin-top:14px; font-size:10px; color:#5a6675; line-height:1.4;">
+            <span style="color:#8b98a9;">⛨</span> Protected by reCAPTCHA — runs invisibly (v3). No challenge is shown.
+          </div>
+          <div style="margin-top:15px; padding-top:14px; border-top:1px solid rgba(255,255,255,0.06); font-size:11px; color:#8b98a9;">
+            Prefer a token? <span onClick="{{ useBearer }}" style="color:#58c4dd; cursor:pointer;">Paste a session Bearer instead →</span>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- STEP 2 · OTP CHALLENGE -->
+        <sc-if value="{{ showOtp }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <div style="display:flex; align-items:center; justify-content:space-between;">
+            <div style="display:flex; align-items:center; gap:11px;">
+              <div onClick="{{ backToCredentials }}" title="Use a different account" style="cursor:pointer; color:#8b98a9; font-size:17px; line-height:1;">←</div>
+              <div>
+                <div style="font-family:'Geist'; font-weight:600; font-size:16px; letter-spacing:0.01em;">Verify it's you</div>
+                <div style="font-size:11.5px; color:#8b98a9; margin-top:3px;">One-time code · multi-factor</div>
+              </div>
+            </div>
+            <span style="font-family:'Geist Mono'; font-size:9px; letter-spacing:0.08em; color:#5a6675;">STEP 2 · 2</span>
+          </div>
+
+          <sc-if value="{{ hasRoundNote }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex; align-items:flex-start; gap:9px; margin-top:16px; padding:9px 12px; border-radius:8px; background:rgba(210,153,34,0.09); border:1px solid rgba(210,153,34,0.3);">
+              <span style="flex:0 0 auto; margin-top:1px; color:#e8c168; font-size:11px;">↻</span>
+              <span style="font-size:11px; color:#e8c168; line-height:1.45;">{{ roundNote }}</span>
+            </div>
+          </sc-if>
+
+          <div style="font-family:'Geist Mono'; font-size:10px; letter-spacing:0.1em; color:#5a6675; margin:20px 0 9px;">SEND CODE VIA</div>
+          <div style="display:flex; gap:8px;">
+            <sc-for list="{{ channelChips }}" as="ch" hint-placeholder-count="3">
+              <div onClick="{{ ch.onClick }}" style="{{ ch.style }}">
+                <span style="{{ ch.glyphStyle }}">{{ ch.glyph }}</span>
+                <span style="{{ ch.labelStyle }}">{{ ch.label }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="font-size:11px; color:#8b98a9; margin-top:11px; line-height:1.45;">{{ otpSentNote }}</div>
+
+          <div style="font-family:'Geist Mono'; font-size:10px; letter-spacing:0.1em; color:#5a6675; margin:17px 0 9px;">6-DIGIT CODE</div>
+          <input type="text" inputmode="numeric" autocomplete="one-time-code" spellcheck="false" placeholder="••••••" onInput="{{ onOtpInput }}" onKeyDown="{{ onOtpKey }}" style="width:100%; box-sizing:border-box; background:#070a10; border:1px solid rgba(255,255,255,0.12); border-radius:8px; padding:13px; color:#e6edf3; font-family:'Geist Mono',monospace; font-size:22px; font-weight:600; letter-spacing:0.5em; text-align:center; outline:none;" style-focus="border-color:rgba(88,196,221,0.6); box-shadow:0 0 0 1px rgba(88,196,221,0.3);">
+
+          <sc-if value="{{ hasOtpError }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex; align-items:flex-start; gap:9px; margin-top:14px; padding:10px 12px; border-radius:8px; background:rgba(248,81,73,0.10); border:1px solid rgba(248,81,73,0.32);">
+              <span style="flex:0 0 auto; margin-top:1px; color:#f85149; font-size:12px;">✕</span>
+              <span style="font-size:11.5px; color:#f6a9a4; line-height:1.45;">{{ otpError }}</span>
+            </div>
+          </sc-if>
+
+          <div onClick="{{ verifyOtp }}" style="{{ otpBtnStyle }}">{{ otpBtnLabel }}</div>
+
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-top:15px;">
+            <span onClick="{{ resendOtp }}" style="{{ resendStyle }}">{{ resendLabel }}</span>
+            <span style="font-size:10px; color:#5a6675;">code expires shortly</span>
+          </div>
+        </div>
+        </sc-if>
+
+        <!-- FALLBACK · SESSION BEARER -->
+        <sc-if value="{{ showBearer }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <div style="display:flex; align-items:center; gap:11px;">
+            <div onClick="{{ useLogin }}" title="Back to credential sign-in" style="cursor:pointer; color:#8b98a9; font-size:17px; line-height:1;">←</div>
+            <div>
+              <div style="font-family:'Geist'; font-weight:600; font-size:16px; letter-spacing:0.01em;">Paste a session Bearer</div>
+              <div style="font-size:11.5px; color:#8b98a9; margin-top:3px;">Fallback — advanced (§10)</div>
+            </div>
+          </div>
+
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-top:22px; margin-bottom:8px;">
+            <span style="font-family:'Geist Mono'; font-size:10px; letter-spacing:0.1em; color:#5a6675;">SESSION BEARER</span>
+            <span style="font-size:9.5px; color:#5a6675;">password-type · masked</span>
+          </div>
+          <input type="password" autocomplete="off" spellcheck="false" placeholder="Bearer eyJhbGciOi… — paste session token" onInput="{{ onTokenInput }}" onKeyDown="{{ onTokenKey }}" style="width:100%; box-sizing:border-box; background:#070a10; border:1px solid rgba(255,255,255,0.12); border-radius:8px; padding:12px 13px; color:#e6edf3; font-family:'Geist Mono',monospace; font-size:12.5px; letter-spacing:0.04em; outline:none;" style-focus="border-color:rgba(88,196,221,0.6); box-shadow:0 0 0 1px rgba(88,196,221,0.3);">
+          <div style="font-size:10px; color:#5a6675; margin-top:8px; line-height:1.45;">A leading <span style="font-family:'Geist Mono'; color:#8b98a9;">Bearer&nbsp;</span> prefix is stripped automatically.</div>
+
+          <sc-if value="{{ hasAuthError }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex; align-items:flex-start; gap:9px; margin-top:14px; padding:10px 12px; border-radius:8px; background:rgba(248,81,73,0.10); border:1px solid rgba(248,81,73,0.32);">
+              <span style="flex:0 0 auto; margin-top:1px; color:#f85149; font-size:12px;">✕</span>
+              <span style="font-size:11.5px; color:#f6a9a4; line-height:1.45;">{{ authError }}</span>
+            </div>
+          </sc-if>
+
+          <div onClick="{{ submitToken }}" style="{{ verifyBtnStyle }}">{{ verifyLabel }}</div>
+
+          <div style="display:flex; align-items:center; gap:8px; margin-top:14px;">
+            <span style="width:7px; height:7px; border-radius:50%; background:{{ pingDotColor }}; flex:0 0 auto;"></span>
+            <span style="font-size:10.5px; color:#8b98a9; line-height:1.4;">{{ pingStatus }}</span>
+          </div>
+        </div>
+        </sc-if>
+
+      </div>
+
+      <div style="font-size:10px; color:#5a6675; line-height:1.6; margin-top:16px; padding:0 4px;">
+        On success, access + refresh tokens are written to the Keychain and the terminal reruns. Credentials and the one-time code are held only for this attempt — never persisted, rendered back, or logged.
+      </div>
+    </div>
+  </div>
+
+  <!-- disclaimer ticker -->
+  <div style="height:26px; flex:0 0 26px; background:#0a0e14; border-top:1px solid rgba(255,255,255,0.06); display:flex; align-items:center; overflow:hidden;">
+    <div style="flex:0 0 auto; padding:0 14px; font-size:9.5px; color:#5a6675; letter-spacing:0.08em; border-right:1px solid rgba(255,255,255,0.06); height:100%; display:flex; align-items:center; font-family:'Geist Mono';">LOCAL · SINGLE-USER · PAPER</div>
+    <div style="flex:1; overflow:hidden; white-space:nowrap;">
+      <div style="display:inline-block; animation:tickscroll 42s linear infinite; font-size:10px; color:#6b7787;">
+        <span style="padding:0 26px;">Private personal-use analytics tool — not a product, not a service, not for redistribution.</span>
+        <span style="padding:0 26px; color:#5a6675;">•</span>
+        <span style="padding:0 26px;">Not investment advice. All outputs are observations for the operator's own decisions.</span>
+        <span style="padding:0 26px; color:#5a6675;">•</span>
+        <span style="padding:0 26px;">Data consumed from operator's own session; used at own risk; not republished.</span>
+        <span style="padding:0 26px; color:#5a6675;">•</span>
+        <span style="padding:0 26px;">No live execution. Paper trading only. Paper results do not guarantee live performance.</span>
+        <span style="padding:0 26px; color:#5a6675;">•</span>
+        <span style="padding:0 26px;">Private personal-use analytics tool — not a product, not a service, not for redistribution.</span>
+        <span style="padding:0 26px; color:#5a6675;">•</span>
+        <span style="padding:0 26px;">Not investment advice. All outputs are observations for the operator's own decisions.</span>
+      </div>
+    </div>
+  </div>
+</div>
+</sc-if>
+
 <!-- ============================ TERMINAL ============================ -->
 <sc-if value="{{ authed }}" hint-placeholder-val="{{ false }}">
 <div style="width:100%; height:100vh; min-height:760px; display:flex; flex-direction:column; background:#070a10; color:#e6edf3; font-family:'Geist',sans-serif; overflow:hidden;">
@@ -109,7 +313,7 @@
         <div>
           <!-- TRAP / DECAY FLAGS (VSA / Wyckoff observation) -->
           <div style="background:{{ trapBanner.bg }}; border:1px solid {{ trapBanner.bd }}; border-radius:10px; padding:16px 20px; margin-bottom:14px;">
-            <div style="font-size:16px; color:{{ trapBanner.fg }}; line-height:1.45;">Trap / decay — <span style="font-size:15px;">{{ trapBanner.icon }}</span> <span style="display:inline-flex; align-items:center; font-family:'Geist Mono'; font-weight:600; font-size:11.5px; letter-spacing:0.04em; padding:2px 9px; border-radius:5px; background:rgba(255,255,255,0.06); border:1px solid {{ trapBanner.bd }}; color:{{ trapBanner.fg }}; vertical-align:middle;">{{ trapBanner.kindLabel }}</span> — {{ trapBanner.detail }}</div>
+            <div style="font-size:16px; color:{{ trapBanner.fg }}; line-height:1.45;">Trap / decay — <span style="font-size:15px;">{{ trapBanner.icon }}</span> <span style="display:inline-flex; align-items:center; font-family:'Geist Mono'; font-weight:600; font-size:11.5px; letter-spacing:0.04em; padding:2px 9px; border-radius:5px; background:rgba(255,255,255,0.06); border:1px solid {{ trapBanner.bd }}; color:{{ trapBanner.fg }}; vertical-align:middle;">{{ trapBanner.kind }}</span> — {{ trapBanner.detail }}</div>
           </div>
 
           <div style="background:#0d121b; border:1px solid rgba(255,255,255,0.06); border-radius:10px; margin-bottom:16px; overflow:hidden;">
@@ -128,7 +332,7 @@
                   <div style="display:grid; grid-template-columns:46px 118px 150px 118px 64px 1fr; align-items:center; padding:11px 16px; border-bottom:1px solid rgba(255,255,255,0.035); background:{{ f.rowBg }};">
                     <div style="font-family:'Geist Mono'; font-size:11px; color:#5a6675;">{{ f.idx }}</div>
                     <div style="font-family:'Geist Mono'; font-size:11.5px; color:#c2ccd8; letter-spacing:0.02em;">{{ f.cat }}</div>
-                    <div><span style="display:inline-flex; align-items:center; font-family:'Geist Mono'; font-size:10.5px; font-weight:600; letter-spacing:0.04em; padding:2.5px 9px; border-radius:5px; background:{{ f.bg }}; border:1px solid {{ f.bd }}; color:{{ f.fg }};">{{ f.kindLabel }}</span></div>
+                    <div><span style="display:inline-flex; align-items:center; font-family:'Geist Mono'; font-size:10.5px; font-weight:600; letter-spacing:0.04em; padding:2.5px 9px; border-radius:5px; background:{{ f.bg }}; border:1px solid {{ f.bd }}; color:{{ f.fg }};">{{ f.kind }}</span></div>
                     <div><span style="display:inline-flex; align-items:center; gap:6px; font-family:'Geist Mono'; font-size:9.5px; letter-spacing:0.05em; padding:2.5px 8px; border-radius:5px; background:{{ f.bg }}; border:1px solid {{ f.bd }}; color:{{ f.fg }};"><span style="width:6px; height:6px; border-radius:50%; background:{{ f.dot }};"></span>{{ f.sev }}</span></div>
                     <div style="font-size:14px; color:{{ f.fg }};">{{ f.icon }}</div>
                     <div style="font-size:12px; color:#c2ccd8; line-height:1.45;">{{ f.detail }}</div>
@@ -425,21 +629,8 @@
               <div style="background:#0d121b; border:1px solid rgba(255,255,255,0.06); border-radius:10px; padding:14px;">
                 <div style="font-size:10px; color:#5a6675; letter-spacing:0.06em; margin-bottom:8px;">ACCUMULATOR VWAP</div>
                 <div style="display:flex; align-items:baseline; gap:8px;"><span style="font-family:'Geist Mono'; font-size:22px; font-weight:600;">{{ accum.vwap }}</span><span style="font-size:11px; color:#8b98a9;">last {{ accum.curPrice }}</span><span style="font-family:'Geist Mono'; font-size:12px; color:{{ accum.vsVwapColor }};">{{ accum.vsVwap }}</span></div>
+                <div style="font-size:9.5px; color:#5a6675; margin-top:9px; line-height:1.4;">Absorption: {{ accum.absorption }}</div>
               </div>
-              <div style="background:#0d121b; border:1px solid rgba(255,255,255,0.06); border-radius:10px; padding:14px;">
-                <div style="font-size:10px; color:#5a6675; letter-spacing:0.06em; margin-bottom:9px;">ABSORPTION</div>
-                <div style="display:flex; align-items:flex-start; gap:8px;">
-                  <span style="width:6px; height:6px; border-radius:50%; background:#5a6675; margin-top:5px; flex:0 0 6px;"></span>
-                  <span style="font-size:11px; color:#8b98a9; line-height:1.5;">{{ accum.absorptionCard }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div style="background:#0d121b; border:1px solid rgba(255,255,255,0.06); border-radius:10px; padding:14px 16px; margin-top:12px;">
-            <div style="font-size:10px; color:#5a6675; letter-spacing:0.08em; margin-bottom:9px;">STEALTH-DIVERGENCE DETECTION</div>
-            <div style="display:flex; align-items:flex-start; gap:9px;">
-              <span style="width:7px; height:7px; border-radius:50%; background:{{ accum.divergenceDot }}; margin-top:5px; flex:0 0 7px;"></span>
-              <span style="font-size:12.5px; color:#c2ccd8; line-height:1.5;">{{ accum.divergenceText }}</span>
             </div>
           </div>
         </div>
@@ -657,7 +848,7 @@
 <script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:800},&quot;startAuthed&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Session&quot;,&quot;unit&quot;:&quot;&quot;},&quot;defaultModule&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;broker&quot;,&quot;replay&quot;,&quot;heatmap&quot;,&quot;sector&quot;],&quot;default&quot;:&quot;broker&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Terminal&quot;},&quot;paperValidated&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;RULE B&quot;,&quot;unit&quot;:&quot;&quot;},&quot;replaySpeedMs&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:220,&quot;min&quot;:60,&quot;max&quot;:400,&quot;step&quot;:20,&quot;unit&quot;:&quot;ms&quot;,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Terminal&quot;}}">
 class Component extends DCLogic {
   state = { activeModule: null, selectedStock: 'BRMS', scrub: 43, playing: false, trapOpen: true,
-            authed: true, verifying: false, tokenPreview: '····a1f9', username: 'operator',
+            authed: false, verifying: false, tokenPreview: null, username: null,
             authMode: 'login', authStep: 'credentials', authRound: 0, selChannel: null,
             resendIn: 0, credError: null, otpError: null, authError: null };
   componentDidMount(){ if(this.props.startAuthed && !this.state.authed){ this.setState({authed:true, username:'operator', tokenPreview: this.state.tokenPreview || '····a1f9'}); } }
@@ -755,7 +946,8 @@ class Component extends DCLogic {
     if(this._authTo) clearTimeout(this._authTo);
     if(this._cdIv){ clearInterval(this._cdIv); this._cdIv=null; }
     this._tokenRaw=''; this._credUser=''; this._credPass=''; this._otp='';
-    this.setState({activeModule:null}); // dashboard-direct build: sign-out is a no-op reset
+    this.setState({authed:false, verifying:false, authMode:'login', authStep:'credentials', authRound:0,
+      selChannel:null, resendIn:0, credError:null, otpError:null, authError:null, tokenPreview:null, username:null, activeModule:null});
   }
 
   // ---------- palette ----------
@@ -1079,9 +1271,6 @@ class Component extends DCLogic {
     const last10=days.slice(-10).map(d=>d.close); const tight=(Math.max(...last10)-Math.min(...last10))/mean(last10)*100;
     const cur=days[days.length-1].close;
     const stealth = corr<0.1;
-    const priceDelta=(pr[pr.length-1]/pr[0]-1)*100;
-    const accRising=ac[ac.length-1]>ac[0];
-    const netBn=ac[ac.length-1];
     return {chart,
       verdict: stealth?'STEALTH ACCUMULATION DETECTED':'NO STEALTH DIVERGENCE',
       verdictColor: stealth?C.armed:C.muted,
@@ -1092,13 +1281,7 @@ class Component extends DCLogic {
         {label:'Consolidation tightness', val:tight.toFixed(1)+'%', sub: tight<12?'tight range':'wide', color: tight<12?C.buy:C.text, w:(Math.min(1,tight/30)*100).toFixed(0)+'%', wc:C.buy}
       ],
       vwap:Math.round(vwap), curPrice:cur, vsVwap: this.fmtSigned((cur/vwap-1)*100,1)+'%', vsVwapColor: cur>=vwap?C.buy:C.sell,
-      absorption:'depth feed off — module degrades gracefully (§10)',
-      absorptionCard:'unavailable (needs L2 depth) — degrades gracefully, never faked (§10).',
-      divergenceDetected: stealth && priceDelta<0 && accRising,
-      divergenceDot: (stealth && priceDelta<0 && accRising) ? C.armed : C.muted,
-      divergenceText: (stealth && priceDelta<0 && accRising)
-        ? 'Stealth divergence: price '+priceDelta.toFixed(2)+'% over the window while net accumulation kept rising (rising cumulative net) — observation, not a recommendation.'
-        : 'No stealth divergence: price and cumulative net accumulation are moving together over the window — nothing to flag. Observation only.'
+      absorption:'depth feed off — module degrades gracefully (§10)'
     };
   }
 
@@ -1321,10 +1504,10 @@ class Component extends DCLogic {
     if(!trapFlags.length) trapFlags = [trapCatalog[0]];
     trapFlags = trapFlags
       .sort((a,b)=> sevRank[b.sev]-sevRank[a.sev])
-      .map((f,i)=>{ const s=sevStyle[f.sev]; return {...f, ...s, idx:i, kindLabel:f.kind.replace(/_/g,' '), rowBg: i%2 ? 'rgba(255,255,255,0.015)' : 'transparent'}; });
+      .map((f,i)=>{ const s=sevStyle[f.sev]; return {...f, ...s, idx:i, rowBg: i%2 ? 'rgba(255,255,255,0.015)' : 'transparent'}; });
     const trapTop = trapFlags[0];
     const trapBanner = {
-      icon:trapTop.icon, kind:trapTop.kind, kindLabel:trapTop.kind.replace(/_/g,' '), detail:trapTop.detail,
+      icon:trapTop.icon, kind:trapTop.kind, detail:trapTop.detail,
       fg:trapTop.fg, bg:trapTop.bg, bd:trapTop.bd,
       countStr: trapFlags.length + ' flag' + (trapFlags.length>1?'s':'')
     };

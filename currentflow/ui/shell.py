@@ -260,6 +260,30 @@ div[class*="st-key-cfpanel"] canvas, div[class*="st-key-cfpanel"] svg {{ border-
   display:flex; align-items:center; font-family:{_MONO}; font-size:9.5px;
   color:#04121a; padding:0 8px; white-space:nowrap;
 }}
+/* --- replay WYCKOFF PHASE box ---------------------------------------------- */
+.cf-phasebox {{ border-radius:7px; padding:9px 11px; margin-top:12px; }}
+.cf-phasebox .cf-phaselabel {{
+  font-family:{_MONO}; font-size:9.5px; letter-spacing:0.05em; color:{TOKENS["text_muted"]};
+}}
+.cf-phasebox .cf-phasetitle {{ font-size:15px; font-weight:600; margin-top:2px; }}
+.cf-phasebox .cf-phasenote {{ font-size:10.5px; color:{TOKENS["text_muted"]}; margin-top:3px; line-height:1.45; }}
+/* --- replay transport bar: circular accent play button + scrubber ---------- */
+div[class*="st-key-cfreplayplay"] div[data-testid="stButton"] {{ display:flex; }}
+div[class*="st-key-cfreplayplay"] button {{
+  width:38px; height:38px; min-height:38px; padding:0; border-radius:50%;
+  background:{TOKENS["accent"]}; border:none; color:#04121a;
+  display:flex; align-items:center; justify-content:center;
+}}
+div[class*="st-key-cfreplayplay"] button:hover {{ background:#6fd0e6; color:#04121a; }}
+div[class*="st-key-cfreplayplay"] button:active {{ background:{TOKENS["accent"]}; }}
+div[class*="st-key-cfreplayplay"] button p {{
+  font-family:{_MONO}; font-size:14px; font-weight:600; color:#04121a;
+}}
+.cf-replayscale {{
+  display:flex; justify-content:space-between; font-family:{_MONO}; font-size:9.5px;
+  color:{TOKENS["text_faint"]}; margin-top:2px;
+}}
+.cf-replayscale .cf-mid {{ color:{TOKENS["text_muted"]}; }}
 /* --- heatmap tile grid ----------------------------------------------------- */
 .cf-heatrow {{ display:grid; grid-template-columns:110px repeat(6, 1fr); gap:6px; margin-bottom:6px; }}
 .cf-heatrow .cf-heatsector {{
@@ -898,6 +922,21 @@ def callout_html(label: str, text: str, *, color: str | None = None) -> str:
         '<div class="cf-callout">'
         f'<span class="cf-calldot" style="background:{color}"></span>'
         f'<span><span class="cf-calllabel">{escape(label)}</span>{escape(text)}</span></div>'
+    )
+
+
+def phase_box_html(title: str, note: str, color_key: str) -> str:
+    """WYCKOFF PHASE box (design 06 replay): caps label + colored phase title + note,
+    on a tint of the phase's semantic color. A label, never a number (RULE A/B)."""
+    color = TOKENS.get(color_key, TOKENS["text_faint"])
+    # tint the fill/border from the phase color's channels (matches design intensity).
+    r, g, b = (int(color[i:i + 2], 16) for i in (1, 3, 5))
+    return (
+        f'<div class="cf-phasebox" style="background:rgba({r},{g},{b},0.08); '
+        f'border:1px solid rgba({r},{g},{b},0.32)">'
+        '<div class="cf-phaselabel">WYCKOFF PHASE</div>'
+        f'<div class="cf-phasetitle" style="color:{color}">{escape(title)}</div>'
+        f'<div class="cf-phasenote">{escape(note)}</div></div>'
     )
 
 

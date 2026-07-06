@@ -180,6 +180,36 @@ def test_ksei_overlay_is_look_ahead_safe(store):
     assert panel["foreign_own_pct"] == 43.5
 
 
+def test_ksei_panel_reports_foreign_own_vs_free_float(store):
+    """Design 04 'FOREIGN OWN vs FREE-FLOAT': the bar fills to foreign's share of the
+    free-float. free_float_pct comes from SCR-0; own% from the latest KSEI slice."""
+    store.write_daily_bars(_bars())
+    store.write_scr0_eligible([
+        Scr0Row(symbol="BBRI", date=D1, as_of=datetime(2026, 6, 22, 18, 0),
+                adv20=5e11, price=4500, free_float=38.0, market_cap=1e12),
+    ])
+    store.write_ksei_ownership([
+        OwnershipSlice("BBRI", Date(2026, 5, 31), datetime(2026, 6, 30, 20, 0), 35.0, 65.0),
+    ])
+    panel = ksei_panel(foreign_flow.analyze(store, "BBRI", decision_ts=datetime(2026, 7, 1, 9, 0)))
+    assert panel["foreign_own_pct"] == 35.0
+    assert panel["free_float_pct"] == 38.0
+    # 35 of 38 free-float → bar fills to ~92.1%
+    assert panel["own_of_float_pct"] == pytest.approx(92.1, abs=0.1)
+
+
+def test_ksei_panel_free_float_absent_when_no_scr0(store):
+    """No SCR-0 on file → no free-float denominator (never fabricated as a number)."""
+    store.write_daily_bars(_bars())
+    store.write_ksei_ownership([
+        OwnershipSlice("BBRI", Date(2026, 5, 31), datetime(2026, 6, 30, 20, 0), 35.0, 65.0),
+    ])
+    panel = ksei_panel(foreign_flow.analyze(store, "BBRI", decision_ts=datetime(2026, 7, 1, 9, 0)))
+    assert panel["foreign_own_pct"] == 35.0
+    assert panel["free_float_pct"] is None
+    assert panel["own_of_float_pct"] is None
+
+
 # --- market / sector tide ---------------------------------------------------------------
 
 

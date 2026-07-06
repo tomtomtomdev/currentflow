@@ -75,10 +75,20 @@ def ksei_panel(snapshot: ForeignFlowSnapshot, *, points: int = 6) -> dict:
     if len(slices) >= 2:
         delta = slices[-1].foreign_pct - slices[0].foreign_pct
         trend = "rising" if delta > 0.1 else "easing" if delta < -0.1 else "flat"
+    own_pct = slices[-1].foreign_pct if slices else None
+    float_pct = snapshot.free_float_pct
+    # Bar fills to foreign's share of the *free-float* (design: "35% of 38% free-float").
+    own_of_float_pct = (
+        round(min(own_pct / float_pct * 100, 100), 1)
+        if own_pct is not None and float_pct
+        else None
+    )
     return {
         "series": series,
         "trend": trend,
-        "foreign_own_pct": slices[-1].foreign_pct if slices else None,
+        "foreign_own_pct": own_pct,
+        "free_float_pct": None if float_pct is None else round(float_pct, 1),
+        "own_of_float_pct": own_of_float_pct,
         "nbsa_pct_of_float": (
             None
             if snapshot.nbsa_pct_of_float is None

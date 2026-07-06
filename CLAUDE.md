@@ -122,12 +122,16 @@ The terminal's look & interaction are specified as a **high-fidelity design hand
 - [`design/SCREENS_terminal.md`](design/SCREENS_terminal.md) — per-screen spec: global shell
   (top bar / nav rail / main pane / ARMED watchlist / disclaimer ticker), all 8 module screens,
   design tokens (colors, Geist/Geist Mono type, spacing), interactions, and state model.
+- [`design/STYLE_GUIDE.md`](design/STYLE_GUIDE.md) — pixel-fidelity token reference: exact hex
+  palette, the type scale, shell dimensions, component patterns, motion keyframes, and the
+  RULE B rendering states — every value lifted verbatim from the prototype. Match these exactly.
 - [`design/SCREENS_login.md`](design/SCREENS_login.md) — the slice-11 login / session-gate
   handoff (§9.1): the credential + OTP flow that stands between `./run.sh` and the terminal.
   Auth plumbing only — gates no signal or RULE A/B behavior.
 - [`design/IDX Flow Terminal.dc.html`](<design/IDX Flow Terminal.dc.html>) — working prototype
-  (`.dc.html` design-tool format), including the login/session gate. **Reference only — do
-  not ship this HTML.** Read it for layout, styling, data shape, and interaction logic; charts
+  (`.dc.html` design-tool format) for the terminal; the login/session gate now lives in its own
+  [`design/Login Session Gate.dc.html`](<design/Login Session Gate.dc.html>). **Reference only —
+  do not ship this HTML.** Read it for layout, styling, data shape, and interaction logic; charts
   are hand-built SVG.
 
 **Stack decision (2026-07-01): Streamlit** per §10 — pure Python, single process, Plotly/Altair

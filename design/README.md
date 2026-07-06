@@ -10,7 +10,11 @@ A private, **single-operator flow terminal** for the Indonesia Stock Exchange (I
 - **RULE A (Tradeability gate, LD-2):** only Wyckoff Accumulation Phase C/D is tradeable; the phase classifier gates *before* scoring.
 - **RULE B (Presentation gate, LD-9):** no confidence number, probability, Smart Money Score, or ranked buy/sell claim may be **displayed** until that module has survived `PAPER_VALIDATION_MONTHS` (default 3) of fill-realistic forward paper trading. Until then the module shows raw observation (components, flows) with **no number attached**.
 
-The app has two parts, both in the single prototype file:
+The app has two parts, now split across **two prototype files**:
+- **`IDX Flow Terminal.dc.html`** boots **directly to the dashboard** (no gate) — the terminal reference.
+- **`Login Session Gate.dc.html`** is the **session-gate reference**: it opens on the login flow and, once auth completes, flows into the same terminal.
+
+The two parts:
 1. **Session gate** — in-app username/password + MFA (OTP) login that establishes the operator's own Stockbit session (§9.1). Fails loud — no valid session renders the login flow instead of the terminal, never a blank/stale terminal.
 2. **Terminal** — a dark, paned, keyboard-adjacent workbench: top status bar, left module nav rail, main module pane, right ARMED watchlist, bottom disclaimer ticker. Eight modules (Broker Flow, Foreign Flow, Accumulation Detector, Money Replay, Smart Heatmap, Sector Rotation, Risk Monitor, SMS / Rank).
 
@@ -25,7 +29,9 @@ Per `LOCKED_SPEC.md §10` the production target is a **local-first Python stack:
 ---
 
 ## Files in this bundle
-- **`IDX Flow Terminal.dc.html`** — the full, current prototype: session gate + all 8 terminal modules, RULE A/B enforcement, seeded mock data. The single source of visual/interaction truth.
+- **`IDX Flow Terminal.dc.html`** — the terminal prototype: boots straight to the dashboard (all 8 modules, RULE A/B enforcement, seeded mock data). Source of visual/interaction truth for the terminal.
+- **`Login Session Gate.dc.html`** — the session-gate prototype: opens on the login flow (credentials → OTP → Bearer fallback), then flows into the terminal. Source of truth for auth screens.
+- **`STYLE_GUIDE.md`** — exact design tokens (colors, type, spacing, motion), shell dimensions, and component patterns lifted verbatim from the prototype. **Read this to reproduce the look pixel-accurately.**
 - **`screens/` + `SCREENS_INDEX.md`** — high-res 1280×800 captures of every screen (2 login states + shell + 8 modules). **These are the pixel-fidelity targets** — build against them.
 - **`LOCKED_SPEC.md`** (v1.2) — the **authoritative specification. This governs; the UI serves it.** Priority sections: §0 (RULE A/B), §4 (SMS weights, internal-until-validated), §5 (veto filters), §6 (entry/sizing/risk), §9 (terminal modules & gating tiers; §9.1 session gate), §10 (local-first stack), §13 (acceptance criteria), §15 (disclaimers).
 - **`DATA_SOURCES.md`** — real feed contracts. §4.1 is the **verified `login/v6` + `mfa/verification/v1` wire contract** the session gate drives (from HAR capture). Also covers auth token lifecycle and feed constraints.

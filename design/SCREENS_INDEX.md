@@ -11,7 +11,7 @@ Every terminal shot shows the full shell: top status bar (as-of stamp, RULE-B ba
 
 - `screens/03-broker-flow.png` — Broker Flow Analyzer. Net buy/sell, DNA classification, concentration (HHI), veto checks. OBSERVATION badge.
 - `screens/04-foreign-flow.png` — Foreign Flow.
-- `screens/05-accumulation-detector.png` — Wyckoff phase classifier (RULE A gate — only Phase C/D tradeable).
+- `screens/05-accumulation-detector.png` — Wyckoff phase classifier (RULE A gate — only Phase C/D tradeable). Full module, top→bottom: STEALTH ACCUMULATION DETECTED banner · price/cumulative-accumulation chart · verdict note · STEALTH METRICS · ACCUMULATOR VWAP · **ABSORPTION card** ("unavailable — needs L2 depth — degrades gracefully, never faked §10") · **STEALTH-DIVERGENCE DETECTION footer** (price move over window vs rising net accumulation, framed as observation). The Absorption card and Divergence footer sit **below the 800px fold** — the hero PNG shows the top; build all sections.
 - `screens/06-money-replay.png` — as-of audit replay with scrubber (look-ahead control).
 - `screens/07-smart-heatmap.png` — Smart Heatmap.
 - `screens/08-sector-rotation.png` — Sector Rotation (Track B / SMC index — never IHSG headline).

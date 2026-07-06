@@ -64,7 +64,7 @@ from currentflow.ui.heatmap_view import (
     heatmap_rows,
     sector_totals,
 )
-from currentflow.ui.replay_view import playhead_panel, visible_rows
+from currentflow.ui.replay_view import phase_box, playhead_panel, visible_rows
 from currentflow.ui.risk_view import (
     FRAMING as RISK_FRAMING,
     crowding_rows,
@@ -440,13 +440,22 @@ def _render_foreign_flow(store: Store) -> None:
 
         ksei = ksei_panel(snap)
         if ksei["foreign_own_pct"] is not None:
+            # Design 04: "FOREIGN OWN vs FREE-FLOAT" — own% of free-float%, bar fills to
+            # own's share of the float. Fall back to KSEI-holdings framing when SCR-0 has
+            # no free-float on file (missing data is never zeroed).
+            if ksei["free_float_pct"] is not None:
+                own_note = f"of {ksei['free_float_pct']:g}% free-float"
+                own_frac = ksei["own_of_float_pct"]
+            else:
+                own_note = "of KSEI-reported holdings · latest month"
+                own_frac = ksei["foreign_own_pct"]
             st.markdown(
                 shell.panel_html(
-                    "FOREIGN OWN — KSEI",
+                    "FOREIGN OWN vs FREE-FLOAT",
                     shell.bigstat_bar_html(
                         f"{ksei['foreign_own_pct']:.0f}%",
-                        "of KSEI-reported holdings · latest month",
-                        ksei["foreign_own_pct"], fgn,
+                        own_note,
+                        own_frac, fgn,
                     )
                     + (
                         shell.kv_rows_html([{
@@ -494,7 +503,8 @@ def _render_foreign_flow(store: Store) -> None:
 def _render_replay(store: Store) -> None:
     _module_header(
         "Money Flow Replay",
-        "Reconstructing from stored as_of — the look-ahead audit tool.",
+        "Scrub the historical flow/price evolution for any name — the audit tool for "
+        "every signal. Reconstructed from stored as_of data.",
         "observation", "OBSERVATION",
     )
 
@@ -517,30 +527,102 @@ def _render_replay(store: Store) -> None:
         st.warning("No frames in range.")
         return
 
-    playhead = st.slider("Playhead (trading-day index)", 0, len(series.frames) - 1,
-                         len(series.frames) - 1)
+    maxidx = len(series.frames) - 1
+    scrub_key, play_key = f"cf_replay_scrub::{symbol}", f"cf_replay_play::{symbol}"
+    if scrub_key not in st.session_state or not (0 <= st.session_state[scrub_key] <= maxidx):
+        st.session_state[scrub_key] = maxidx
+
+    # Advance one frame per rerun while playing. Mutating the slider-keyed state must
+    # happen *before* the slider widget is instantiated below (Streamlit rule).
+    playing = st.session_state.get(play_key, False)
+    if playing:
+        if st.session_state[scrub_key] < maxidx:
+            st.session_state[scrub_key] += 1
+        else:
+            playing = st.session_state[play_key] = False
+
+    playhead = st.session_state[scrub_key]
     frame = series.frames[playhead]
     panel = playhead_panel(frame)
-    st.caption(
-        f"{panel['date']} · as knowable at {panel['as_knowable_at']:%Y-%m-%d %H:%M} WIB "
-        "(next-session pre-open, LD-5 conservative)"
+
+    st.markdown(
+        '<div class="cf-stockhead">'
+        f'<span class="cf-sym">{symbol}</span>'
+        '<span style="flex:1"></span>'
+        f'<span class="cf-mono" style="font-size:11px; color:{shell.TOKENS["text_faint"]}">'
+        f'reconstructing from stored <span style="color:{shell.TOKENS["accent"]}">as_of</span> · '
+        f'<span style="color:{shell.TOKENS["text"]}">{frame.date:%d %b %Y}</span></span></div>',
+        unsafe_allow_html=True,
     )
 
-    rows = pd.DataFrame(visible_rows(series, playhead)).set_index("date")
-    left, right = st.columns([1.6, 1])
+    left, right = st.columns([1.9, 1], gap="medium")
     with left:
-        st.line_chart(rows["close"], height=200)
-        st.bar_chart(rows["volume"], height=120)
-        st.line_chart(rows[["net_foreign_bn", "smart_money_net_bn"]], height=160)
+        with st.container(key="cfpanel_replaychart"):
+            st.altair_chart(
+                charts.themed(charts.replay_price_flow(visible_rows(series, playhead))),
+                use_container_width=True, theme=None,
+            )
     with right:
-        st.subheader("At playhead")
-        st.metric("Close", panel["close"], f"{panel['change_pct']}%" if panel["change_pct"] is not None else None)
-        st.metric("Volume", panel["volume"],
-                  f"RVOL {panel['rvol_20d']}×" if panel["rvol_20d"] is not None else None)
-        st.metric("Foreign net (IDR bn)", panel["net_foreign_bn"])
-        st.metric("Broker net (IDR bn)", panel["broker_net_bn"])
-        st.metric("Smart-money net (IDR bn)", panel["smart_money_net_bn"])
-        st.info(panel["phase"])
+        buy, sell = shell.TOKENS["buy"], shell.TOKENS["sell"]
+
+        def _bn_row(label, v):
+            if v is None:
+                return {"label": label, "value": None}
+            return {"label": label, "value": f"{v:+,.1f} bn", "color": buy if v >= 0 else sell}
+
+        chg = panel["change_pct"]
+        readout = [
+            {"label": "Close",
+             "value": None if panel["close"] is None else f"{panel['close']:,.0f}"},
+            {"label": "Δ vs prev", "value": None if chg is None else f"{chg:+.2f}%",
+             "color": None if chg is None else (buy if chg >= 0 else sell)},
+            {"label": "Volume (RVOL)",
+             "value": None if panel["rvol_20d"] is None else f"{panel['rvol_20d']}×",
+             "color": shell.TOKENS["armed_text"]},
+            _bn_row("Foreign net", panel["net_foreign_bn"]),
+            _bn_row("Broker net (SM)", panel["smart_money_net_bn"]),
+        ]
+        box = phase_box(frame.phase)
+        st.markdown(
+            shell.panel_html(
+                "AT PLAYHEAD",
+                shell.kv_rows_html(readout)
+                + shell.phase_box_html(box["title"], box["note"], box["color"]),
+            ),
+            unsafe_allow_html=True,
+        )
+        st.caption(
+            f"as knowable at {panel['as_knowable_at']:%Y-%m-%d %H:%M} WIB "
+            "(next-session pre-open · LD-5 conservative)"
+        )
+
+    # Transport bar: circular accent play button + scrubber + date scale (design 06).
+    with st.container(key="cfpanel_replaytransport"):
+        if maxidx == 0:
+            st.caption("Only one frame in range — nothing to scrub.")
+        else:
+            bcol, scol = st.columns([1, 22], vertical_alignment="center")
+            with bcol, st.container(key="cfreplayplay"):
+                if st.button("❚❚" if playing else "▶", key=f"{play_key}_btn",
+                             help="Play / pause the reconstruction"):
+                    if not playing and st.session_state[scrub_key] >= maxidx:
+                        st.session_state[scrub_key] = 0  # replay from the open
+                    st.session_state[play_key] = not playing
+                    st.rerun()
+            with scol:
+                st.slider("playhead", 0, maxidx, key=scrub_key, label_visibility="collapsed")
+                st.markdown(
+                    '<div class="cf-replayscale">'
+                    f'<span>{series.frames[0].date:%d %b %Y}</span>'
+                    f'<span class="cf-mid">day {st.session_state[scrub_key]} / {maxidx}</span>'
+                    f'<span>{series.frames[-1].date:%d %b %Y}</span></div>',
+                    unsafe_allow_html=True,
+                )
+
+    # Pace the animation, then rerun to draw the next frame (best-effort in Streamlit).
+    if playing:
+        time.sleep(0.4)
+        st.rerun()
 
 
 def _render_accumulation(store: Store) -> None:
