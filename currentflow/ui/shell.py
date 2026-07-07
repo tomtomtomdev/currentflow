@@ -139,9 +139,14 @@ button[data-testid="stExpandSidebarButton"]:hover {{
 .stMainBlockContainer, .block-container {{
   padding:14px 18px 8px !important; max-width:100% !important;
 }}
+/* Nav rail — design width 82px (SCREENS_terminal §shell); pin it so Streamlit's
+   ~244px default collapses to the design's icon-over-label rail. */
 section[data-testid="stSidebar"] {{
   background:{TOKENS["bg_rail"]}; border-right:1px solid {TOKENS["border_panel"]};
+  width:96px !important; min-width:96px !important; max-width:96px !important;
 }}
+section[data-testid="stSidebar"] > div {{ width:96px !important; min-width:96px !important; }}
+section[data-testid="stSidebar"] div[data-testid="stSidebarUserContent"] {{ padding:8px 6px; }}
 /* nav-rail items stack vertically — icon glyph over title, centered (design:
    the leftmost rail is icon-on-top-of-label, not a horizontal row). st.radio's
    `captions=` renders the title directly beneath the icon label; the flex-column
