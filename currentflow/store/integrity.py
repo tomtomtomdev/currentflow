@@ -18,11 +18,65 @@ from dataclasses import dataclass, field
 from datetime import date as Date
 from datetime import datetime, timedelta
 
+import duckdb
+
 from currentflow import config
-from currentflow.dal.models import BrokerNet, DailyBar, RowStatus, Side
+from currentflow.dal.models import BrokerNet, DailyBar, InvestorType, RowStatus, Side
 from currentflow.dal.timing import ohlcv_as_of
 
 log = logging.getLogger(__name__)
+
+# (table, column, enum) for every VARCHAR column that must hold an enum value.
+# The DB CHECK constraints (schema.DDL) block new bad inserts; this scan catches
+# corruption in DBs created before those constraints existed — e.g. a broker code
+# like 'GR' that leaked into daily_bar.status via a column-misaligned insert.
+_ENUM_COLUMNS: tuple[tuple[str, str, type], ...] = (
+    ("daily_bar", "status", RowStatus),
+    ("broker_net", "side", Side),
+    ("broker_net", "investor_type", InvestorType),
+)
+
+
+@dataclass(frozen=True, slots=True)
+class EnumIntegrityReport:
+    """Rows whose enum-typed VARCHAR column holds a value outside the enum."""
+
+    invalid: dict[tuple[str, str], dict[str, int]]  # (table, col) -> {bad_value: count}
+
+    @property
+    def clean(self) -> bool:
+        return not self.invalid
+
+    @property
+    def total(self) -> int:
+        return sum(n for by_val in self.invalid.values() for n in by_val.values())
+
+
+def scan_enum_integrity(con: duckdb.DuckDBPyConnection) -> EnumIntegrityReport:
+    """Scan every enum-typed column for values the enum doesn't recognise.
+
+    Runs a set-difference query per column so it's cheap even on large tables. Logs
+    loudly (no silent caps) and returns a report; callers decide whether to purge or
+    quarantine. The DailyBar/BrokerNet readers already skip these rows at read time,
+    so a dirty DB stays usable — this surfaces the corruption so it can be fixed."""
+    invalid: dict[tuple[str, str], dict[str, int]] = {}
+    for table, col, enum_cls in _ENUM_COLUMNS:
+        valid = [m.value for m in enum_cls]
+        placeholders = ", ".join("?" for _ in valid)
+        sql = (
+            f'SELECT "{col}", count(*) FROM {table} '
+            f'WHERE "{col}" NOT IN ({placeholders}) GROUP BY "{col}"'
+        )
+        rows = con.execute(sql, valid).fetchall()
+        if rows:
+            by_val = {r[0]: r[1] for r in rows}
+            invalid[(table, col)] = by_val
+            log.warning(
+                "enum integrity: %s.%s holds %d value(s) outside %s: %s",
+                table, col, sum(by_val.values()), enum_cls.__name__,
+                ", ".join(f"{v!r}×{n}" for v, n in by_val.items()),
+            )
+    return EnumIntegrityReport(invalid)
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,6 +121,7 @@ class ClearingReport:
     gross_buy: float
     gross_sell: float
     dropped: int  # rows with unknown value — never counted as zero
+    date: Date | None = None  # the trading day checked (None = aggregate over a range)
 
     @property
     def imbalance(self) -> float:
@@ -79,10 +134,17 @@ class ClearingReport:
 
 
 def broker_market_clears(
-    symbol: str, rows: Iterable[BrokerNet], *, tol: float | None = None
+    symbol: str,
+    rows: Iterable[BrokerNet],
+    *,
+    tol: float | None = None,
+    date: Date | None = None,
 ) -> ClearingReport:
     """Assert broker rows conserve: Σ gross buy ≈ Σ gross sell (values are magnitudes,
-    `side` carries direction). Logs loudly when the imbalance exceeds tolerance."""
+    `side` carries direction). Logs loudly when the imbalance exceeds tolerance.
+
+    Pass `date` when checking a single trading day's rows so the report and the log
+    line name the offending day (ingest runs this per fetched day)."""
     gross_buy = gross_sell = 0.0
     dropped = 0
     for r in rows:
@@ -94,13 +156,14 @@ def broker_market_clears(
         else:
             gross_sell += r.value
 
-    report = ClearingReport(symbol, gross_buy, gross_sell, dropped)
+    report = ClearingReport(symbol, gross_buy, gross_sell, dropped, date=date)
     limit = config.BROKER_CLEARING_TOL if tol is None else tol
     if report.imbalance > limit:
         log.warning(
-            "broker net imbalance: %s buy=%.4g sell=%.4g imbalance=%.1f%% (> %.1f%%) — "
+            "broker net imbalance: %s%s buy=%.4g sell=%.4g imbalance=%.1f%% (> %.1f%%) — "
             "feed truncated, rows dropped, or sign convention broken",
-            symbol, gross_buy, gross_sell, report.imbalance * 100, limit * 100,
+            symbol, f" {date}" if date is not None else "",
+            gross_buy, gross_sell, report.imbalance * 100, limit * 100,
         )
     return report
 

@@ -6,6 +6,17 @@ Column identifiers are always double-quoted in generated SQL because several
 
 from __future__ import annotations
 
+from enum import Enum
+
+from currentflow.dal.models import InvestorType, RowStatus, Side
+
+
+def _in_list(enum_cls: type[Enum]) -> str:
+    """SQL `IN (...)` value list for a CHECK constraint, derived from the enum so it
+    never drifts from `dal.models`."""
+    return ", ".join(f"'{m.value}'" for m in enum_cls)
+
+
 # Ordered columns per table (kept in sync with dal.models dataclass fields).
 DAILY_BAR_COLUMNS: tuple[str, ...] = (
     "symbol",
@@ -140,12 +151,12 @@ KSEI_COLUMNS: tuple[str, ...] = (
     "local_pct",
 )
 
-DDL = """
+DDL = f"""
 CREATE TABLE IF NOT EXISTS daily_bar (
     "symbol"            VARCHAR   NOT NULL,
     "date"              DATE      NOT NULL,
     "as_of"             TIMESTAMP NOT NULL,
-    "status"            VARCHAR   NOT NULL,
+    "status"            VARCHAR   NOT NULL CHECK ("status" IN ({_in_list(RowStatus)})),
     "open"              DOUBLE,
     "high"              DOUBLE,
     "low"               DOUBLE,
@@ -166,8 +177,8 @@ CREATE TABLE IF NOT EXISTS broker_net (
     "date"          DATE      NOT NULL,
     "as_of"         TIMESTAMP NOT NULL,
     "broker_code"   VARCHAR   NOT NULL,
-    "side"          VARCHAR   NOT NULL,
-    "investor_type" VARCHAR   NOT NULL,
+    "side"          VARCHAR   NOT NULL CHECK ("side" IN ({_in_list(Side)})),
+    "investor_type" VARCHAR   NOT NULL CHECK ("investor_type" IN ({_in_list(InvestorType)})),
     "avg_price"     DOUBLE,
     "value"         DOUBLE,
     "lot"           BIGINT,

@@ -13,11 +13,17 @@ Guarantees:
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable, Sequence
 from datetime import date as Date
 from datetime import datetime
+from enum import Enum
+from typing import TYPE_CHECKING, TypeVar
 
 import duckdb
+
+if TYPE_CHECKING:
+    from currentflow.store.integrity import EnumIntegrityReport
 
 from currentflow.dal.models import (
     BrokerNet,
@@ -51,8 +57,31 @@ from currentflow.store.schema import (
 )
 
 
+log = logging.getLogger(__name__)
+
+_E = TypeVar("_E", bound=Enum)
+
+
 def _cols(names: Sequence[str]) -> str:
     return ", ".join(f'"{n}"' for n in names)
+
+
+def _coerce_enum(cls: type[_E], raw: object, *, table: str, symbol: str) -> _E | None:
+    """Parse a stored VARCHAR into `cls`, or return None for a corrupt value.
+
+    Status/side/type columns are plain VARCHAR (no CHECK constraint), so a
+    column-misaligned or cross-table insert can leave a stray value there — e.g. a
+    broker code like 'GR' landing in `daily_bar.status`. One bad row must not crash
+    the whole terminal, so we skip it and log loudly (no silent caps, CLAUDE.md).
+    """
+    try:
+        return cls(raw)
+    except ValueError:
+        log.warning(
+            "dropping corrupt %s row for %s: %r is not a valid %s",
+            table, symbol, raw, cls.__name__,
+        )
+        return None
 
 
 class Store:
@@ -62,6 +91,14 @@ class Store:
 
     def close(self) -> None:
         self._con.close()
+
+    def check_enum_integrity(self) -> "EnumIntegrityReport":
+        """Scan enum-typed columns for corrupt values (e.g. a broker code leaked into
+        `daily_bar.status`). Logs loudly and returns a report. Cheap; run after ingest
+        or on startup for DBs created before the schema CHECK constraints existed."""
+        from currentflow.store.integrity import scan_enum_integrity
+
+        return scan_enum_integrity(self._con)
 
     def __enter__(self) -> "Store":
         return self
@@ -210,15 +247,20 @@ class Store:
         end: Date | None = None,
     ) -> list[DailyBar]:
         rows = self._read("daily_bar", DAILY_BAR_COLUMNS, symbol, decision_ts, start, end)
-        return [
-            DailyBar(
-                symbol=r[0], date=r[1], as_of=r[2], status=RowStatus(r[3]),
-                open=r[4], high=r[5], low=r[6], close=r[7], volume=r[8], value=r[9],
-                frequency=r[10], vwap=r[11], foreign_buy=r[12], foreign_sell=r[13],
-                net_foreign=r[14], change_percentage=r[15],
+        out: list[DailyBar] = []
+        for r in rows:
+            status = _coerce_enum(RowStatus, r[3], table="daily_bar", symbol=symbol)
+            if status is None:
+                continue
+            out.append(
+                DailyBar(
+                    symbol=r[0], date=r[1], as_of=r[2], status=status,
+                    open=r[4], high=r[5], low=r[6], close=r[7], volume=r[8], value=r[9],
+                    frequency=r[10], vwap=r[11], foreign_buy=r[12], foreign_sell=r[13],
+                    net_foreign=r[14], change_percentage=r[15],
+                )
             )
-            for r in rows
-        ]
+        return out
 
     def read_broker_net(
         self,
@@ -232,14 +274,20 @@ class Store:
             "broker_net", BROKER_NET_COLUMNS, symbol, decision_ts, start, end,
             partition=("date", "broker_code", "side"),
         )
-        return [
-            BrokerNet(
-                symbol=r[0], date=r[1], as_of=r[2], broker_code=r[3], side=Side(r[4]),
-                investor_type=InvestorType(r[5]), avg_price=r[6], value=r[7],
-                lot=r[8], frequency=r[9],
+        out: list[BrokerNet] = []
+        for r in rows:
+            side = _coerce_enum(Side, r[4], table="broker_net", symbol=symbol)
+            investor_type = _coerce_enum(InvestorType, r[5], table="broker_net", symbol=symbol)
+            if side is None or investor_type is None:
+                continue
+            out.append(
+                BrokerNet(
+                    symbol=r[0], date=r[1], as_of=r[2], broker_code=r[3], side=side,
+                    investor_type=investor_type, avg_price=r[6], value=r[7],
+                    lot=r[8], frequency=r[9],
+                )
             )
-            for r in rows
-        ]
+        return out
 
     def read_scr0_eligible(self, day: Date, decision_ts: datetime) -> list[Scr0Row]:
         """Eligible set for `day` as visible at `decision_ts` (latest as_of per symbol)."""
