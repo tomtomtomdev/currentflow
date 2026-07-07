@@ -137,6 +137,12 @@ async def bootstrap_ingest(
                 "bootstrap: %s has gaps on %d day(s) (missing ≠ zero)",
                 symbol, len(result.coverage.gaps),
             )
+        if result.has_imbalance:
+            log.warning(
+                "bootstrap: %s broker feed does not clear on %d day(s) — "
+                "truncated/dropped rows (caught at ingest, not on screen)",
+                symbol, len(result.unclear),
+            )
         results.append(result)
         emit(
             BootstrapProgress(

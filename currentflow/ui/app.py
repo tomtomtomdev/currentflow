@@ -1341,6 +1341,8 @@ def _maybe_bootstrap(store: Store) -> None:
                 line = f"{r.symbol}: +{r.bars_inserted} bars, +{r.broker_rows_inserted} broker rows"
                 if r.coverage.has_gaps:
                     line += f", GAPS on {len(r.coverage.gaps)} day(s)"
+                if r.has_imbalance:
+                    line += f", BROKER IMBALANCE on {len(r.unclear)} day(s)"
                 st.write(line)
 
         async def _do():

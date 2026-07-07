@@ -72,3 +72,38 @@ async def test_second_ingest_skips_cached_and_fetches_nothing(store):
     assert calls == []  # ingest-once: nothing re-pulled
     assert result.bars_inserted == 0
     assert result.days_skipped_cached == 3
+
+
+async def test_ingest_catches_truncated_broker_feed_per_day(store):
+    # A truncated (top-N) broker day: buy side present, sell side dropped → the
+    # gross buy/sell conservation breaks. This must be caught AT INGEST (RULE:
+    # missing data is never zero flow), not left to surface as a wrong number on
+    # screen (the AK@MEDC regression).
+    transport = scripted_transport([
+        (200, broker_payload(  # 06-01: balanced, clears
+            buys=[{"netbs_broker_code": "YP", "type": "Asing", "bval": 500_000,
+                   "netbs_date": "2026-06-01"}],
+            sells=[{"netbs_broker_code": "CC", "type": "Asing", "sval": -500_000,
+                    "netbs_date": "2026-06-01"}],
+            data_last_updated="2026-06-01T17:30:00",
+        )),
+        (200, broker_payload(  # 06-02: truncated — sell side missing, does NOT clear
+            buys=[{"netbs_broker_code": "YP", "type": "Asing", "bval": 900_000,
+                   "netbs_date": "2026-06-02"}],
+            sells=[],
+            data_last_updated="2026-06-02T17:30:00",
+        )),
+        (200, ohlcv_payload(_ohlcv_rows([1, 2]))),
+    ])
+    client = ExodusClient(transport)
+
+    result = await ingest_symbol(
+        client, store, "MEDC",
+        date(2026, 6, 1), date(2026, 6, 2),
+        now=datetime(2026, 6, 3, 9, 0),
+    )
+
+    assert result.has_imbalance
+    unclear = {c.date: c for c in result.unclear}
+    assert list(unclear) == [date(2026, 6, 2)]  # only the truncated day flagged
+    assert not unclear[date(2026, 6, 2)].clears

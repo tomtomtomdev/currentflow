@@ -15,7 +15,12 @@ from datetime import datetime, timedelta
 
 from currentflow.dal.client import ExodusClient
 from currentflow.store.db import Store
-from currentflow.store.integrity import CoverageReport, classify_coverage
+from currentflow.store.integrity import (
+    ClearingReport,
+    CoverageReport,
+    broker_market_clears,
+    classify_coverage,
+)
 
 log = logging.getLogger(__name__)
 
@@ -27,6 +32,17 @@ class IngestResult:
     broker_rows_inserted: int
     days_skipped_cached: int
     coverage: CoverageReport
+    clearing: list[ClearingReport]  # one per fetched day; empty when nothing fetched
+
+    @property
+    def unclear(self) -> list[ClearingReport]:
+        """Fetched days whose broker rows failed the buy≈sell conservation check —
+        a truncated feed, dropped rows, or a broken sign convention (never a gap)."""
+        return [c for c in self.clearing if not c.clears]
+
+    @property
+    def has_imbalance(self) -> bool:
+        return any(not c.clears for c in self.clearing)
 
 
 def _weekdays(start: Date, end: Date) -> list[Date]:
@@ -55,6 +71,7 @@ async def ingest_symbol(
 
     bars_inserted = 0
     broker_inserted = 0
+    clearing: list[ClearingReport] = []
     if missing:
         lo, hi = missing[0], missing[-1]
         if skipped:
@@ -68,9 +85,14 @@ async def ingest_symbol(
         # so a failure anywhere mid-symbol leaves every day still "missing" and a
         # retry re-fetches the whole symbol (deterministic `as_of` makes re-written
         # broker rows exact-key no-ops) — never a permanent broker hole.
+        # Conservation is checked PER DAY, on the freshly fetched rows — a top-N
+        # truncation on one day is masked once summed across a range. This is the
+        # ingest-time guard that stops a broken feed (AK@MEDC) reaching the screen.
         broker: list = []
         for day in missing:
-            broker.extend(await client.broker_summary(symbol, day))
+            day_rows = await client.broker_summary(symbol, day)
+            broker.extend(day_rows)
+            clearing.append(broker_market_clears(symbol, day_rows, date=day))
         broker_inserted = store.write_broker_net(broker)
 
         bars = await client.ohlcv_foreign(symbol, lo, hi)
@@ -88,6 +110,7 @@ async def ingest_symbol(
         broker_rows_inserted=broker_inserted,
         days_skipped_cached=skipped,
         coverage=coverage,
+        clearing=clearing,
     )
 
 

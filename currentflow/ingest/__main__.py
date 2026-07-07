@@ -79,6 +79,7 @@ async def _ingest(
     total_bars = sum(r.bars_inserted for r in results)
     total_broker = sum(r.broker_rows_inserted for r in results)
     gapped = []
+    unclear = []
     for r in results:
         line = (
             f"  {r.symbol}: +{r.bars_inserted} bars, +{r.broker_rows_inserted} broker "
@@ -87,6 +88,9 @@ async def _ingest(
         if r.coverage.has_gaps:
             line += f", GAPS on {len(r.coverage.gaps)} day(s)"
             gapped.append(r.symbol)
+        if r.has_imbalance:
+            line += f", BROKER IMBALANCE on {len(r.unclear)} day(s)"
+            unclear.append(r.symbol)
         print(line)
 
     print(
@@ -96,6 +100,9 @@ async def _ingest(
     if gapped:
         # Missing ≠ zero: surface gaps rather than let an empty read read as "no flow".
         print(f"coverage gaps in: {', '.join(gapped)} (missing ≠ zero — see logs/net.log)")
+    if unclear:
+        # Feed truncated/dropped: caught at ingest so it never renders as a wrong number.
+        print(f"broker feed does not clear in: {', '.join(unclear)} (see logs/net.log)")
     return 0
 
 
