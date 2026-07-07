@@ -143,9 +143,9 @@ button[data-testid="stExpandSidebarButton"]:hover {{
    ~244px default collapses to the design's icon-over-label rail. */
 section[data-testid="stSidebar"] {{
   background:{TOKENS["bg_rail"]}; border-right:1px solid {TOKENS["border_panel"]};
-  width:96px !important; min-width:96px !important; max-width:96px !important;
+  width:146px !important; min-width:146px !important; max-width:146px !important;
 }}
-section[data-testid="stSidebar"] > div {{ width:96px !important; min-width:96px !important; }}
+section[data-testid="stSidebar"] > div {{ width:146px !important; min-width:146px !important; }}
 section[data-testid="stSidebar"] div[data-testid="stSidebarUserContent"] {{ padding:8px 6px; }}
 /* nav-rail items stack vertically — icon glyph over title, centered (design:
    the leftmost rail is icon-on-top-of-label, not a horizontal row). st.radio's
