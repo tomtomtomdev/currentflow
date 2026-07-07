@@ -20,6 +20,7 @@
 #                           ./run.sh ingest BBCA --from 2026-04-01 --to 2026-07-03
 #   ./run.sh log          tail the network-error log (logs/net.log; -f to follow)
 #   ./run.sh test         run the test suite
+#   ./run.sh stop         stop the running terminal (kills the Streamlit on $PORT)
 #   PORT=8502 ./run.sh    launch on a non-default port
 #
 set -euo pipefail
@@ -90,6 +91,25 @@ case "$cmd" in
     ensure_venv; ensure_deps
     exec "$PY" -m pytest
     ;;
+  stop)
+    # No venv/deps needed — just find whoever is listening on $PORT and kill it.
+    pids="$(lsof -ti "tcp:$PORT" 2>/dev/null || true)"
+    if [[ -z "$pids" ]]; then
+      log "nothing listening on port $PORT — terminal not running"
+      exit 0
+    fi
+    log "stopping CurrentFlow terminal on port $PORT (pid: $pids)"
+    # shellcheck disable=SC2086
+    kill $pids 2>/dev/null || true
+    # Give it a moment, then hard-kill anything that ignored SIGTERM.
+    for _ in 1 2 3 4 5; do
+      sleep 0.3
+      lsof -ti "tcp:$PORT" >/dev/null 2>&1 || { log "stopped"; exit 0; }
+    done
+    pids="$(lsof -ti "tcp:$PORT" 2>/dev/null || true)"
+    [[ -n "$pids" ]] && { log "forcing (SIGKILL) $pids"; kill -9 $pids 2>/dev/null || true; }
+    log "stopped"
+    ;;
   serve)
     ensure_venv; ensure_deps
     # Slice 11: always start — the app renders the login form when there's no valid
@@ -104,6 +124,6 @@ case "$cmd" in
       --server.headless true
     ;;
   *)
-    die "unknown command '$cmd' — use: serve | login | paste | check | ingest | log | test"
+    die "unknown command '$cmd' — use: serve | login | paste | check | ingest | log | test | stop"
     ;;
 esac
