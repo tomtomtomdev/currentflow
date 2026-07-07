@@ -78,6 +78,29 @@ def test_broker_summary_as_of_from_data_last_updated():
     assert sell.value == 400_000
 
 
+def test_broker_summary_normalizes_signed_sell_value_to_magnitude():
+    # LIVE FEED CONVENTION (verified against marketdetectors NET, MEDC 2026-Q2):
+    # a net-seller's `sval` arrives NEGATIVE (the feed signs the net). We must store
+    # a MAGNITUDE with `side` carrying direction — otherwise the aggregation layer's
+    # `buy_val - sell_val` double-flips the sign and reports distribution as
+    # accumulation (AK@MEDC: true -61.3B rendered as +504.1B).
+    payload = broker_payload(
+        buys=[{
+            "netbs_broker_code": "AK", "type": "Asing", "bval": 221_380,
+            "blot": 100, "netbs_date": "2026-06-01",
+        }],
+        sells=[{
+            "netbs_broker_code": "AK", "type": "Asing", "sval": -282_720,
+            "slot": 200, "netbs_date": "2026-06-01",
+        }],
+    )
+    rows = parse_broker_summary("MEDC", payload)
+    buy = next(r for r in rows if r.side is Side.BUY)
+    sell = next(r for r in rows if r.side is Side.SELL)
+    assert buy.value == 221_380
+    assert sell.value == 282_720  # magnitude, NOT the raw signed -282_720
+
+
 def test_broker_summary_conservative_as_of_when_no_timestamp():
     # LD-5: without data_last_updated, availability falls to next-day 09:00 WIB.
     payload = broker_payload(

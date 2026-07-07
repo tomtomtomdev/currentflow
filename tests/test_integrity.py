@@ -5,9 +5,9 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from currentflow.dal.models import DailyBar, RowStatus
+from currentflow.dal.models import BrokerNet, DailyBar, InvestorType, RowStatus, Side
 from currentflow.dal.timing import ohlcv_as_of
-from currentflow.store.integrity import classify_coverage
+from currentflow.store.integrity import broker_market_clears, classify_coverage
 
 
 def _bar(d: date, *, volume: int, frequency: int) -> DailyBar:
@@ -64,3 +64,47 @@ def test_missing_recent_day_is_not_published_not_gap():
     )
     assert report.not_published == [d]
     assert report.gaps == []
+
+
+# --- broker-summary conservation (the AK@MEDC regression guard) ------------------------
+
+
+def _bnet(broker: str, side: Side, value: float | None) -> BrokerNet:
+    return BrokerNet(
+        symbol="MEDC", date=date(2026, 6, 1),
+        as_of=datetime(2026, 6, 2, 9, 0), broker_code=broker, side=side,
+        investor_type=InvestorType.FOREIGN, avg_price=None, value=value,
+        lot=None, frequency=None,
+    )
+
+
+def test_broker_market_clears_when_buy_equals_sell():
+    # magnitudes with side carrying direction (post-fix convention): gross buy == gross sell
+    rows = [
+        _bnet("AK", Side.BUY, 221_380), _bnet("ZP", Side.BUY, 61_340),
+        _bnet("AK", Side.SELL, 282_720),
+    ]
+    report = broker_market_clears("MEDC", rows)
+    assert report.gross_buy == 282_720
+    assert report.gross_sell == 282_720
+    assert report.imbalance == 0.0
+    assert report.clears
+
+
+def test_broker_market_does_not_clear_on_signed_sell_bug():
+    # the pre-fix defect: a net-seller's value stored SIGNED-negative makes gross_sell
+    # collapse — the imbalance the guard exists to surface.
+    rows = [_bnet("AK", Side.BUY, 221_380), _bnet("AK", Side.SELL, -282_720)]
+    report = broker_market_clears("MEDC", rows)
+    assert not report.clears
+    assert report.imbalance > 0.01
+
+
+def test_broker_market_clears_counts_dropped_never_zero():
+    rows = [
+        _bnet("AK", Side.BUY, 100_000), _bnet("AK", Side.SELL, 100_000),
+        _bnet("XX", Side.SELL, None),  # unknown value: dropped, not read as zero
+    ]
+    report = broker_market_clears("MEDC", rows)
+    assert report.dropped == 1
+    assert report.clears

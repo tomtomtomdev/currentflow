@@ -150,6 +150,10 @@ def parse_ohlcv(symbol: str, payload: Any) -> list[DailyBar]:
 def _broker_row(symbol: str, day: Date, as_of: datetime, side: Side, r: dict) -> BrokerNet:
     val = r.get("bval") if side is Side.BUY else r.get("sval")
     lot = r.get("blot") if side is Side.BUY else r.get("slot")
+    # Feed convention (marketdetectors NET): a net-seller's `sval`/`slot` arrive
+    # SIGNED NEGATIVE. We store a MAGNITUDE with `side` carrying direction, so the
+    # aggregation layer's `buy - sell` nets correctly instead of double-flipping.
+    raw_val, raw_lot = _num(val), _int(lot)
     return BrokerNet(
         symbol=symbol,
         date=day,
@@ -158,8 +162,8 @@ def _broker_row(symbol: str, day: Date, as_of: datetime, side: Side, r: dict) ->
         side=side,
         investor_type=_investor_type(r.get("type")),
         avg_price=_num(r.get("netbs_buy_avg_price") or r.get("netbs_sell_avg_price")),
-        value=_num(val),
-        lot=_int(lot),
+        value=abs(raw_val) if raw_val is not None else None,
+        lot=abs(raw_lot) if raw_lot is not None else None,
         frequency=_int(r.get("freq")),
     )
 

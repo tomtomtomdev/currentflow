@@ -5,6 +5,17 @@ and integrity/gap checks that keep 'empty ≠ zero'.
 """
 
 from currentflow.store.db import Store
-from currentflow.store.integrity import CoverageReport, classify_coverage
+from currentflow.store.integrity import (
+    ClearingReport,
+    CoverageReport,
+    broker_market_clears,
+    classify_coverage,
+)
 
-__all__ = ["Store", "CoverageReport", "classify_coverage"]
+__all__ = [
+    "Store",
+    "CoverageReport",
+    "classify_coverage",
+    "ClearingReport",
+    "broker_market_clears",
+]

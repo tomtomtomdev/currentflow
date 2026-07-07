@@ -38,6 +38,12 @@ BROKER_CONSERVATIVE_AVAILABLE_TIME = time(9, 0)  # next trading morning
 # availability at 16:15 WIB same day (post-close), configurable if measured otherwise.
 OHLCV_AVAILABLE_TIME = time(16, 15)
 
+# Broker-summary conservation: every buy has a matching sell, so per (symbol) the
+# gross buy value must equal the gross sell value. A fractional imbalance above this
+# tolerance means the feed is TRUNCATED (top-N only), rows were dropped, or a sign
+# convention broke — surfaced loudly, never swallowed (CLAUDE.md: no silent caps).
+BROKER_CLEARING_TOL = 0.01  # 1% of the larger side
+
 # --- Foreign flow / replay (slice 3) ------------------------------------------------
 FF_AVG_WINDOW_DAYS = 20   # trailing window for the vs-avg multiple and z-score (§4 NBSA)
 FF_CUM_DAYS = 5           # short cumulative NBSA stat (design: "5-day cumulative")

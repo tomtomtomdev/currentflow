@@ -18,7 +18,8 @@ from dataclasses import dataclass, field
 from datetime import date as Date
 from datetime import datetime, timedelta
 
-from currentflow.dal.models import DailyBar, RowStatus
+from currentflow import config
+from currentflow.dal.models import BrokerNet, DailyBar, RowStatus, Side
 from currentflow.dal.timing import ohlcv_as_of
 
 log = logging.getLogger(__name__)
@@ -53,6 +54,55 @@ class CoverageReport:
     @property
     def has_gaps(self) -> bool:
         return bool(self.gaps)
+
+
+@dataclass(frozen=True, slots=True)
+class ClearingReport:
+    """Broker-summary conservation check. Every buy is someone's sell, so per symbol
+    the gross buy value must equal the gross sell value. An imbalance flags a
+    TRUNCATED feed (top-N), dropped rows, or a broken sign convention — the failure
+    that let AK@MEDC render distribution (-61.3B) as accumulation (+504.1B)."""
+
+    symbol: str
+    gross_buy: float
+    gross_sell: float
+    dropped: int  # rows with unknown value — never counted as zero
+
+    @property
+    def imbalance(self) -> float:
+        denom = max(self.gross_buy, self.gross_sell)
+        return abs(self.gross_buy - self.gross_sell) / denom if denom else 0.0
+
+    @property
+    def clears(self) -> bool:
+        return self.imbalance <= config.BROKER_CLEARING_TOL
+
+
+def broker_market_clears(
+    symbol: str, rows: Iterable[BrokerNet], *, tol: float | None = None
+) -> ClearingReport:
+    """Assert broker rows conserve: Σ gross buy ≈ Σ gross sell (values are magnitudes,
+    `side` carries direction). Logs loudly when the imbalance exceeds tolerance."""
+    gross_buy = gross_sell = 0.0
+    dropped = 0
+    for r in rows:
+        if r.value is None:
+            dropped += 1  # missing ≠ zero
+            continue
+        if r.side is Side.BUY:
+            gross_buy += r.value
+        else:
+            gross_sell += r.value
+
+    report = ClearingReport(symbol, gross_buy, gross_sell, dropped)
+    limit = config.BROKER_CLEARING_TOL if tol is None else tol
+    if report.imbalance > limit:
+        log.warning(
+            "broker net imbalance: %s buy=%.4g sell=%.4g imbalance=%.1f%% (> %.1f%%) — "
+            "feed truncated, rows dropped, or sign convention broken",
+            symbol, gross_buy, gross_sell, report.imbalance * 100, limit * 100,
+        )
+    return report
 
 
 def _weekdays(start: Date, end: Date) -> list[Date]:
