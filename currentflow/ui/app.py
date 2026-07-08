@@ -241,12 +241,23 @@ def _ihsg(store: Store) -> tuple[float | None, float | None]:
             'ORDER BY "date" DESC LIMIT 2',
             [sym],
         ).fetchall()
-        if rows and rows[0][0] is not None:
-            last = float(rows[0][0])
-            prev = rows[1][0] if len(rows) > 1 and rows[1][0] else None
-            pct = (last - float(prev)) / float(prev) * 100 if prev else None
-            return last, pct
+        if not rows or rows[0][0] is None:
+            continue
+        last = _as_float(rows[0][0])
+        if last is None:  # corrupt close (e.g. a broker code leaked in) — skip, never fake
+            continue
+        prev = _as_float(rows[1][0]) if len(rows) > 1 else None
+        pct = (last - prev) / prev * 100 if prev else None
+        return last, pct
     return None, None
+
+
+def _as_float(value: object) -> float | None:
+    """Coerce a stored cell to float, or None if it isn't numeric (corrupt column)."""
+    try:
+        return float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
 
 
 def _trap_ribbon(store: Store, symbol: str, decision_ts: datetime) -> None:
