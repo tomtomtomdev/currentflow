@@ -185,8 +185,12 @@ PAPER_VALIDATION_MONTHS = 3
 
 # SMS component detector thresholds (§4 parentheticals).
 SMS_DIVERGENCE_FLAT_PCT = 0.005       # price move ≤ ±0.5% on the high-vol bar
-SMS_DIVERGENCE_CORR_MAX = 0.30        # |corr(volume, |Δprice|)| < 0.3 on high-vol bars
-SMS_DIVERGENCE_HIVOL_MULT = 1.5       # "high-vol bar" = volume ≥ 1.5× 20d avg
+SMS_DIVERGENCE_CORR_MAX = 0.30        # corr(volume, |Δprice|) reference point (graduated, §4)
+SMS_DIVERGENCE_HIVOL_MULT = 1.5       # "high-vol bar" = volume ≥ 1.5× window avg
+# Divergence is a CURRENT-state signal (a recent absorption window), not a year-long
+# average — measured over the last N complete bars, aligned with a Wyckoff range's span.
+# (§4 pins the ±0.5%/corr conditions + weight, not the lookback — see PROGRESS decisions.)
+SMS_DIVERGENCE_WINDOW_DAYS = 40
 SMS_BROKER_PERSIST_DAYS = 3           # top-2 concentration credited from ≥ 3 consecutive days
 SMS_FOREIGN_SPIKE_MULT = 2.0          # foreign net buy > 2× 20d avg (Track A)
 SMS_RVOL_MULT = 3.0                   # volume anomaly > 3× 20d avg

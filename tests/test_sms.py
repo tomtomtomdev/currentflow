@@ -71,6 +71,48 @@ def test_divergence_credits_flat_price_on_high_volume():
     assert lo.components_by_key["divergence"].subscore == 0.0
 
 
+def test_divergence_scores_recent_absorption_not_stale_history():
+    """Divergence must reflect the CURRENT window, not a year-long average (the defect
+    fix). Same bars in a different order: absorption RECENT → credited; absorption STALE
+    (trending recently) → not. Fails on the old whole-history detector, which scored both
+    identically."""
+    recent = Chart("R")
+    c = 100.0
+    for _ in range(60):                        # older: high-vol bars WITH big moves (no divergence)
+        nxt = c * 1.03
+        recent.add(c, nxt + 1, c - 1, nxt, 1000); c = nxt
+    for _ in range(20):                        # recent: high volume, price flat (absorption)
+        recent.add(c, c + 1, c - 1, c, 3000)
+
+    stale = Chart("S")
+    c = 100.0
+    for _ in range(20):                        # stale absorption at the START
+        stale.add(c, c + 1, c - 1, c, 3000)
+    for _ in range(60):                        # …then a recent markup (high vol, big moves)
+        nxt = c * 1.03
+        stale.add(c, nxt + 1, c - 1, nxt, 1000); c = nxt
+
+    r = compute_sms("R", track="A", bars=recent.bars, broker=_empty_broker(),
+                    foreign=None, phase_cls=_neutral_phase(), decision_ts=TS)
+    s = compute_sms("S", track="A", bars=stale.bars, broker=_empty_broker(),
+                    foreign=None, phase_cls=_neutral_phase(), decision_ts=TS)
+    assert r.components_by_key["divergence"].subscore > 0.3
+    assert r.components_by_key["divergence"].subscore > s.components_by_key["divergence"].subscore
+
+
+def test_divergence_corr_is_graduated_not_a_cliff():
+    """The corr adjustment is a smooth factor in [0.5, 1.0], not a binary ×0.5 haircut:
+    a lower vol/|move| correlation yields a higher factor (more divergence confidence)."""
+    from currentflow.signals.sms import _corr_factor
+    assert _corr_factor(None) == 0.5
+    assert _corr_factor(-0.5) == 1.0
+    assert _corr_factor(0.0) == 1.0
+    assert _corr_factor(config.SMS_DIVERGENCE_CORR_MAX) == pytest.approx(0.5)
+    assert _corr_factor(0.9) == 0.5                                  # floored, never below
+    mid = _corr_factor(config.SMS_DIVERGENCE_CORR_MAX / 2)
+    assert 0.5 < mid < 1.0                                           # graduated in between
+
+
 # --- rvol ----------------------------------------------------------------------------
 
 
@@ -84,6 +126,27 @@ def test_rvol_reaches_full_credit_at_3x():
     rvol = res.components_by_key["rvol"]
     assert rvol.observation["rvol"] == pytest.approx(3.0)
     assert rvol.subscore == pytest.approx(1.0)
+
+
+# --- block-trade footprint (§4: > IDR 1B or > 1% ADV) --------------------------------
+
+
+def test_block_trade_grades_by_pct_of_adv_not_a_fixed_floor():
+    """Block footprint grades by the max single-broker buy as a fraction of ADV (§4's
+    scale-relative "> 1% ADV"), not the fixed IDR-1B floor that saturated to 1.0 on any
+    liquid name. Same broker snapshot, larger ADV → smaller %ADV → lower subscore."""
+    days = [Date(2026, 6, 24), Date(2026, 6, 25), Date(2026, 6, 26)]
+    snap = broker_flow.build_snapshot("X", concentrated_buyer_rows("X", days), decision_ts=TS)
+    # max single-broker buy from the builder is 8e9/day.
+    diffuse = compute_sms("X", track="B", bars=_flat(10), broker=snap, foreign=None,
+                          phase_cls=_neutral_phase(), decision_ts=TS, adv20=8e12)   # 0.1% ADV
+    dense = compute_sms("X", track="B", bars=_flat(10), broker=snap, foreign=None,
+                        phase_cls=_neutral_phase(), decision_ts=TS, adv20=8e11)      # 1% ADV
+    bd = diffuse.components_by_key["block_trade"]
+    bc = dense.components_by_key["block_trade"]
+    assert bd.subscore < 1.0                    # de-saturated — not everyone maxes out
+    assert bc.subscore > bd.subscore            # smaller ADV → larger %ADV → higher credit
+    assert bd.observation["pct_of_adv"] == pytest.approx(0.003)   # 3×8e9 aggregated / 8e12
 
 
 # --- broker concentration (Track B lead) --------------------------------------------

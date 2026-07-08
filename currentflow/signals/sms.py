@@ -77,11 +77,33 @@ def _complete(bars: list[DailyBar]) -> list[DailyBar]:
 # --- components --------------------------------------------------------------------
 
 
+def _corr_factor(corr: float | None) -> float:
+    """Graduated generalization of §4's "corr(vol,|Δprice|) < 0.3" divergence gate.
+
+    Divergence = high volume with NO price result → a LOW vol/|move| correlation. Rather
+    than a binary ×0.5 cliff at 0.3 (which — computed over a long window — fired on
+    essentially every name, since more volume normally accompanies bigger moves), map the
+    correlation to a smooth factor in [0.5, 1.0]: full credit as corr→0 (or negative),
+    tapering to 0.5 at the threshold and holding 0.5 above it. Reduces to the old rule at
+    the reference points (corr=0 → 1.0, corr=0.3 → 0.5). `None` (unmeasurable) → 0.5."""
+    if corr is None:
+        return 0.5
+    if corr <= 0:
+        return 1.0
+    factor = 1.0 - 0.5 * (corr / config.SMS_DIVERGENCE_CORR_MAX)
+    return 0.5 if factor < 0.5 else 1.0 if factor > 1.0 else factor
+
+
 def _divergence(bars: list[DailyBar]) -> SmsComponent:
-    """High volume with a ≤±0.5% price move, corr(vol, |Δprice|) < 0.3 on high-vol
-    bars — effort without price result (absorption). LD-1 universal spine."""
+    """High volume with a ≤±0.5% price move, low corr(vol, |Δprice|) — effort without
+    price result (absorption). LD-1 universal spine.
+
+    Measured over the RECENT `SMS_DIVERGENCE_WINDOW_DAYS` bars: divergence is a current-
+    accumulation signal, not a year-long average. Running it over the full passed-in
+    history diluted the flat-high-volume ratio toward zero for anything that trended at
+    all (the calibration defect that pinned this 30-weight component near 0 on real data)."""
     w = 0  # weight injected later
-    usable = _complete(bars)
+    usable = _complete(bars)[-config.SMS_DIVERGENCE_WINDOW_DAYS:]
     if len(usable) < 3:
         return SmsComponent("divergence", w, 0.0, {"high_vol_bars": 0}, available=False)
 
@@ -104,12 +126,7 @@ def _divergence(bars: list[DailyBar]) -> SmsComponent:
         cov = sum((x - mx) * (y - my) for x, y in rets) / len(rets)
         corr = cov / (statistics.pstdev(xs) * statistics.pstdev(ys))
 
-    if hv == 0:
-        subscore = 0.0
-    else:
-        base = flat_hv / hv
-        corr_ok = corr is not None and corr < config.SMS_DIVERGENCE_CORR_MAX
-        subscore = base if corr_ok else base * 0.5
+    subscore = 0.0 if hv == 0 else (flat_hv / hv) * _corr_factor(corr)
     obs = {"high_vol_bars": hv, "flat_high_vol_bars": flat_hv,
            "vol_price_corr": None if corr is None else round(corr, 3)}
     return SmsComponent("divergence", w, _clamp01(subscore), obs, available=True)
@@ -170,16 +187,26 @@ def _rvol(bars: list[DailyBar]) -> SmsComponent:
 
 
 def _block_trade(broker: BrokerFlowSnapshot, adv20: float | None) -> SmsComponent:
-    """Block-trade footprint: a single broker's buy > IDR 1B or > 1% ADV (§4)."""
+    """Block-trade footprint: a single broker's buy graded by its size relative to ADV
+    (§4's "> 1% ADV", full credit at `SMS_BLOCK_ADV_PCT`).
+
+    Scale-relative by construction: the earlier fixed IDR-1B floor (OR'd with the %ADV
+    test) saturated to 1.0 on any liquid name — a 1B single-broker buy is noise for a
+    large-cap — so the component added a flat, non-discriminating +weight to everyone.
+    Grading by %ADV separates the genuinely concentrated day from the diffuse one. The
+    absolute IDR floor is kept only as the fallback scale when ADV is unknown (missing ≠
+    zero)."""
     if not broker.brokers:
-        return SmsComponent("block_trade", 0, 0.0, {"max_buy": None}, available=False)
+        return SmsComponent("block_trade", 0, 0.0, {"max_broker_buy": None, "pct_of_adv": None}, available=False)
     max_buy = max((b.buy_value for b in broker.brokers), default=0.0)
-    thr_value = config.SMS_BLOCK_VALUE_IDR
-    thr_adv = config.SMS_BLOCK_ADV_PCT * adv20 if adv20 else None
-    present = max_buy >= thr_value or (thr_adv is not None and max_buy >= thr_adv)
-    subscore = 1.0 if present else _clamp01(max_buy / thr_value)
-    obs = {"max_broker_buy": max_buy, "block": present}
-    return SmsComponent("block_trade", 0, subscore, obs, available=True)
+    if adv20 and adv20 > 0:
+        pct = max_buy / adv20
+        subscore = _clamp01(pct / config.SMS_BLOCK_ADV_PCT)
+        obs = {"max_broker_buy": max_buy, "pct_of_adv": round(pct, 4)}
+    else:
+        subscore = _clamp01(max_buy / config.SMS_BLOCK_VALUE_IDR)
+        obs = {"max_broker_buy": max_buy, "pct_of_adv": None}
+    return SmsComponent("block_trade", 0, _clamp01(subscore), obs, available=True)
 
 
 def _phase_bonus(phase_cls: PhaseClassification) -> SmsComponent:
