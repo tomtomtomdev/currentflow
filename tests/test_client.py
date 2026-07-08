@@ -120,6 +120,23 @@ async def test_ohlcv_pages_until_short_page():
     assert [(p["page"], p["limit"]) for _path, p in calls] == [(1, full), (2, full)]
 
 
+async def test_ohlcv_full_page_with_malformed_row_still_pages():
+    """A non-dict row inside a FULL page must not shrink the parsed count below the
+    limit and end pagination early — one malformed row would otherwise truncate the
+    entire remaining backfill (silent cap). Fullness is a server-page property, not a
+    parse-yield property."""
+    full = config.OHLCV_PAGE_LIMIT
+    page1 = _ohlcv_page(full - 1, 0)               # full-1 valid rows ...
+    page1["data"]["result"].append("garbage")      # ... + 1 non-dict → full raw page
+    calls: list = []
+    client = ExodusClient(
+        scripted_transport([(200, page1), (200, _ohlcv_page(3, full))], calls)
+    )
+    rows = await client.ohlcv_foreign("BBCA", D0, D1)
+    assert len(rows) == (full - 1) + 3             # page 2 was still fetched
+    assert [p["page"] for _path, p in calls] == [1, 2]
+
+
 async def test_broker_summary_is_single_day():
     """A multi-day range returns a server-side AGGREGATE stamped at `from`
     (live-verified) — the method must request exactly one day."""

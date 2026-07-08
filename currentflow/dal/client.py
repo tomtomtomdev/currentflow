@@ -38,6 +38,7 @@ from currentflow.dal.models import (
 )
 from currentflow.dal.netlog import log_net_error
 from currentflow.dal.parse import (
+    ohlcv_page_rowcount,
     parse_broker_summary,
     parse_corp_actions,
     parse_ksei_ownership,
@@ -130,9 +131,10 @@ class ExodusClient:
                 f"company-price-feed/historical/summary/{symbol}",
                 {**params, "page": page},
             )
-            batch = parse_ohlcv(symbol, payload)
-            bars.extend(batch)
-            if len(batch) < config.OHLCV_PAGE_LIMIT:
+            bars.extend(parse_ohlcv(symbol, payload))
+            # Terminate on the RAW page size, not the parsed count: a malformed row
+            # would shrink the parse yield and end a backfill early (silent truncation).
+            if ohlcv_page_rowcount(payload) < config.OHLCV_PAGE_LIMIT:
                 return bars
             page += 1
 
@@ -194,14 +196,20 @@ class ExodusClient:
             batch = parse_screener_results(payload)
             rows.extend(batch)
             total = parse_screener_totalrows(payload)
-            if total is None or len(rows) >= total:
+            if total is not None and len(rows) >= total:
                 return rows
-            if not batch:  # server claims more rows but sent an empty page
-                log.warning(
-                    "run_screener: server reports %d total rows but page %d was "
-                    "empty — returning the %d received (incomplete)",
-                    total, page, len(rows),
-                )
+            if not batch:  # empty page — natural end, or a server claiming more
+                if total is not None:
+                    log.warning(
+                        "run_screener: server reports %d total rows but page %d was "
+                        "empty — returning the %d received (incomplete)",
+                        total, page, len(rows),
+                    )
+                return rows
+            # No `totalrows` to bound us: a short page is the natural end of results.
+            # Without this the loop would cap at page 1 and silently truncate a
+            # multi-page universe (no silent caps).
+            if total is None and len(batch) < config.SCREENER_PAGE_LIMIT:
                 return rows
             page += 1
 

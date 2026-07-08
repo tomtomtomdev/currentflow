@@ -88,10 +88,12 @@ def _investor_type(v: Any) -> InvestorType:
     return _INVESTOR_MAP.get(str(v).strip().lower(), InvestorType.UNKNOWN)
 
 
-def _rows(payload: Any, *keys: str) -> list[dict]:
-    """Pull the list of records out of whatever envelope the feed used."""
+def _raw_rows(payload: Any, *keys: str) -> list:
+    """The list the feed put in this page, UNFILTERED (may contain non-dicts). This is
+    the pagination-fullness signal: how many rows the server sent, independent of how
+    many parse cleanly — so a malformed row can't masquerade as a short (final) page."""
     if isinstance(payload, list):
-        return [r for r in payload if isinstance(r, dict)]
+        return payload
     if isinstance(payload, dict):
         node: Any = payload
         # descend common wrappers first
@@ -99,12 +101,26 @@ def _rows(payload: Any, *keys: str) -> list[dict]:
             if isinstance(node, dict) and wrap in node:
                 node = node[wrap]
         if isinstance(node, list):
-            return [r for r in node if isinstance(r, dict)]
+            return node
         if isinstance(node, dict):
             for k in keys:
                 if isinstance(node.get(k), list):
-                    return [r for r in node[k] if isinstance(r, dict)]
+                    return node[k]
     return []
+
+
+def _rows(payload: Any, *keys: str) -> list[dict]:
+    """Pull the list of records out of whatever envelope the feed used, dropping any
+    non-dict entry (tolerant parse). For the raw page size use `_raw_rows`."""
+    return [r for r in _raw_rows(payload, *keys) if isinstance(r, dict)]
+
+
+def ohlcv_page_rowcount(payload: Any) -> int:
+    """Raw row count for one OHLCV page — counted BEFORE per-row validity filtering so a
+    single malformed row can't shrink the count below the page limit and truncate a
+    backfill early (no silent caps). Client pagination terminates on this, not on the
+    number of rows that happened to parse."""
+    return len(_raw_rows(payload, "chart", "data"))
 
 
 # --- OHLCV + foreign flow ---------------------------------------------------------

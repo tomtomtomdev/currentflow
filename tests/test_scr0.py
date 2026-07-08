@@ -122,6 +122,26 @@ async def test_run_screener_pages_until_totalrows():
     assert [body["page"] for _p, body in calls] == [1, 2]
 
 
+async def test_run_screener_pages_when_totalrows_absent(monkeypatch):
+    """No `totalrows` in the envelope must NOT cap at page 1 — the client pages until
+    a short page, else a multi-page universe is silently truncated (no silent caps)."""
+    monkeypatch.setattr(config, "SCREENER_PAGE_LIMIT", 2)
+
+    def page(symbols: list[str]) -> dict:  # note: no `totalrows` key
+        return {"data": {"calcs": [{"symbol": s, "results": []} for s in symbols]}}
+
+    calls: list = []
+    client = ExodusClient(
+        scripted_transport([]),
+        post_transport=scripted_transport(
+            [(200, page(["AAAA", "BBBB"])), (200, page(["CCCC"]))], calls
+        ),
+    )
+    rows = await client.run_screener(SCR0_TEMPLATE)
+    assert [r["symbol"] for r in rows] == ["AAAA", "BBBB", "CCCC"]
+    assert [body["page"] for _p, body in calls] == [1, 2]
+
+
 async def test_run_screener_stops_on_empty_page_despite_totalrows():
     """A lying server (totalrows > what it will ever send) must not loop forever."""
     client = ExodusClient(
