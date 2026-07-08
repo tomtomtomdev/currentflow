@@ -22,9 +22,14 @@ allocator must ignore it.
 
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date as Date
+from datetime import datetime
 from enum import Enum
+
+from currentflow.signals.risk_monitor import daily_returns, market_proxy_returns
+from currentflow.store.db import Store
 
 
 class Regime(str, Enum):
@@ -39,9 +44,10 @@ class RegimeRead:
     """A categorical regime + the measurements behind it. No number scales allocation."""
 
     regime: Regime
-    trend_pct: float | None       # cumulative proxy return over the window
+    trend_pct: float | None       # cumulative proxy return over the window (the TREND leg)
     above_ma: bool | None         # latest cumulative level above its moving average
-    breadth: float | None         # fraction of window days with a positive proxy return
+    breadth: float | None         # mean fraction of names advancing over the window (BREADTH)
+    breadth_latest: float | None  # fraction advancing on the most recent day (A-D confirmation)
     n_obs: int
     note: str
 
@@ -74,7 +80,8 @@ def classify_regime(
     if n < min_obs:
         return RegimeRead(
             regime=Regime.UNKNOWN, trend_pct=None, above_ma=None, breadth=None,
-            n_obs=n, note=f"insufficient data ({n} < {min_obs} obs) — regime withheld",
+            breadth_latest=None, n_obs=n,
+            note=f"insufficient data ({n} < {min_obs} obs) — regime withheld",
         )
 
     rets = [market_returns[d] for d in dates]
@@ -86,10 +93,14 @@ def classify_regime(
     above_ma = levels[-1] >= ma
 
     if breadth_series:
-        bvals = [breadth_series[d] for d in sorted(breadth_series)]
+        bdates = sorted(breadth_series)
+        bvals = [breadth_series[d] for d in bdates]
         breadth = sum(bvals) / len(bvals) if bvals else None
+        breadth_latest = bvals[-1] if bvals else None
     else:
+        # No advance-decline series supplied — fall back to the share of up proxy days.
         breadth = sum(1 for r in rets if r > 0) / n
+        breadth_latest = None
 
     # A trend deadband keeps a chop that merely drifts a few bps from reading as a
     # directional regime — only a move beyond ±`trend_band` with the MA agreeing counts.
@@ -102,11 +113,64 @@ def classify_regime(
 
     return RegimeRead(
         regime=regime, trend_pct=trend_pct, above_ma=above_ma, breadth=breadth,
-        n_obs=n,
+        breadth_latest=breadth_latest, n_obs=n,
         note=(
             f"proxy {trend_pct:+.1%} over {n}d, "
             f"{'above' if above_ma else 'below'} {ma_window}d MA"
             + (f", breadth {breadth:.0%}" if breadth is not None else "")
+            + (f" (latest {breadth_latest:.0%})" if breadth_latest is not None else "")
             + " — observation only, does not scale allocation (RULE B)"
         ),
+    )
+
+
+# --- store-level trend + breadth (the market-wide observation) -----------------------
+
+
+def market_breadth(
+    store: Store,
+    symbols: list[str],
+    decision_ts: datetime,
+    *,
+    start: Date | None = None,
+    end: Date | None = None,
+) -> dict[Date, float]:
+    """Advance-decline breadth: per day, the fraction of `symbols` that advanced (positive
+    close-to-close return). Look-ahead-safe (each name read as-of `decision_ts`). A day is
+    present only if at least one name has a visible return — `missing ≠ zero`, an absent
+    print is not counted as a decline."""
+    adv: dict[Date, int] = defaultdict(int)
+    tot: dict[Date, int] = defaultdict(int)
+    for sym in symbols:
+        bars = store.read_daily_bars(sym, decision_ts, start=start, end=end)
+        for d, r in daily_returns(bars).items():
+            tot[d] += 1
+            if r > 0:
+                adv[d] += 1
+    return {d: adv[d] / tot[d] for d in tot if tot[d] > 0}
+
+
+def classify_market_regime(
+    store: Store,
+    symbols: list[str],
+    decision_ts: datetime,
+    *,
+    ma_window: int = 20,
+    min_obs: int = 10,
+    trend_band: float = 0.02,
+    start: Date | None = None,
+    end: Date | None = None,
+) -> RegimeRead:
+    """The market-wide regime read: TREND (equal-weight universe proxy) confirmed by
+    BREADTH (advance-decline), both look-ahead-safe from the store. Convergent with Zweig
+    (Four Percent + A-D / breadth) and Murphy (primary trend + breadth confirmation).
+
+    Still OBSERVATION ONLY (RULE B): it reports the regime and its measurements and scales
+    no allocation. Promoting it to a gross-exposure input requires a `LOCKED_SPEC.md` LD
+    bump and forward-paper validation, like SMS."""
+    proxy = market_proxy_returns(store, symbols, decision_ts, start=start, end=end)
+    breadth = market_breadth(store, symbols, decision_ts, start=start, end=end)
+    return classify_regime(
+        proxy, ma_window=ma_window, min_obs=min_obs, trend_band=trend_band,
+        breadth_series=breadth,
     )
