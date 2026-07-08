@@ -79,3 +79,18 @@ def test_scan_surfaces_corruption_and_passes_clean():
     assert not report.clean
     assert report.total == 1  # one bad daily_bar.status; broker_net is clean
     assert report.invalid[("daily_bar", "status")] == {"GR": 1}
+
+
+def test_reader_skips_short_row_instead_of_indexerror(monkeypatch):
+    """A partial/corrupt DB can surface a row with fewer columns than the schema.
+    Unpacking it raised IndexError (`r[3]`) and took down the whole ranking module;
+    the reader must drop it and keep going."""
+    good = _row("BBCA", date(2026, 7, 1), "TRADED")
+    short = ("BBCA", date(2026, 7, 2), datetime(2026, 7, 2, 16, 15))  # truncated: 3 cols
+
+    s = Store.__new__(Store)
+    s._con = duckdb.connect(":memory:")
+    monkeypatch.setattr(s, "_read", lambda *a, **k: [good, short])
+
+    bars = s.read_daily_bars("BBCA", decision_ts=datetime(2030, 1, 1))
+    assert [b.date.day for b in bars] == [1]  # short row dropped, terminal survives

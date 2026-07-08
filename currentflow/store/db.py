@@ -66,6 +66,23 @@ def _cols(names: Sequence[str]) -> str:
     return ", ".join(f'"{n}"' for n in names)
 
 
+def _row_arity_ok(r: tuple, expected: int, *, table: str, symbol: str) -> bool:
+    """Guard a fetched row against having fewer columns than the schema expects.
+
+    A fixed-column SELECT should always return `expected` values, but a DB left in a
+    partial/corrupt state (mid-ingest, a pre-schema-constraint file, a truncated write)
+    can surface a short row. Unpacking it would raise IndexError and take down the whole
+    terminal — so we skip it and log loudly instead (no silent caps, CLAUDE.md), matching
+    the corrupt-enum guard below."""
+    if len(r) >= expected:
+        return True
+    log.warning(
+        "dropping malformed %s row for %s: got %d columns, expected %d: %r",
+        table, symbol, len(r), expected, r,
+    )
+    return False
+
+
 def _coerce_enum(cls: type[_E], raw: object, *, table: str, symbol: str) -> _E | None:
     """Parse a stored VARCHAR into `cls`, or return None for a corrupt value.
 
@@ -249,6 +266,8 @@ class Store:
         rows = self._read("daily_bar", DAILY_BAR_COLUMNS, symbol, decision_ts, start, end)
         out: list[DailyBar] = []
         for r in rows:
+            if not _row_arity_ok(r, len(DAILY_BAR_COLUMNS), table="daily_bar", symbol=symbol):
+                continue
             status = _coerce_enum(RowStatus, r[3], table="daily_bar", symbol=symbol)
             if status is None:
                 continue
@@ -276,6 +295,8 @@ class Store:
         )
         out: list[BrokerNet] = []
         for r in rows:
+            if not _row_arity_ok(r, len(BROKER_NET_COLUMNS), table="broker_net", symbol=symbol):
+                continue
             side = _coerce_enum(Side, r[4], table="broker_net", symbol=symbol)
             investor_type = _coerce_enum(InvestorType, r[5], table="broker_net", symbol=symbol)
             if side is None or investor_type is None:
