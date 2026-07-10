@@ -14,6 +14,7 @@ from datetime import date as Date
 from datetime import datetime, timedelta
 
 from currentflow.dal.client import ExodusClient
+from currentflow.dal.models import SymbolIndexRow
 from currentflow.store.db import Store
 from currentflow.store.integrity import (
     ClearingReport,
@@ -52,6 +53,23 @@ def _weekdays(start: Date, end: Date) -> list[Date]:
             days.append(d)
         d += timedelta(days=1)
     return days
+
+
+async def refresh_membership(
+    client: ExodusClient, store: Store, symbol: str, *, now: datetime
+) -> int:
+    """Store the name's current index membership (§3 Track source) as a fresh snapshot.
+
+    Stamped with the run's `now` (like every other `as_of` in an ingest run) so the roster
+    stays look-ahead-consistent with the OHLCV/broker rows. NOT ingest-once — membership
+    drifts at index reconstitution, so every run writes a new `as_of` (the read side takes
+    the latest visible). Best-effort: a fetch/parse failure is logged, not fatal — a missing
+    roster row safely resolves to Track B (the engine never invents Track A from absent
+    data). A genuine 401 still fails loud upstream in the client (never a stale write here)."""
+    info = await client.symbol_info(symbol)
+    return store.write_symbol_index(
+        [SymbolIndexRow(symbol=symbol, as_of=now, indexes=info.indexes)]
+    )
 
 
 async def ingest_symbol(

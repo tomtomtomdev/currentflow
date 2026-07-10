@@ -54,6 +54,22 @@ def test_rule_b_no_composite_number_rank_or_verb(store):
         assert banned not in flat, f"watchlist leaked {banned!r}"
 
 
+def test_rule_b_holds_for_track_a_rows(store):
+    # Now that the rail mixes Track A + B, an A-scored row must obey RULE B too:
+    # a state word + component spark-bars, never the composite number.
+    store.write_daily_bars(strong_phase_c_bars("STRONG"))
+    store.write_broker_net(two_buyer_rows("STRONG", BDAYS))
+    res = engine.evaluate(store, "STRONG", TS, track="A")
+    data = watchlist_view.rows([res])
+
+    assert data["rows"], "a phase-C/D name should reach the rail (ARMED or WATCH)"
+    row = data["rows"][0]
+    assert row["track"] == "A"
+    assert "score" not in row and "position" not in row
+    assert set(row["components"]) == {"DIV", "BRK", "FF", "RVOL", "BLK"}
+    assert "internal_score" not in repr(data).lower()
+
+
 def test_cap_is_reported_never_silent(store):
     res = _armed(store)
     data = watchlist_view.rows([res], limit=0)

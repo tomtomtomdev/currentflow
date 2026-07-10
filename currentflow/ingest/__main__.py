@@ -29,7 +29,7 @@ from typing import Callable
 from currentflow.dal.errors import AuthError, ExodusError
 from currentflow.dal.session import build_live_client
 from currentflow.ingest.bootstrap import DEFAULT_DAYS
-from currentflow.ingest.pipeline import ingest_universe
+from currentflow.ingest.pipeline import ingest_universe, refresh_membership
 from currentflow.logging_setup import configure_logging
 from currentflow.store.db import Store
 
@@ -64,6 +64,16 @@ async def _ingest(
         client, transport = client_factory()
         store = store_factory(db_path)
         results = await ingest_universe(client, store, symbols, start, end, now=now)
+        # §3 Track source for the offline watchlist. Overlay, not a gate: a per-name
+        # failure is tolerated (missing roster → Track B); a dead session fails loud.
+        for symbol in symbols:
+            try:
+                await refresh_membership(client, store, symbol, now=now)
+            except AuthError:
+                raise
+            except ExodusError as exc:
+                print(f"  {symbol}: index membership fetch failed ({exc}) — Track B",
+                      file=sys.stderr)
     except AuthError as exc:
         print(f"AUTH FAILED — run `./run.sh login` first: {exc}", file=sys.stderr)
         return 1

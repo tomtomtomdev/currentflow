@@ -20,13 +20,9 @@ from currentflow import config
 from currentflow.dal.models import BoardType, CorpAction, DailyBar, RowStatus, SymbolInfo
 from currentflow.store.integrity import CoverageReport
 from currentflow.universe.bands import BandCheck, check_pinned
+from currentflow.universe.track import Track, assign_track  # Track re-exported (shared rule)
 
 log = logging.getLogger(__name__)
-
-
-class Track(str, Enum):
-    A = "A"  # LQ45/IDX80 member AND ADV ≥ IDR 25 bn → foreign-flow-reliable
-    B = "B"  # passes hard floor, not Track A → broker-concentration-reliable
 
 
 class GateFailure(str, Enum):
@@ -146,12 +142,7 @@ def evaluate_gate(
     passed = not failures
     track: Track | None = None
     if passed:
-        is_index_member = bool(set(info.indexes) & config.TRACK_A_INDEXES)
-        track = (
-            Track.A
-            if is_index_member and adv20 is not None and adv20 >= config.ADV_TRACK_A_IDR
-            else Track.B
-        )
+        track = assign_track(info.indexes, adv20)   # §3 rule, shared with universe.track
     else:
         log.info(
             "universe gate reject %s @ %s: %s",

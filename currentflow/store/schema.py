@@ -142,6 +142,14 @@ SCR4_COLUMNS: tuple[str, ...] = (
     "market_cap",
 )
 
+# Index-membership roster (§3 Track A/B source; `indexes` comma-joined). No trading
+# `date` — a live snapshot keyed (symbol, as_of); read-latest gives point-in-time track.
+SYMBOL_INDEX_COLUMNS: tuple[str, ...] = (
+    "symbol",
+    "as_of",
+    "indexes",
+)
+
 # KSEI monthly ownership slices (foreign-ownership-trend overlay, spec §9).
 KSEI_COLUMNS: tuple[str, ...] = (
     "symbol",
@@ -276,6 +284,13 @@ CREATE TABLE IF NOT EXISTS scr4_fundamental_tilt (
     "roe"            DOUBLE,
     "market_cap"     DOUBLE,
     PRIMARY KEY ("symbol", "date", "as_of")
+);
+
+CREATE TABLE IF NOT EXISTS symbol_index (
+    "symbol"  VARCHAR   NOT NULL,
+    "as_of"   TIMESTAMP NOT NULL,
+    "indexes" VARCHAR   NOT NULL,
+    PRIMARY KEY ("symbol", "as_of")
 );
 
 CREATE TABLE IF NOT EXISTS ksei_ownership (

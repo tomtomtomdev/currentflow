@@ -74,6 +74,8 @@ def test_cli_ingests_into_the_store_the_terminal_reads(monkeypatch):
         (200, broker_payload([], [])),
         (200, broker_payload([], [])),
         (200, ohlcv_payload(_bars([1, 2, 3]))),
+        # membership phase after ingest: one emitten/{sym}/info per symbol (§3 Track source)
+        (200, {"data": {"status": "active", "indexes": [{"name": "LQ45"}]}}),
     ]
 
     rc = main(
@@ -88,6 +90,10 @@ def test_cli_ingests_into_the_store_the_terminal_reads(monkeypatch):
         start=date(2026, 6, 1), end=date(2026, 6, 3),
     )
     assert len(bars) == 3  # the "run the ingest pipeline first" warning would now clear
+    # index-membership roster landed too (offline watchlist can now assign Track A/B)
+    assert store.read_symbol_index_latest(
+        "BBCA", datetime(2030, 1, 1)
+    ).indexes == ("LQ45",)
     Store.close(store)
 
 
@@ -98,6 +104,7 @@ def test_cli_reports_inserts_and_upcases_symbol(capsys):
         (200, broker_payload(buys=[], sells=[])),
         (200, broker_payload(buys=[], sells=[])),
         (200, ohlcv_payload(_bars([1, 2, 3]))),
+        (200, {"data": {"status": "active", "indexes": [{"name": "LQ45"}]}}),  # membership
     ]
 
     rc = main(

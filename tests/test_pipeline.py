@@ -5,8 +5,24 @@ from __future__ import annotations
 from datetime import date, datetime
 
 from currentflow.dal.client import ExodusClient
-from currentflow.ingest.pipeline import ingest_symbol
+from currentflow.ingest.pipeline import ingest_symbol, refresh_membership
 from tests.conftest import broker_payload, ohlcv_payload, scripted_transport
+
+
+async def test_refresh_membership_snapshots_indexes(store):
+    """§3 Track source: emitten/{sym}/info → a stored membership snapshot (not a gate)."""
+    calls: list = []
+    client = ExodusClient(scripted_transport(
+        [(200, {"data": {"status": "active", "indexes": [{"name": "LQ45"}, {"name": "IDX80"}]}})],
+        calls,
+    ))
+
+    inserted = await refresh_membership(client, store, "BBCA", now=datetime(2026, 6, 4, 9, 0))
+
+    assert inserted == 1
+    assert calls[0][0] == "emitten/BBCA/info"
+    row = store.read_symbol_index_latest("BBCA", datetime(2030, 1, 1))
+    assert row is not None and row.indexes == ("LQ45", "IDX80")
 
 
 def _ohlcv_rows(days: list[int]) -> list[dict]:

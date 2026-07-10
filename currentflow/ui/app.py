@@ -34,6 +34,7 @@ from currentflow.signals import (
 from currentflow.signals.broker_flow import analyze, buyer_seller_matrix
 from currentflow.signals.risk_monitor import Portfolio, Position
 from currentflow.store.db import Store
+from currentflow.universe import track as track_mod
 from currentflow.ui.trap_view import ribbon_banner, ribbon_rows
 from currentflow.ui.accumulation_view import (
     accumulation_panel,
@@ -135,12 +136,22 @@ def _ledger() -> ValidationLedger:
     return ValidationLedger()
 
 
-def _all_results(store: Store, track: str, decision_ts: datetime) -> list:
-    """Evaluate every ingested name for the ranking / daily-top gated modules."""
-    return [
-        engine.evaluate(store, s, decision_ts, track=track)
-        for s in _symbols(store, "daily_bar")
-    ]
+def _all_results(store: Store, track: str | None, decision_ts: datetime) -> list:
+    """Evaluate every ingested name for the ranking / daily-top / watchlist modules.
+
+    `track="A"|"B"` forces that track for every name (the manual sidebar override).
+    `track=None` assigns each name its spec §3 track from the stored index roster
+    (`universe.track.resolve_track`) — the ARMED watchlist's spec-faithful A+B path.
+    Missing roster membership resolves to Track B (never invents Track A)."""
+    results = []
+    for s in _symbols(store, "daily_bar"):
+        t = track
+        if t is None:
+            t = track_mod.resolve_track(
+                store, s, decision_ts, store.read_daily_bars(s, decision_ts)
+            )
+        results.append(engine.evaluate(store, s, decision_ts, track=t))
+    return results
 
 
 def _symbols(store: Store, table: str) -> list[str]:
@@ -152,12 +163,21 @@ def _symbols(store: Store, table: str) -> list[str]:
     ]
 
 
+def _roster_version(store: Store) -> str:
+    """Latest index-membership `as_of` — part of the watchlist cache key so a roster
+    refresh (index reconstitution) re-tracks names. Empty roster → constant sentinel."""
+    row = store._con.execute('SELECT max("as_of") FROM symbol_index').fetchone()
+    return str(row[0]) if row and row[0] is not None else "none"
+
+
 @st.cache_data(ttl=600, show_spinner="Evaluating ARMED watchlist…")
-def _watchlist_data(db_path: str, day: str, n_symbols: int) -> dict:
-    """One engine pass over every ingested name for the sidebar rail. Keyed on the
-    day and the symbol count so a bootstrap / new ingest invalidates the cache; the
-    TTL bounds intraday staleness. Returns primitives only (RULE-B-safe rows)."""
-    return watchlist_view.rows(_all_results(_store(db_path), "B", datetime.now()))
+def _watchlist_data(db_path: str, day: str, n_symbols: int, roster_ver: str) -> dict:
+    """One engine pass over every ingested name for the sidebar rail, each scored on
+    its spec §3 track (Track A large-caps + Track B lapis-2 — `_all_results(track=None)`).
+    Keyed on the day + symbol count (a bootstrap / new ingest invalidates) and the roster
+    version (a membership refresh re-tracks names); the TTL bounds intraday staleness.
+    Returns primitives only (RULE-B-safe rows)."""
+    return watchlist_view.rows(_all_results(_store(db_path), None, datetime.now()))
 
 
 def _select_symbol(symbol: str) -> None:
@@ -193,7 +213,9 @@ def _render_watchlist_rail(store: Store) -> None:
             unsafe_allow_html=True,
         )
         return
-    data = _watchlist_data(_db_path(), f"{datetime.now():%Y-%m-%d}", len(syms))
+    data = _watchlist_data(
+        _db_path(), f"{datetime.now():%Y-%m-%d}", len(syms), _roster_version(store)
+    )
     if data["rows"] and st.session_state.get("cf_symbol") not in syms:
         # design default: the top rail name (ARMED first, strongest flow first)
         st.session_state["cf_symbol"] = data["rows"][0]["symbol"]
@@ -330,7 +352,10 @@ def _render_broker_flow(store: Store) -> None:
 
     # design matrix: columns = the (≤7) watchlist names, never the whole universe;
     # the cap is annotated, not silent. The selected symbol is always a column.
-    watch = _watchlist_data(_db_path(), f"{decision_ts:%Y-%m-%d}", len(_symbols(store, "daily_bar")))
+    watch = _watchlist_data(
+        _db_path(), f"{decision_ts:%Y-%m-%d}",
+        len(_symbols(store, "daily_bar")), _roster_version(store),
+    )
     cols = [symbol] + [r["symbol"] for r in watch["rows"]
                        if r["symbol"] != symbol and r["symbol"] in symbols]
     cols = cols[:7]

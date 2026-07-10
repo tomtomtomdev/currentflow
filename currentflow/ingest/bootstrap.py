@@ -27,7 +27,7 @@ from typing import Callable
 
 from currentflow.dal.client import ExodusClient
 from currentflow.dal.errors import AuthError, ExodusError
-from currentflow.ingest.pipeline import IngestResult, ingest_symbol
+from currentflow.ingest.pipeline import IngestResult, ingest_symbol, refresh_membership
 from currentflow.screeners.scr0 import run_scr0
 from currentflow.store.db import Store
 
@@ -149,5 +149,19 @@ async def bootstrap_ingest(
                 stage="ingest", index=i, total=total, symbol=symbol, result=result
             )
         )
+
+    # §3 Track source: a separate phase after every name is ingested — snapshot index
+    # membership for the offline watchlist. Overlay, not a gate: a per-name failure is
+    # tolerated (missing roster → Track B), but a dead session (AuthError) fails loud.
+    for symbol in (r.symbol for r in results):
+        try:
+            await refresh_membership(client, store, symbol, now=now)
+        except AuthError:
+            raise
+        except ExodusError as exc:
+            log.warning(
+                "bootstrap: %s index membership fetch failed (%s) — resolves to Track B",
+                symbol, exc,
+            )
 
     return BootstrapSummary(trading_day, start, end, eligible=symbols, results=results)

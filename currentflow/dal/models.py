@@ -83,6 +83,22 @@ class SymbolInfo:
 
 
 @dataclass(frozen=True, slots=True)
+class SymbolIndexRow:
+    """Persisted index-membership snapshot (the `indexes[]` slice of `SymbolInfo`).
+
+    §3 Track A/B is assigned from LQ45/IDX80 membership, but `SymbolInfo` is a *live*
+    fetch — not stored, not replayable. This is the local roster the offline watchlist
+    reads instead: keyed `(symbol, as_of)` (membership has no per-day series; it drifts
+    only at index reconstitution), so `read_symbol_index_latest` picks the latest
+    snapshot visible at a `decision_ts`. Missing row ≠ "not a member" for scoring — the
+    resolver defaults such names to Track B (never invents Track A from absent data)."""
+
+    symbol: str
+    as_of: datetime
+    indexes: tuple[str, ...]    # LQ45 / IDX80 / IDXSMC-LIQ / … (empty = none known)
+
+
+@dataclass(frozen=True, slots=True)
 class CorpAction:
     """One corporate action from corpaction/{sym} — drives the ±5d exclusion (§3)."""
 

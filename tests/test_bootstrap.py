@@ -36,6 +36,10 @@ def _scr0_payload(symbols: list[str]) -> dict:
     }
 
 
+def _info_payload(indexes: list[str]) -> dict:
+    return {"data": {"status": "active", "indexes": [{"name": n} for n in indexes]}}
+
+
 def _bars(symbol_day: int) -> list[dict]:
     return [
         {
@@ -82,6 +86,9 @@ async def test_bootstrap_happy_path(store):
             (200, ohlcv_payload(_bars(1))),  # BBRI
             (200, broker_payload([], [])), (200, broker_payload([], [])),
             (200, ohlcv_payload(_bars(2))),  # BRMS
+            # membership phase runs after all ingests: one emitten/{sym}/info per name
+            (200, _info_payload(["LQ45", "IDX80"])),  # BBRI → Track A eligible
+            (200, _info_payload(["IDXSMC-LIQ"])),      # BRMS → Track B
         ],
         post_steps=[(200, _scr0_payload(["BBRI", "BRMS"]))],
     )
@@ -105,6 +112,10 @@ async def test_bootstrap_happy_path(store):
     cached = store.read_scr0_eligible(summary.trading_day, decision_ts=later)
     assert [r.symbol for r in cached] == ["BBRI", "BRMS"]
 
+    # Index-membership roster landed (§3 Track source for the offline watchlist).
+    assert store.read_symbol_index_latest("BBRI", later).indexes == ("LQ45", "IDX80")
+    assert store.read_symbol_index_latest("BRMS", later).indexes == ("IDXSMC-LIQ",)
+
 
 async def test_bootstrap_progress_callbacks(store):
     client = _client(
@@ -113,6 +124,7 @@ async def test_bootstrap_progress_callbacks(store):
             (200, ohlcv_payload(_bars(1))),
             (200, broker_payload([], [])), (200, broker_payload([], [])),
             (200, ohlcv_payload(_bars(2))),
+            (200, _info_payload(["LQ45"])), (200, _info_payload([])),  # membership phase
         ],
         post_steps=[(200, _scr0_payload(["BBRI", "BRMS"]))],
     )

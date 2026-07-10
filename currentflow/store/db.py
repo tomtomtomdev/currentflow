@@ -40,6 +40,7 @@ from currentflow.dal.models import (
     Scr4Row,
     ScrExitRow,
     Side,
+    SymbolIndexRow,
 )
 from currentflow.store.schema import (
     BROKER_NET_COLUMNS,
@@ -54,6 +55,7 @@ from currentflow.store.schema import (
     SCR3_COLUMNS,
     SCR4_COLUMNS,
     SCR_EXIT_COLUMNS,
+    SYMBOL_INDEX_COLUMNS,
 )
 
 
@@ -229,6 +231,13 @@ class Store:
             (r.symbol, r.date, r.as_of, r.foreign_pct, r.local_pct) for r in rows_in
         ]
         return self._insert("ksei_ownership", KSEI_COLUMNS, rows)
+
+    def write_symbol_index(self, rows_in: Iterable[SymbolIndexRow]) -> int:
+        """Index-membership snapshots (§3 Track source). `indexes` is stored comma-joined
+        and split back on read; unlike OHLCV this is *not* ingest-once — membership drifts
+        at index reconstitution, so each refresh writes a fresh `as_of` and read-latest wins."""
+        rows = [(r.symbol, r.as_of, ",".join(r.indexes)) for r in rows_in]
+        return self._insert("symbol_index", SYMBOL_INDEX_COLUMNS, rows)
 
     def _insert(self, table: str, columns: Sequence[str], rows: list[tuple]) -> int:
         if not rows:
@@ -448,6 +457,22 @@ class Store:
             symbol=r[0], date=r[1], as_of=r[2], adv20=r[3],
             price=r[4], free_float=r[5], market_cap=r[6],
         )
+
+    def read_symbol_index_latest(
+        self, symbol: str, decision_ts: datetime
+    ) -> SymbolIndexRow | None:
+        """Most recent index-membership snapshot for `symbol` visible at `decision_ts`
+        (`as_of < decision_ts` — the look-ahead firewall). None when nothing is stored."""
+        sql = (
+            f"SELECT {_cols(SYMBOL_INDEX_COLUMNS)} FROM symbol_index "
+            'WHERE "symbol" = ? AND "as_of" < ? '
+            'ORDER BY "as_of" DESC LIMIT 1'
+        )
+        r = self._con.execute(sql, [symbol, decision_ts]).fetchone()
+        if r is None:
+            return None
+        indexes = tuple(i for i in r[2].split(",") if i)  # "" → () (no membership known)
+        return SymbolIndexRow(symbol=r[0], as_of=r[1], indexes=indexes)
 
     def _read(
         self,
