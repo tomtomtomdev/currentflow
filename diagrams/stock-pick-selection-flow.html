@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<!--
+  CurrentFlow stock-pick SELECTION funnel. Source of truth: LOCKED_SPEC v1.2 §2 pipeline +
+  screeners.md funnel + currentflow/config.py thresholds. Companion to screening-flow.html
+  (this one emphasises the narrowing funnel + what is rejected at each gate → the "pick").
+  Regenerate the PDF (from repo root, no installs — uses headless Chrome):
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+      --headless=new --disable-gpu --no-pdf-header-footer \
+      --print-to-pdf="$HOME/Desktop/CurrentFlow-Stock-Pick-Selection-Flow.pdf" \
+      file://$PWD/diagrams/stock-pick-selection-flow.html
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CurrentFlow — Stock Pick Selection Flow</title>
+<style>
+  :root{
+    --bg:#0b0e14; --panel:#121722; --ink:#e6edf3; --muted:#8b98a9;
+    --line:#2b3240;
+    --scr:#1f6feb;      /* server-side screener */
+    --eng:#8957e5;      /* engine compute */
+    --gate:#d29922;     /* hard gate / decision */
+    --veto:#f85149;     /* veto / reject */
+    --state:#2ea043;    /* state */
+    --pick:#3fb950;     /* the pick */
+    --ui:#39c5cf;       /* terminal ui */
+  }
+  @page{ size:A4 portrait; margin:11mm; }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; background:var(--bg); color:var(--ink);
+    font-family:"Geist","Inter",-apple-system,"Helvetica Neue",Arial,sans-serif; }
+  .doc{ width:188mm; margin:0 auto; padding:2mm 0 6mm; }
+  h1{ font-size:19px; margin:0 0 2px; letter-spacing:.2px; }
+  .sub{ color:var(--muted); font-size:10.5px; margin:0 0 12px;
+    font-family:"Geist Mono","SF Mono",ui-monospace,Menlo,monospace; }
+
+  .flow{ display:flex; flex-direction:column; align-items:stretch; gap:0; }
+
+  /* a stage = [funnel count] [main node] [reject branch] */
+  .stage{ display:grid; grid-template-columns:20mm 1fr 58mm; gap:6px; align-items:stretch; }
+  .stage.solo{ grid-template-columns:20mm 1fr; }
+
+  .funnel{ display:flex; align-items:center; justify-content:flex-end;
+    font-family:"Geist Mono",ui-monospace,Menlo,monospace; font-size:11px;
+    color:var(--ink); font-weight:600; text-align:right; padding-right:2px; line-height:1.2; }
+  .funnel small{ display:block; color:var(--muted); font-weight:400; font-size:8.5px; }
+
+  .node{ border:1px solid var(--line); border-left-width:4px; border-radius:8px;
+    background:var(--panel); padding:8px 11px; position:relative; }
+  .node .tag{ font-family:"Geist Mono",ui-monospace,Menlo,monospace; font-size:9.5px;
+    color:var(--muted); letter-spacing:.4px; text-transform:uppercase; }
+  .node .title{ font-size:13px; font-weight:600; margin:2px 0 3px; }
+  .node .body{ font-size:10.5px; color:var(--muted); line-height:1.45; }
+  .node .body b{ color:var(--ink); font-weight:600; }
+  .node .body code{ font-family:"Geist Mono",ui-monospace,Menlo,monospace;
+    font-size:9.5px; color:#cdd6e0; }
+
+  .scr{ border-left-color:var(--scr); }
+  .eng{ border-left-color:var(--eng); }
+  .gate{ border-left-color:var(--gate); background:#1a160c; }
+  .decision{ border-left-color:var(--gate); background:#17140b; border-style:dashed; }
+  .state{ border-left-color:var(--state); background:#0f1a11; }
+  .pick{ border-left-color:var(--pick); background:#0e1a10; border-width:1px 1px 1px 4px; }
+  .ui{ border-left-color:var(--ui); }
+
+  /* reject branch chip on the right of a gate */
+  .reject{ border:1px dashed var(--veto); border-radius:8px; background:#1a0e0e;
+    padding:7px 9px; display:flex; flex-direction:column; justify-content:center; }
+  .reject .rh{ font-family:"Geist Mono",ui-monospace,Menlo,monospace; font-size:9px;
+    color:var(--veto); letter-spacing:.4px; text-transform:uppercase; margin-bottom:2px; }
+  .reject .rb{ font-size:9.5px; color:var(--muted); line-height:1.4; }
+  .reject .rb b{ color:#f0a5a0; font-weight:600; }
+  .reject.empty{ border:none; background:none; }
+
+  .arrow{ display:grid; grid-template-columns:20mm 1fr 58mm; gap:6px; }
+  .arrow .mid{ grid-column:2; display:flex; flex-direction:column; align-items:center; gap:0; }
+  .arrow .glyph{ color:var(--line); font-size:15px; line-height:1; padding:2px 0; }
+  .arrow .lab{ font-size:8.5px; color:var(--muted);
+    font-family:"Geist Mono",ui-monospace,Menlo,monospace; text-align:center; }
+
+  /* parallel fan of screeners */
+  .fan{ grid-column:2; display:flex; gap:6px; }
+  .fan .node{ flex:1; border-left-width:4px; }
+
+  .legend{ display:flex; flex-wrap:wrap; gap:5px 14px; margin-top:14px;
+    padding-top:9px; border-top:1px solid var(--line); font-size:9.5px; color:var(--muted); }
+  .legend span{ display:inline-flex; align-items:center; gap:5px; }
+  .sw{ width:11px; height:11px; border-radius:3px; display:inline-block; }
+
+  .rulebox{ margin-top:12px; display:flex; gap:8px; }
+  .rulebox .r{ flex:1; border:1px dashed var(--line); border-radius:8px; padding:8px 10px;
+    background:#0d1117; }
+  .rulebox .r .h{ font-size:10.5px; font-weight:700; }
+  .rulebox .r .t{ font-size:9.5px; color:var(--muted); line-height:1.45; margin-top:3px; }
+  .rulebox .ra .h{ color:var(--gate); }
+  .rulebox .rb .h{ color:var(--ui); }
+  .foot{ margin-top:10px; font-size:8.5px; color:var(--muted);
+    font-family:"Geist Mono",ui-monospace,Menlo,monospace; line-height:1.5; }
+</style>
+</head>
+<body>
+<div class="doc">
+  <h1>CurrentFlow — Stock Pick Selection Flow</h1>
+  <p class="sub">How ~900 IDX names narrow to one paper position · LOCKED_SPEC v1.2 §2 · thresholds from config.py · observation-only until paper-validated (RULE B)</p>
+
+  <div class="flow">
+
+    <!-- 1 · universe -->
+    <div class="stage">
+      <div class="funnel">~900<small>listed board</small></div>
+      <div class="node scr">
+        <div class="tag">Source · Stockbit exodus (Bearer, own session)</div>
+        <div class="title">IHSG Universe</div>
+        <div class="body">Full listed board. One server-side <code>POST /screener/templates</code> evaluates <code>fitem_id</code> filters across the whole market <b>before</b> any paywall-counted per-name pull.</div>
+      </div>
+      <div class="reject empty"></div>
+    </div>
+    <div class="arrow"><div class="mid"><span class="lab">SCR-0 · one screener call</span><span class="glyph">▼</span></div></div>
+
+    <!-- 2 · eligibility gate -->
+    <div class="stage">
+      <div class="funnel">~100–150<small>eligible</small></div>
+      <div class="node gate">
+        <div class="tag">SCR-0 · Stage 0 / §3 · HARD GATE</div>
+        <div class="title">Universe Eligibility</div>
+        <div class="body">Screened: <b>ADV(MA20) &gt; Rp 10 bn</b> · <b>price &gt; Rp 100</b> · <b>free float &gt; 15%</b>. Engine residual gate, then assign <b>Track A</b> (LQ45/IDX80 &amp; ADV≥25bn) or <b>Track B</b>, tag sector.</div>
+      </div>
+      <div class="reject">
+        <div class="rh">✗ dropped here</div>
+        <div class="rb">illiquid (&lt;Rp10bn) · penny (&lt;100) · <b>suspended / halt / UMA</b> · IPO &lt; 60 trading days · ARA/ARB-pinned close · incomplete broker summary (gap) · corp action ±5 days</div>
+      </div>
+    </div>
+    <div class="arrow"><div class="mid"><span class="lab">eligible universe (cached to DuckDB w/ as_of)</span><span class="glyph">▼</span></div></div>
+
+    <!-- 3 · accumulation screeners fan -->
+    <div class="stage solo" style="grid-template-columns:20mm 1fr;">
+      <div class="funnel"><small>parallel</small></div>
+      <div class="node eng" style="border-left-color:var(--eng);">
+        <div class="tag">SCR-1 · §4 accumulation leads · observation candidate lists</div>
+        <div class="title">Accumulation Screeners — run in parallel, union &amp; dedupe → shortlist</div>
+      </div>
+    </div>
+    <div class="arrow"><div class="mid"><span class="glyph">▼</span></div></div>
+    <div class="stage solo" style="grid-template-columns:20mm 1fr;">
+      <div class="funnel"></div>
+      <div class="fan" style="grid-column:2;">
+        <div class="node scr"><div class="tag">SCR-1A · NBSA · wt 25 (A)</div>
+          <div class="title">Foreign Accumulation</div>
+          <div class="body">Scope <b>LQ45</b>. Foreign net buy &gt; <b>2×</b> MA20, buy streak ≥ 3d, flow MA20 &gt; 0.</div></div>
+        <div class="node scr"><div class="tag">SCR-1B · broker conc. · wt 35 (B)</div>
+          <div class="title">Bandar Accumulation</div>
+          <div class="body">Scope <b>IDXSMC-LIQ</b>. Bandar Value &gt; MA20, net &gt; 0, Accum/Dist &gt; 0.</div></div>
+        <div class="node scr"><div class="tag">SCR-1C · P-V divergence · wt 30</div>
+          <div class="title">Stealth Divergence</div>
+          <div class="body">Bandar Value rising, 1M return &lt; 3% (flat), volume &gt; <b>1.5×</b> MA20 (effort).</div></div>
+      </div>
+    </div>
+    <div class="arrow"><div class="mid"><span class="lab">shortlist (union, deduped) → stored as SMS <b>component inputs</b>, not scores</span><span class="glyph">▼</span></div></div>
+
+    <!-- 4 · engine raw pull -->
+    <div class="stage">
+      <div class="funnel"><small>shortlist only</small></div>
+      <div class="node eng">
+        <div class="tag">DATA_SOURCES §6 · paywall-frugal</div>
+        <div class="title">Engine pulls raw data — shortlist ONLY</div>
+        <div class="body"><code>broker_summary</code> + <code>ohlcv_foreign</code> per survivor. Compute the un-screenable: top-2 share + Herfindahl, persistence, accumulator VWAP, true price-volume correlation, absorption, VSA effort-vs-result.</div>
+      </div>
+      <div class="reject empty"></div>
+    </div>
+    <div class="arrow"><div class="mid"><span class="glyph">▼</span></div></div>
+
+    <!-- 5 · RULE A phase gate -->
+    <div class="stage">
+      <div class="funnel"><small>phase ∈ C/D</small></div>
+      <div class="node gate">
+        <div class="tag">Pipeline [3] · RULE A · HARD GATE (pre-scoring)</div>
+        <div class="title">Wyckoff Phase Classifier</div>
+        <div class="body"><b>PASS only Accumulation Phase C or D.</b> Threshold detectors feed the classifier — they never bypass it. Rejected here <b>before SMS is ever computed</b>.</div>
+      </div>
+      <div class="reject">
+        <div class="rh">✗ not tradeable</div>
+        <div class="rb">Phase A/B (range not confirmed) · <b>Phase E markup</b> (too late) · distribution / UTAD · no valid trading range</div>
+      </div>
+    </div>
+    <div class="arrow"><div class="mid"><span class="lab">phase ∈ {C, D}</span><span class="glyph">▼</span></div></div>
+
+    <!-- 6 · SMS -->
+    <div class="stage">
+      <div class="funnel"><small>scored</small></div>
+      <div class="node eng">
+        <div class="tag">Pipeline [4] · §4 · INTERNAL until validated</div>
+        <div class="title">Smart Money Score</div>
+        <div class="body">Track-specific weights → SMS 0–100. Weights tune only via walk-forward Sharpe optimizer, never hand-edited. <b>Number stays hidden</b> until the module is paper-validated (RULE B).</div>
+      </div>
+      <div class="reject empty"></div>
+    </div>
+    <div class="arrow"><div class="mid"><span class="glyph">▼</span></div></div>
+
+    <!-- 7 · veto -->
+    <div class="stage">
+      <div class="funnel"><small>survivors</small></div>
+      <div class="node" style="border-left-color:var(--veto);">
+        <div class="tag">Pipeline [5] · §5 · VETO FILTERS</div>
+        <div class="title">Kill Switches</div>
+        <div class="body">Any single hit drops the name outright, regardless of SMS.</div>
+      </div>
+      <div class="reject">
+        <div class="rh">✗ vetoed</div>
+        <div class="rb"><b>single-bandar monopoly &gt; 60%</b> · distribution-dressed · markup-on-thin-volume · wash/churn (min/max ≥ 0.7) · broker rotation (≥3d) · <b>retail FOMO &gt; 60%</b> · event-driven</div>
+      </div>
+    </div>
+
+    <!-- decision -->
+    <div class="arrow"><div class="mid"><span class="glyph">▼</span></div></div>
+    <div class="stage solo" style="grid-template-columns:20mm 1fr;">
+      <div class="funnel"><small>gate</small></div>
+      <div class="node decision" style="grid-column:2;">
+        <div class="tag">◆ arming decision</div>
+        <div class="title">SMS ≥ 70 &nbsp;AND&nbsp; phase ∈ {C, D} &nbsp;AND&nbsp; no veto</div>
+      </div>
+    </div>
+    <div class="arrow"><div class="mid"><span class="lab">all three true</span><span class="glyph">▼</span></div></div>
+
+    <!-- 8 · ARMED -->
+    <div class="stage">
+      <div class="funnel"><small>watchlist</small></div>
+      <div class="node state">
+        <div class="tag">STATE · watchlist</div>
+        <div class="title">ARMED</div>
+        <div class="body">Carried to the watchlist. <b>SCR-2</b> (RVOL ≥ 3× + frequency spike) and <b>SCR-3</b> (Close &gt; 20MA &gt; 50MA, &gt; VWAP, ADX &gt; 20, RS &gt; 0) refine ARMED names ahead of the trigger.</div>
+      </div>
+      <div class="reject empty"></div>
+    </div>
+    <div class="arrow"><div class="mid"><span class="glyph">▼</span></div></div>
+
+    <!-- 9 · trigger -->
+    <div class="stage">
+      <div class="funnel"><small>triggered</small></div>
+      <div class="node eng">
+        <div class="tag">Pipeline [6] · LD-3 · technical trigger</div>
+        <div class="title">Entry Trigger</div>
+        <div class="body">Spring-test (Phase C) OR LPS pullback (Phase D). Compute stop below the swing low + first target; <b>require R:R ≥ 2:1</b> or skip.</div>
+      </div>
+      <div class="reject">
+        <div class="rh">✗ no entry</div>
+        <div class="rb">no Spring/LPS confirmation · <b>R:R &lt; 2:1</b> · stays ARMED, waits for a cleaner setup</div>
+      </div>
+    </div>
+    <div class="arrow"><div class="mid"><span class="glyph">▼</span></div></div>
+
+    <!-- 10 · tilt -->
+    <div class="stage">
+      <div class="funnel"><small>sized</small></div>
+      <div class="node scr">
+        <div class="tag">SCR-4 · §7 · TILT, never a gate</div>
+        <div class="title">Fundamental Tilt</div>
+        <div class="body">Magic Formula combined-rank tercile (<code>13474</code>; EY=1/2897, ROC=13411) → <b>COMPOUNDER ×1.0 / NEUTRAL ×0.75 / SPECULATIVE ×0.5</b> conviction &amp; hold horizon. Financials/utilities = FLOW_ONLY (ROE&gt;12% proxy). <b>Never blocks entry.</b></div>
+      </div>
+      <div class="reject empty"></div>
+    </div>
+    <div class="arrow"><div class="mid"><span class="glyph">▼</span></div></div>
+
+    <!-- 11 · order/fill = the pick -->
+    <div class="stage">
+      <div class="funnel">1<small>the pick</small></div>
+      <div class="node pick">
+        <div class="tag">Pipeline [8]–[10] · §6/§12 · THE PICK</div>
+        <div class="title">Order Gen → Paper Fill → Risk/Exit</div>
+        <div class="body"><b>LIMIT</b> @ trigger, size to <b>1% risk × conviction</b>, §6 caps (≤10%/name, ≤30%/sector). IDX-aware fill: next-open + slippage, lot 100, tick bands, ARA/ARB reject, <b>full fee stack</b> (commission + levy + VAT + 0.1% sell tax), T+2. Then stop · target · trailing · signal-decay exit (SCR-EXIT runs continuously over open + ARMED).</div>
+      </div>
+      <div class="reject empty"></div>
+    </div>
+
+  </div>
+
+  <div class="rulebox">
+    <div class="r ra"><div class="h">RULE A — Tradeability gate (LD-2)</div>
+      <div class="t">The Wyckoff phase classifier is a hard gate <b>before</b> scoring at step [3]. Only Accumulation Phase C or D is tradeable. Detectors feed it; nothing bypasses it.</div></div>
+    <div class="r rb"><div class="h">RULE B — Presentation gate (LD-9)</div>
+      <div class="t">A module may show SMS / probability / rank / buy-sell claim <b>only after</b> ≥ 3 months fill-realistic forward paper. Until earned: render the observation, no number. The paper engine is the sole promoter.</div></div>
+  </div>
+
+  <div class="legend">
+    <span><i class="sw" style="background:var(--scr)"></i>Server-side screener (Stockbit)</span>
+    <span><i class="sw" style="background:var(--eng)"></i>Engine compute (in-process)</span>
+    <span><i class="sw" style="background:var(--gate)"></i>Hard gate / decision</span>
+    <span><i class="sw" style="background:var(--veto)"></i>Veto / reject</span>
+    <span><i class="sw" style="background:var(--state)"></i>State</span>
+    <span><i class="sw" style="background:var(--pick)"></i>The pick (paper position)</span>
+  </div>
+
+  <div class="foot">Funnel: ~900 → SCR-0 eligibility (~100–150) → SCR-1(A∪B∪C) shortlist → engine raw pull → RULE A phase gate → SMS → veto → ARMED → SCR-2/3 → trigger (R:R≥2:1) → SCR-4 tilt → order/fill = the pick. No silent caps: anything a screener can't express is an engine residual, logged, never dropped. Private single-operator tool · not investment advice · paper only.</div>
+</div>
+</body>
+</html>
