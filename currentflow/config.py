@@ -328,3 +328,25 @@ ML_WEIGHT_SUM = 100               # weights sum to 100 per track (locked §4 str
 # Structurally-locked zero weights the optimizer must never fund (LD-1): Track B excludes
 # foreign flow (unreliable on lapis-2). Keyed by track → set of components pinned to 0.
 ML_LOCKED_ZEROS: dict[str, frozenset[str]] = {"A": frozenset(), "B": frozenset({"foreign_flow"})}
+
+# --- Automated ingestion scheduler (slice 12) -------------------------------------
+# Infra, not a spec slice: fires the already-implemented feeds on their own cadence
+# during Mon–Fri trading hours and writes cache only (never scores, never touches
+# RULE A/B; `as_of` stamping unchanged, so look-ahead safety is untouched). All times
+# are WIB, tz-naive (module docstring). Cadences are configurable — this is the default.
+#
+# The trading-hours window. EOD signal feeds publish ~16:15 (OHLCV_AVAILABLE_TIME),
+# AFTER this window closes, so a fire inside the window necessarily fetches the PRIOR
+# completed trading day — which is exactly the conservative look-ahead stamp already in
+# force (BROKER_CONSERVATIVE_AVAILABLE_TIME). Window bounds are inclusive.
+SCHEDULER_WINDOW_OPEN = time(9, 0)     # 09:00 WIB
+SCHEDULER_WINDOW_CLOSE = time(16, 0)   # 16:00 WIB
+# EOD per-symbol feeds (broker + OHLCV) + weekly rosters fetch the prior completed
+# trading day at the window open — matches BROKER_CONSERVATIVE_AVAILABLE_TIME (09:00).
+SCHEDULER_EOD_TIME = time(9, 0)
+# Universe screener refresh a beat later so the day's fresh survivor set lands after
+# the morning EOD ingest (steady state: per-symbol feeds use the prior refresh).
+SCHEDULER_SCREENER_TIME = time(9, 5)
+# The loop wakes this often to ask each feed "due?" against durable run-state. A tick
+# that finds nothing due (or is outside the window) is a cheap no-op.
+SCHEDULER_TICK_SECONDS = 60

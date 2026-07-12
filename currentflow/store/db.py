@@ -47,6 +47,7 @@ from currentflow.store.schema import (
     DAILY_BAR_COLUMNS,
     DDL,
     KSEI_COLUMNS,
+    SCHEDULER_RUNS_COLUMNS,
     SCR0_COLUMNS,
     SCR1A_COLUMNS,
     SCR1B_COLUMNS,
@@ -56,6 +57,7 @@ from currentflow.store.schema import (
     SCR4_COLUMNS,
     SCR_EXIT_COLUMNS,
     SYMBOL_INDEX_COLUMNS,
+    SchedulerRunRow,
 )
 
 
@@ -238,6 +240,15 @@ class Store:
         at index reconstitution, so each refresh writes a fresh `as_of` and read-latest wins."""
         rows = [(r.symbol, r.as_of, ",".join(r.indexes)) for r in rows_in]
         return self._insert("symbol_index", SYMBOL_INDEX_COLUMNS, rows)
+
+    def write_scheduler_run(self, rows_in: Iterable[SchedulerRunRow]) -> int:
+        """Record scheduler fires (slice 12). One row per fire; latest per feed drives
+        due-ness (read_scheduler_run_latest). Not ingest-once — each fire is a distinct
+        `last_fired_at`; a same-`now` re-write is an exact-key no-op (ON CONFLICT)."""
+        rows = [
+            (r.feed, r.last_fired_at, r.rows_written, r.outcome) for r in rows_in
+        ]
+        return self._insert("scheduler_runs", SCHEDULER_RUNS_COLUMNS, rows)
 
     def _insert(self, table: str, columns: Sequence[str], rows: list[tuple]) -> int:
         if not rows:
@@ -473,6 +484,50 @@ class Store:
             return None
         indexes = tuple(i for i in r[2].split(",") if i)  # "" → () (no membership known)
         return SymbolIndexRow(symbol=r[0], as_of=r[1], indexes=indexes)
+
+    # --- scheduler run-state (slice 12) -------------------------------------------
+
+    def read_scheduler_run_latest(self, feed: str) -> SchedulerRunRow | None:
+        """The most recent recorded fire of `feed` (any outcome) — the scheduler's
+        due-math anchor. None when the feed has never fired (a fresh install)."""
+        sql = (
+            f"SELECT {_cols(SCHEDULER_RUNS_COLUMNS)} FROM scheduler_runs "
+            'WHERE "feed" = ? ORDER BY "last_fired_at" DESC LIMIT 1'
+        )
+        r = self._con.execute(sql, [feed]).fetchone()
+        if r is None:
+            return None
+        return SchedulerRunRow(
+            feed=r[0], last_fired_at=r[1], rows_written=r[2], outcome=r[3]
+        )
+
+    def symbols(self, table: str = "daily_bar") -> list[str]:
+        """Distinct symbols present in `table` (the ingested-universe roster the
+        scheduler's per-symbol feeds iterate). Not look-ahead-gated — it is an
+        operational roster, not a signal read."""
+        return [
+            r[0]
+            for r in self._con.execute(
+                f'SELECT DISTINCT "symbol" FROM {table} ORDER BY "symbol"'
+            ).fetchall()
+        ]
+
+    def scr0_universe(self, decision_ts: datetime) -> list[str]:
+        """The latest cached SCR-0 survivor set visible at `decision_ts` — the
+        scheduler's UNIVERSE scope. Takes the most recent `date` whose rows are visible
+        (`as_of < decision_ts`, the look-ahead firewall); empty when no screener has run
+        yet (missing ≠ zero — the caller logs and ingests nothing rather than inventing a
+        universe)."""
+        sql = (
+            'SELECT DISTINCT "symbol" FROM scr0_eligible '
+            'WHERE "as_of" < ? AND "date" = ('
+            '  SELECT max("date") FROM scr0_eligible WHERE "as_of" < ?'
+            ') ORDER BY "symbol"'
+        )
+        return [
+            r[0]
+            for r in self._con.execute(sql, [decision_ts, decision_ts]).fetchall()
+        ]
 
     def _read(
         self,

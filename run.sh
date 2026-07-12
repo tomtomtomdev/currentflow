@@ -18,6 +18,10 @@
 #                         first run), e.g.
 #                           ./run.sh ingest BBCA BBRI --days 90
 #                           ./run.sh ingest BBCA --from 2026-04-01 --to 2026-07-03
+#   ./run.sh schedule     run the automated per-feed ingestion daemon (slice 12) —
+#                         fires each feed on its cadence during Mon–Fri trading hours;
+#                         --once runs a single tick and exits. Usually launchd-driven
+#                         (deploy/com.currentflow.scheduler.plist).
 #   ./run.sh log          tail the network-error log (logs/net.log; -f to follow)
 #   ./run.sh test         run the test suite
 #   ./run.sh stop         stop the running terminal (kills the Streamlit on $PORT)
@@ -77,6 +81,16 @@ case "$cmd" in
     [[ $# -ge 1 ]] || die "usage: ./run.sh ingest SYM [SYM ...] [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--days N] [--db PATH]"
     exec "$PY" -m currentflow.ingest "$@"
     ;;
+  schedule)
+    ensure_venv; ensure_deps
+    # Headless daemon: needs the operator's own session (build_live_client reads the
+    # Keychain access token). A 401 mid-run fails loud — it can't do the OTP re-login.
+    if ! "$PY" -m currentflow.dal.login status >/dev/null 2>&1; then
+      die "no session — run './run.sh login' before scheduling"
+    fi
+    shift || true
+    exec "$PY" -m currentflow.scheduler "$@"
+    ;;
   log)
     # No venv/deps needed — just read the local net-error log (dal/netlog.py).
     [[ -f "$NET_LOG" ]] || die "no log yet — $NET_LOG (written once a net-error occurs)"
@@ -124,6 +138,6 @@ case "$cmd" in
       --server.headless true
     ;;
   *)
-    die "unknown command '$cmd' — use: serve | login | paste | check | ingest | log | test | stop"
+    die "unknown command '$cmd' — use: serve | login | paste | check | ingest | schedule | log | test | stop"
     ;;
 esac

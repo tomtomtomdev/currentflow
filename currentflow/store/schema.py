@@ -6,6 +6,8 @@ Column identifiers are always double-quoted in generated SQL because several
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
 
 from currentflow.dal.models import InvestorType, RowStatus, Side
@@ -159,6 +161,28 @@ KSEI_COLUMNS: tuple[str, ...] = (
     "local_pct",
 )
 
+# Scheduler durable run-state (slice 12). Store-owned metadata, NOT a DAL feed — one
+# row per fire, survives restart so the daemon never double-fires or misses a day, and
+# doubles as the audit trail. `outcome` is a free VARCHAR (no enum/CHECK) whose values
+# are defined by `scheduler.runner` (OK / SKIPPED_EMPTY / ERROR).
+SCHEDULER_RUNS_COLUMNS: tuple[str, ...] = (
+    "feed",
+    "last_fired_at",
+    "rows_written",
+    "outcome",
+)
+
+
+@dataclass(frozen=True, slots=True)
+class SchedulerRunRow:
+    """One recorded scheduler fire (slice 12). `last_fired_at` is the run's injected
+    `now` (WIB, tz-naive) — the read side takes the latest per feed to decide due-ness."""
+
+    feed: str
+    last_fired_at: datetime
+    rows_written: int
+    outcome: str
+
 DDL = f"""
 CREATE TABLE IF NOT EXISTS daily_bar (
     "symbol"            VARCHAR   NOT NULL,
@@ -300,5 +324,13 @@ CREATE TABLE IF NOT EXISTS ksei_ownership (
     "foreign_pct" DOUBLE,
     "local_pct"   DOUBLE,
     PRIMARY KEY ("symbol", "date", "as_of")
+);
+
+CREATE TABLE IF NOT EXISTS scheduler_runs (
+    "feed"          VARCHAR   NOT NULL,
+    "last_fired_at" TIMESTAMP NOT NULL,
+    "rows_written"  BIGINT    NOT NULL,
+    "outcome"       VARCHAR   NOT NULL,
+    PRIMARY KEY ("feed", "last_fired_at")
 );
 """

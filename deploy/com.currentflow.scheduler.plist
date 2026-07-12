@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  LaunchAgent template for the CurrentFlow ingestion scheduler (slice 12).
+
+  Runs `run.sh schedule` (which resolves the repo .venv, verifies the operator's own
+  Keychain session, then execs `python -m currentflow.scheduler`). Local-first, single
+  operator — nothing leaves the machine (CLAUDE.md / §15). A 401 mid-run fails loud and the
+  daemon exits; KeepAlive restarts it, but until you re-run `./run.sh login` it will just
+  fail loud again (a headless process can't do the interactive OTP re-login) — check the log.
+
+  INSTALL (one-time):
+    1. Replace __REPO_ROOT__ below with the absolute path to this repo, e.g.
+         /Users/you/Desktop/currentflow
+       (leave nothing else to substitute — the daemon reads config/Keychain itself).
+    2. Copy into your LaunchAgents dir and load it:
+         cp deploy/com.currentflow.scheduler.plist ~/Library/LaunchAgents/
+         launchctl load ~/Library/LaunchAgents/com.currentflow.scheduler.plist
+    3. Tail the daemon log:  tail -f __REPO_ROOT__/logs/scheduler.out
+       Network errors also land in logs/net.log (`./run.sh log`).
+    Unload:  launchctl unload ~/Library/LaunchAgents/com.currentflow.scheduler.plist
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.currentflow.scheduler</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__REPO_ROOT__/run.sh</string>
+        <string>schedule</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>__REPO_ROOT__</string>
+
+    <!-- Start at login and keep it running; the internal loop self-gates to Mon–Fri
+         09:00–16:00 WIB, so off-hours ticks are cheap no-ops. -->
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>__REPO_ROOT__/logs/scheduler.out</string>
+    <key>StandardErrorPath</key>
+    <string>__REPO_ROOT__/logs/scheduler.err</string>
+</dict>
+</plist>

@@ -350,7 +350,7 @@ until `CHALLENGE_FINISH`) → `login/v6/new-device/verify` → `{access, refresh
   the primary auth surface; access+refresh in Keychain, credentials transient; **spec bumped
   v1.1 → v1.2** (§9.1/§10/§15), engine unchanged. reCAPTCHA-v3 / refresh-route resolution: <fill in>."
 
-## Slice 12 — Automated per-feed ingestion scheduler  ⬜
+## Slice 12 — Automated per-feed ingestion scheduler  ✅
 **Built as infra, not a new spec §11 slice** (the build order ends at 9; this is the slice-10
 posture). It replaces the manual `run.sh ingest` / empty-store bootstrap with a scheduler that
 fires each feed on its **own cadence** during Mon–Fri trading hours and writes to the DuckDB
@@ -358,6 +358,19 @@ cache. **No locked behavior changes; no spec bump.** The scheduler *writes cache
 scores, never touches RULE A/B, and `as_of` stamping is unchanged, so look-ahead safety is
 untouched. The calc engine keeps reading only from the cache (already true). Ingest-once still
 holds: a restart, a holiday, or a double-tick is a cheap no-op, never a re-pull.
+
+> **Shipped 2026-07-11 (`currentflow/scheduler/`; 19 new tests, 490 total).** Two faithful
+> deltas from the plan below, both forced by what actually has a persistence sink:
+> **(1) `broker_summary`+`ohlcv_foreign` collapse into one `eod_ingest` feed** — `ingest_symbol`
+> fetches both atomically (broker per day, bars written last as the ingest-once commit marker),
+> so scheduling them separately would double-drive `ingest_universe`.
+> **(2) 5 of the 8 planned feeds are wired; 3 are a documented deferral.** `corp_actions`,
+> `special_board`, and `symbol_info`-status have **no store table and no cache consumer** today
+> (`corp_actions` is an *injected* input to the RULE-A universe gate, not cached). Wiring them
+> would either invent a table or change how a RULE-A gate input is sourced — outside this
+> cache-only charter. They're named in `schedule.DEFERRED_FEEDS` (no silent caps); adding one is
+> a one-line `FEED_SCHEDULES` entry + a dispatch action once its sink lands. The `Interval` /
+> `ARMED_WATCHLIST` machinery for the deferred intraday status feed is built + tested regardless.
 
 **Locked decisions (2026-07-11; all cadences are configurable, this is the default):** scope =
 the **8 already-implemented feeds** (not the not-yet-built live overlays); mechanism = **launchd
@@ -373,59 +386,70 @@ rule). (c) Intraday polling is only for live-only overlays / mutable state flags
 signal feeds (that would break the EOD/look-ahead model, RULE A/B).
 
 **The cadence surface — `scheduler/schedule.py` (the only thing you edit to retune):**
-- [ ] Declarative `FEED_SCHEDULES` table: `FeedSchedule(feed, cadence, scope)`. Cadence kinds:
-      `DAILY_AT(t)`, `WEEKLY_AT(weekday, t)`, `INTERVAL(minutes, session_only)`. Scope: `UNIVERSE`
-      (latest cached screener survivors), `ARMED_WATCHLIST`, or `NONE` (market-wide). Default table:
+- [x] Declarative `FEED_SCHEDULES` table: `FeedSchedule(feed, cadence, scope)`. Cadence kinds:
+      `DailyAt(at, prior_trading_day)`, `WeeklyAt(weekday, at)`, `Interval(minutes, session_only)`.
+      Scope: `UNIVERSE` (latest cached screener survivors, `store.scr0_universe`), `ARMED_WATCHLIST`,
+      or `NONE` (market-wide). Shipped table (✅ = wired; ⏸ = deferred, no cache sink — see the
+      Shipped note above and `schedule.DEFERRED_FEEDS`):
 
-  | Feed (DAL method) | Cadence | Scope |
-  |---|---|---|
-  | `broker_summary` (CORE) | `DAILY_AT(09:00)` prior day | UNIVERSE |
-  | `ohlcv_foreign` | `DAILY_AT(09:00)` prior day | UNIVERSE |
-  | `run_screener` (universe refresh) | `DAILY_AT(09:05)` | NONE |
-  | `corp_actions` | `DAILY_AT(09:00)` | UNIVERSE |
-  | `special_board` | `DAILY_AT(09:00)` | NONE |
-  | `symbol_info` (suspend/UMA/notation) | `INTERVAL(15m, session_only)` | ARMED_WATCHLIST |
-  | `symbol_info.indexes` (membership) | `WEEKLY_AT(MON, 09:00)` | UNIVERSE |
-  | `ksei_ownership` | `WEEKLY_AT(MON, 09:00)` | UNIVERSE |
+  | Feed key | DAL method(s) → sink | Cadence | Scope | |
+  |---|---|---|---|---|
+  | `eod_ingest` | `broker_summary`+`ohlcv_foreign` → `ingest_universe` | `DailyAt(09:00, prior_day)` | UNIVERSE | ✅ |
+  | `universe_screener` | `run_screener` → `run_scr0`/`scr0_eligible` | `DailyAt(09:05)` | NONE | ✅ |
+  | `index_membership` | `symbol_info.indexes` → `refresh_membership`/`symbol_index` | `WeeklyAt(MON, 09:00)` | UNIVERSE | ✅ |
+  | `ksei_ownership` | `ksei_ownership` → `write_ksei_ownership` | `WeeklyAt(MON, 09:00)` | UNIVERSE | ✅ |
+  | `corp_actions` | (injected gate input; no cache table) | `DailyAt(09:00)` | UNIVERSE | ⏸ |
+  | `special_board` | (no consumer/table yet) | `DailyAt(09:00)` | NONE | ⏸ |
+  | `symbol_status` | `symbol_info` flags (no sink yet) | `Interval(15m, session)` | ARMED_WATCHLIST | ⏸ |
 
 **Trading-hours gate — `scheduler/calendar.py`:**
-- [ ] `is_trading_time(now)` → Mon–Fri, `SCHEDULER_WINDOW_OPEN`..`SCHEDULER_WINDOW_CLOSE` (09:00–16:00
-      WIB, new `config` constants); weekends skipped. IDX holidays are a **known gap** for now — a
-      fire on a holiday finds no new data (ingest-once no-op) and is logged; a `holidays.txt` lands
-      later (deferral below).
-- [ ] `next_fire(spec, last_run, now)` — pure due-math with an **injectable clock** (tests pin it),
-      so daily/weekly/interval decisions are deterministic and testable.
+- [x] `is_trading_time(now)` → Mon–Fri, `SCHEDULER_WINDOW_OPEN`..`SCHEDULER_WINDOW_CLOSE` (09:00–16:00
+      WIB, new `config` constants, inclusive); weekends skipped. Applicability is a separate
+      `applies_now(cadence, now)` gate (so a session-only interval respects the window while a
+      DAILY/WEEKLY instant lands in it by construction). IDX holidays are a **known gap** — a fire
+      on a holiday finds no new data (ingest-once no-op) and is logged; `holidays.txt` deferred.
+- [x] `next_fire(cadence, last_run, now)` / `is_due` — pure due-math with an **injectable clock**
+      (tests pin it); daily/weekly/interval decisions are deterministic. Ignores weekends/window
+      (that's `applies_now`) so a weekend-scheduled instant simply waits, never double-fires.
 
 **The loop — `scheduler/runner.py`:**
-- [ ] Ticks every `SCHEDULER_TICK_SECONDS` (default 60), asks each feed "due?" against durable
+- [x] Ticks every `SCHEDULER_TICK_SECONDS` (default 60), asks each feed "due?" against durable
       run-state, runs due feeds **sequentially** through the **existing** ingest surface:
-      `broker_summary`+`ohlcv_foreign`+`corp_actions` → `ingest.pipeline.ingest_universe`;
-      membership → `ingest.pipeline.refresh_membership`; `run_screener`/`symbol_info`(status)/
-      `special_board`/`ksei_ownership` → thin new ingest actions wrapping the client methods.
-- [ ] Universe/watchlist ordering per day: **screener → cached universe → per-symbol feeds over it**;
-      `symbol_info` intraday polls only ARMED + open-watchlist names (bounded, paywall-safe).
-      Off-scope/skipped names are **logged, never silently dropped** (no silent caps).
-- [ ] **Fail loud on 401** (the daemon can't do the interactive OTP re-login) — surfaces in the log
-      and halts that feed's fires; never emits stale/empty (unchanged DAL contract).
+      `eod_ingest` (broker+OHLCV) → `ingest.pipeline.ingest_universe`; `index_membership` →
+      `ingest.pipeline.refresh_membership`; `universe_screener` → `screeners.scr0.run_scr0`;
+      `ksei_ownership` → a thin action over `client.ksei_ownership` + `store.write_ksei_ownership`.
+- [x] Universe/watchlist ordering per day: **screener → cached universe → per-symbol feeds over it**
+      (screener/market-wide feeds ordered first in `FEED_SCHEDULES`; the EOD feed uses the *prior*
+      cached screener set — `as_of < now` — a one-day lag by design). ARMED_WATCHLIST resolves ARMED
+      + WATCH names (for the deferred status feed). Empty universe → SKIPPED_EMPTY + logged, never
+      an invented universe (missing ≠ zero, no silent caps).
+- [x] **Fail loud on 401** — `AuthError` propagates out of the tick (no run recorded → the feed
+      stays due) and halts the daemon (exit 1); never stale/empty. Non-auth feed errors (already
+      retried in the client) are logged + recorded ERROR and advance the clock (retry next cadence,
+      not hammered every tick; manual `./run.sh ingest` backfills the missed day).
 
 **Durable run-state — `store/`:**
-- [ ] New `scheduler_runs(feed, last_fired_at, rows_written, outcome)` table + schema migration.
-      Survives restart → no double-fire, no missed day; doubles as the audit trail.
+- [x] New `scheduler_runs(feed, last_fired_at, rows_written, outcome)` table (added to the DDL;
+      no versioning — `CREATE TABLE IF NOT EXISTS`). `write_scheduler_run` + `read_scheduler_run_latest`
+      (latest per feed drives due-ness); survives restart → no double-fire; doubles as the audit trail.
 
 **Entry point + launchd (hands-off, survives reboot):**
-- [ ] `python -m currentflow.scheduler` — standalone async daemon; `run.sh serve` gains a scheduler
-      start (or a new `run.sh schedule`), reusing the slice-10/11 live session factory for auth.
-- [ ] `deploy/com.currentflow.scheduler.plist` LaunchAgent template (`RunAtLoad` + `KeepAlive`,
-      stdout/err → `logs/`) + `launchctl load` install note.
+- [x] `python -m currentflow.scheduler` — standalone async daemon (`--once` = single tick, `--db`);
+      new `run.sh schedule` (session-checked, mirrors `ingest`) reusing the slice-10/11 live session
+      factory for auth.
+- [x] `deploy/com.currentflow.scheduler.plist` LaunchAgent template (`RunAtLoad` + `KeepAlive`,
+      stdout/err → `logs/`) + `launchctl load` install note (`__REPO_ROOT__` placeholder).
 
-**Tests (TDD, write first — mirrors the slice-1 look-ahead/ingest-once discipline):**
-- [ ] `next_fire` due-math with a pinned clock (daily / weekly / interval).
-- [ ] trading-hours gate rejects weekends + outside-window; honors `session_only` intervals.
-- [ ] EOD feed fetches the **prior** completed trading day at 09:00.
-- [ ] durable state: a feed already fired today is skipped after a restart (no double-fire).
-- [ ] ingest-once invariant under the scheduler: a second fire makes **zero** network calls
-      (reuse the `tests/test_pipeline.py` `calls == []` pattern).
-- [ ] a 401 during a scheduled fire **fails loud** (never silently skips a feed).
+**Tests (TDD — mirrors the slice-1 look-ahead/ingest-once discipline; 19 new):**
+- [x] `next_fire` due-math with a pinned clock (daily / weekly / interval).
+- [x] trading-hours gate rejects weekends + outside-window; honors `session_only` intervals.
+- [x] EOD feed fetches the **prior** completed trading day at 09:00.
+- [x] durable state: a feed already fired today is skipped after a restart (no double-fire).
+- [x] ingest-once invariant under the scheduler: a second fire makes **zero** network calls
+      (the `tests/test_pipeline.py` `calls == []` pattern).
+- [x] a 401 during a scheduled fire **fails loud** (never silently skips a feed; nothing recorded).
+- [x] + scope resolution, universe-refresh round-trip, empty-universe skip, every-feed-has-an-action,
+      deferred-feeds-documented-and-unscheduled, and the `run_loop` bounded-run / auth-halt paths.
 
 **Deferred (out of this build):** Tier-1 live overlays (`orderbook`, `running-trade`), the regime
 gate, and `fundamentals_live` — their DAL methods aren't built yet; the `FEED_SCHEDULES` table has
@@ -433,11 +457,12 @@ room and adding one is a one-line entry once the client method lands. Also defer
 `holidays.txt` calendar; and moving the EOD fire to **post-close** once `BROKER_PUBLISH_LATENCY`
 is empirically pinned (LD-5) — one cadence-entry edit, no code change.
 
-- **Decisions-log entry** to add to `PROGRESS.md` when this lands: "automated per-feed ingestion
+- **Decisions-log entry (landed 2026-07-11, logged in `PROGRESS.md`):** automated per-feed ingestion
   scheduler (`currentflow/scheduler/`) replaces manual `run.sh ingest`; declarative `FEED_SCHEDULES`
-  cadence table over the 8 implemented feeds, Mon–Fri 09:00–16:00 WIB gate, EOD-at-open prior-day,
-  15-min intraday flag polling; launchd-driven; writes cache only (RULE A/B + `as_of` untouched),
-  ingest-once preserved; no spec bump (infra, slice-10 posture)."
+  cadence table, Mon–Fri 09:00–16:00 WIB gate, EOD-at-open prior-day; launchd-driven; writes cache
+  only (RULE A/B + `as_of` untouched), ingest-once preserved; **5 of 8 feeds wired, 3 deferred for
+  lack of a cache sink** (`corp_actions`/`special_board`/`symbol_status`); no spec bump (infra,
+  slice-10 posture).
 
 ---
 
