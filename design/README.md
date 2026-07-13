@@ -2,6 +2,18 @@
 
 **This is the index. Read it first, then the referenced docs.** It is self-sufficient for orienting a developer who was not in the design conversation.
 
+> **⚠️ v2 restructure (2026-07-13) — read [`HANDOFF_v2.md`](HANDOFF_v2.md) first.** The terminal
+> was reorganized: the **left module nav rail is removed** and **Signal Pipeline** is now the sole
+> top-level view — a Track A / Track B triage grid where each candidate flows through the four locked
+> stages (Universe Gate → Phase Classifier → Signal Components → Veto Filters) to a verdict
+> (`ARMED` / `WATCH` / `REJECTED`; `EXITED` pending — see PLAN.md Phase 2). The former per-stock
+> modules **Broker Flow, Foreign Flow, Accumulation Detector, Money Replay** are now **evidence tabs**
+> opened by clicking a pipeline row. The four analytics-only modules (Smart Heatmap, Sector Rotate,
+> Risk Monitor, SMS/Rank) + AI Ranking / Daily Top / ML are no longer top-level (code retained, see
+> PROGRESS.md). RULE A/B are unchanged. [`HANDOFF_v2.md`](HANDOFF_v2.md) is the authoritative per-screen
+> v2 spec; [`IDX Flow Terminal.dc.html`](<IDX Flow Terminal.dc.html>) is the v2 prototype. The
+> Streamlit implementation of this restructure shipped in **PLAN.md Slice 14**.
+
 ---
 
 ## What this is
@@ -16,7 +28,7 @@ The app has two parts, now split across **two prototype files**:
 
 The two parts:
 1. **Session gate** — in-app username/password + MFA (OTP) login that establishes the operator's own Stockbit session (§9.1). Fails loud — no valid session renders the login flow instead of the terminal, never a blank/stale terminal.
-2. **Terminal** — a dark, paned, keyboard-adjacent workbench: top status bar, left module nav rail, main module pane, right ARMED watchlist, bottom disclaimer ticker. Eight modules (Broker Flow, Foreign Flow, Accumulation Detector, Money Replay, Smart Heatmap, Sector Rotation, Risk Monitor, SMS / Rank).
+2. **Terminal** — a dark, paned, keyboard-adjacent workbench: top status bar, main pane, right ARMED watchlist, bottom disclaimer ticker. **v2:** the main pane is the **Signal Pipeline** (Track A/B triage grid); clicking a candidate opens its **evidence tabs** — Broker Flow, Foreign Flow, Accumulation Detector, Money Replay. (The pre-v2 layout had a left module nav rail with eight modules; see the v2 banner above and [`HANDOFF_v2.md`](HANDOFF_v2.md).)
 
 ## Fidelity
 **High-fidelity (hifi).** Final colors, typography, spacing, chart layouts, states, and interaction logic are all specified in the screen docs. Recreate pixel-accurately using the target stack's libraries.

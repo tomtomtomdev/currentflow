@@ -1,5 +1,13 @@
 # Handoff: IDX Smart-Money Flow Terminal
 
+> **⚠️ Superseded in part by v2 (2026-07-13).** This document describes the pre-v2 shell with a
+> **left module nav rail and eight top-level modules**. In v2 the nav rail is **removed**, **Signal
+> Pipeline** is the sole top-level view, and Broker Flow / Foreign Flow / Accumulation Detector /
+> Money Replay are **evidence tabs** opened from a pipeline row. Use [`HANDOFF_v2.md`](HANDOFF_v2.md)
+> as the authoritative v2 layout/spec; the **per-module component/chart/token specs below remain
+> accurate** for those four evidence views and the shell chrome (top bar, right rail, ticker) — only
+> the navigation model changed. RULE A/B are unchanged.
+
 ## Overview
 A private, single-operator **flow terminal** for the Indonesia Stock Exchange (IDX), built to the attached `LOCKED_SPEC.md` (v1.1). It surfaces broker/foreign "smart-money" flow as **observation** — never as advice — and enforces the spec's two governing rules directly in the UI:
 

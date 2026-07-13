@@ -78,32 +78,13 @@ from currentflow.ui.risk_view import (
 from currentflow.ui import shell
 from currentflow.ui.sector_view import scatter_points, sector_rows
 from currentflow.ui.sms_view import GATE_BANNER, WATCHLIST_FRAMING, component_rows, score_display, state_label
-from currentflow.ui import daily_top_view, ml_view, ranking_view, watchlist_view
+from currentflow.ui import daily_top_view, ml_view, pipeline_view, ranking_view, watchlist_view
 from currentflow.validation.promotion import ValidationLedger
 
-# (icon glyph, title, gated?) — the nav rail. Rendered with st.radio's native
-# `captions=`: the icon is the option label, the title its caption directly below,
-# so the item stacks vertically (icon over title) — design: leftmost rail. The
-# stable full "icon title" string is the option value / renderer key.
-_MODULE_DEFS = [
-    ("⇄", "Broker Flow", False),
-    ("⌖", "Foreign Flow", False),
-    ("◱", "Accum. Detect", False),
-    ("⟲", "Money Replay", False),
-    ("▦", "Smart Heatmap", False),
-    ("✦", "Sector Rotate", False),
-    ("◈", "Risk Monitor", False),
-    ("∑", "SMS / Rank", True),
-    ("◇", "AI Ranking", True),
-    ("☰", "Daily Top", True),
-    ("⚙", "ML Layer", True),
-]
-MODULES = [f"{icon} {title}" for icon, title, _ in _MODULE_DEFS]
-_MODULE_ICON = {k: icon for k, (icon, _, _) in zip(MODULES, _MODULE_DEFS)}
-_MODULE_CAPTION = {
-    k: f"{title}{' 🔒' if locked else ''}"
-    for k, (_, title, locked) in zip(MODULES, _MODULE_DEFS)
-}
+# The pre-v2 left module nav rail is removed (design v2). Signal Pipeline is the sole
+# top-level view; the four per-stock analyzers are evidence tabs. The `_render_*`
+# module functions below (heatmap/sector/risk/sms/ranking/daily-top/ml) are retained
+# in code + tests but no longer navigated to — see PROGRESS.md decisions (2026-07-13).
 
 # IHSG (Jakarta Composite) is display-only top-bar chrome — signals never benchmark
 # to it (§8). Read a real level if a composite series happens to be ingested under
@@ -180,12 +161,6 @@ def _watchlist_data(db_path: str, day: str, n_symbols: int, roster_ver: str) -> 
     return watchlist_view.rows(_all_results(_store(db_path), None, datetime.now()))
 
 
-def _select_symbol(symbol: str) -> None:
-    """`on_click` for a rail card — runs before the rerun renders, so the module
-    pane and the card highlight both see the new selection in the same pass."""
-    st.session_state["cf_symbol"] = symbol
-
-
 def _selected_symbol(store: Store, *, table: str = "daily_bar") -> str | None:
     """The rail-selected symbol, validated against what `table` actually holds.
     Selection lives in the right rail (design: click a watchlist card) — there is
@@ -230,8 +205,8 @@ def _render_watchlist_rail(store: Store) -> None:
                 unsafe_allow_html=True,
             )
             st.button(
-                sym, key=f"cfsel-{sym}", on_click=_select_symbol, args=(sym,),
-                help=f"View {sym} in the active module",
+                sym, key=f"cfsel-{sym}", on_click=_open_detail, args=(sym,),
+                help=f"Open the evidence for {sym}",
             )
     if not data["rows"]:
         st.markdown(
@@ -295,13 +270,14 @@ def _trap_ribbon(store: Store, symbol: str, decision_ts: datetime) -> None:
         st.dataframe(pd.DataFrame(ribbon_rows(mon)), use_container_width=True)
 
 
-def _render_broker_flow(store: Store) -> None:
-    _module_header(
-        "Broker Flow Analyzer",
-        "Per-stock broker net buy/sell · DNA classification · concentration & "
-        "persistence. The differentiator — pure observation, ships now.",
-        "observation", OBSERVATION_BADGE,
-    )
+def _render_broker_flow(store: Store, *, show_header: bool = True) -> None:
+    if show_header:
+        _module_header(
+            "Broker Flow Analyzer",
+            "Per-stock broker net buy/sell · DNA classification · concentration & "
+            "persistence. The differentiator — pure observation, ships now.",
+            "observation", OBSERVATION_BADGE,
+        )
 
     symbols = _symbols(store, "broker_net")
     if not symbols:
@@ -375,13 +351,14 @@ def _render_broker_flow(store: Store) -> None:
     )
 
 
-def _render_foreign_flow(store: Store) -> None:
-    _module_header(
-        "Foreign Flow Dashboard",
-        "Foreign net-buy magnitude & persistence vs float · foreign/domestic split · "
-        "KSEI ownership trend · flow-reversal detection.",
-        "observation", "OBSERVATION · ships now",
-    )
+def _render_foreign_flow(store: Store, *, show_header: bool = True) -> None:
+    if show_header:
+        _module_header(
+            "Foreign Flow Dashboard",
+            "Foreign net-buy magnitude & persistence vs float · foreign/domestic split · "
+            "KSEI ownership trend · flow-reversal detection.",
+            "observation", "OBSERVATION · ships now",
+        )
 
     symbols = _symbols(store, "daily_bar")
     if not symbols:
@@ -536,13 +513,14 @@ def _render_foreign_flow(store: Store) -> None:
             st.caption("No visible flow to aggregate for the latest day.")
 
 
-def _render_replay(store: Store) -> None:
-    _module_header(
-        "Money Flow Replay",
-        "Scrub the historical flow/price evolution for any name — the audit tool for "
-        "every signal. Reconstructed from stored as_of data.",
-        "observation", "OBSERVATION",
-    )
+def _render_replay(store: Store, *, show_header: bool = True) -> None:
+    if show_header:
+        _module_header(
+            "Money Flow Replay",
+            "Scrub the historical flow/price evolution for any name — the audit tool for "
+            "every signal. Reconstructed from stored as_of data.",
+            "observation", "OBSERVATION",
+        )
 
     symbols = _symbols(store, "daily_bar")
     if not symbols:
@@ -661,13 +639,14 @@ def _render_replay(store: Store) -> None:
         st.rerun()
 
 
-def _render_accumulation(store: Store) -> None:
-    _module_header(
-        "Institutional Accumulation Detector",
-        "Stealth divergence: price flat/down while net accumulation rises · "
-        "accumulator VWAP · volume dry-up in consolidation. Measured, not scored.",
-        "observation", "OBSERVATION · ships now",
-    )
+def _render_accumulation(store: Store, *, show_header: bool = True) -> None:
+    if show_header:
+        _module_header(
+            "Institutional Accumulation Detector",
+            "Stealth divergence: price flat/down while net accumulation rises · "
+            "accumulator VWAP · volume dry-up in consolidation. Measured, not scored.",
+            "observation", "OBSERVATION · ships now",
+        )
 
     symbols = _symbols(store, "daily_bar")
     if not symbols:
@@ -1425,6 +1404,136 @@ def _maybe_bootstrap(store: Store) -> None:
         st.rerun()
 
 
+def _last_close_and_change(bars) -> tuple[float | None, float | None]:
+    """Last close + day-over-day %-change from look-ahead-safe bars (missing ≠ zero:
+    only bars with a real close count)."""
+    closes = [b.close for b in sorted(bars, key=lambda b: b.date) if b.close is not None]
+    if not closes:
+        return None, None
+    price = closes[-1]
+    chg = ((closes[-1] / closes[-2] - 1) * 100) if len(closes) >= 2 and closes[-2] else None
+    return price, chg
+
+
+def _candidate(store: Store, symbol: str, decision_ts: datetime) -> dict:
+    """One Signal-Pipeline candidate: the real engine result + display meta. Track is
+    the spec §3 assignment; adv20 reconciles with the gate/track ADV (`engine._adv20`).
+
+    NOTE (Phase 2 — unconnected plumbing to resolve): the verdict here is ARMED / WATCH /
+    REJECTED only. The design's fourth verdict, EXITED (a position that entered then sold
+    on a broken thesis, with realized P&L + a ⤶ reversed stage), is NOT surfaced — that
+    data lives in the portfolio paper-trader (`validation.portfolio_runner` closed
+    positions) and is not yet wired into the pipeline. See PLAN.md 'Phase 2'."""
+    bars = store.read_daily_bars(symbol, decision_ts)
+    track = track_mod.resolve_track(store, symbol, decision_ts, bars)
+    result = engine.evaluate(store, symbol, decision_ts, track=track)
+    price, chg = _last_close_and_change(bars)
+    return {
+        "result": result,
+        "name": symbol,  # company names not stored — ticker doubles as the name
+        "price": price,
+        "chg": chg,
+        "adv20": engine._adv20(bars),
+        "sector": OPERATOR_SECTOR_MAP.get(symbol),
+    }
+
+
+def _open_detail(ticker: str) -> None:
+    """Row click → open the evidence tabs for `ticker` (Broker Flow first)."""
+    st.session_state["cf_detail"] = ticker
+    st.session_state["cf_symbol"] = ticker  # the evidence renderers key off cf_symbol
+    st.session_state["cf_tab"] = "broker"
+
+
+def _close_detail() -> None:
+    st.session_state["cf_detail"] = None
+
+
+def _set_tab(tab: str) -> None:
+    st.session_state["cf_tab"] = tab
+
+
+_EVIDENCE_TABS = (
+    ("broker", "Broker Flow"),
+    ("foreign", "Foreign Flow"),
+    ("accum", "Accum. Detect"),
+    ("replay", "Money Replay"),
+)
+
+
+def _render_pipeline(store: Store) -> None:
+    """The Signal Pipeline — the sole top-level view (design v2). Every ingested name
+    flows through the four locked stages; rows are grouped into Track A / Track B lanes.
+    Clicking a row opens that name's evidence tabs."""
+    _module_header(
+        "Signal Pipeline",
+        "Track A and Track B candidates flow left → right through the locked pipeline "
+        "(§2): Universe Gate → Phase Classifier → Signal Components → Veto Filters. Each "
+        "cell explains why a name passed or failed; tap a row for the full evidence.",
+        "observation", "OBSERVATION · ships now",
+    )
+    symbols = _symbols(store, "daily_bar")
+    if not symbols:
+        st.warning("No data ingested yet — run the ingest pipeline first.")
+        return
+
+    decision_ts = datetime.now()
+    candidates = [_candidate(store, s, decision_ts) for s in symbols]
+    lanes = pipeline_view.build_lanes(candidates)
+
+    st.markdown(shell.pipeline_stage_header_html(), unsafe_allow_html=True)
+    for lane in lanes:
+        st.markdown(shell.pipeline_lane_header_html(lane), unsafe_allow_html=True)
+        if not lane["rows"]:
+            st.markdown(
+                '<div class="cf-lanenote">— no candidates in this track today</div>',
+                unsafe_allow_html=True,
+            )
+            continue
+        for row in lane["rows"]:
+            with st.container(key=f"cfpipe-{row['ticker']}"):
+                st.markdown(shell.pipeline_row_html(row), unsafe_allow_html=True)
+                st.button(
+                    row["ticker"], key=f"cfpipeopen-{row['ticker']}",
+                    on_click=_open_detail, args=(row["ticker"],),
+                    help=f"Open the evidence for {row['ticker']}",
+                )
+    st.markdown(shell.pipeline_footer_html(), unsafe_allow_html=True)
+
+
+def _render_detail(store: Store, ticker: str) -> None:
+    """Per-stock evidence: contextual header ('Why {TICKER} …') + a back button, the
+    EVIDENCE tab bar, and the active evidence view (reusing the four module renderers,
+    each keyed off the rail-selected symbol)."""
+    decision_ts = datetime.now()
+    row = pipeline_view.build_row(_candidate(store, ticker, decision_ts))
+    hd = pipeline_view.detail_header(row)
+
+    back_col, head_col = st.columns([0.13, 0.87], gap="small")
+    with back_col, st.container(key="cfback"):
+        st.button("‹ Pipeline", key="cfbackbtn", on_click=_close_detail)
+    with head_col:
+        _module_header(hd["title"], hd["subtitle"], "observation", "OBSERVATION · ships now")
+
+    active = st.session_state.get("cf_tab", "broker")
+    with st.container(key="cfevbar"):
+        st.markdown('<span class="cf-evlabel">EVIDENCE</span>', unsafe_allow_html=True)
+        for col, (key, label) in zip(st.columns(len(_EVIDENCE_TABS)), _EVIDENCE_TABS):
+            with col:
+                st.button(
+                    label, key=f"cftab-{key}", on_click=_set_tab, args=(key,),
+                    type="primary" if key == active else "secondary",
+                )
+
+    renderer = {
+        "broker": _render_broker_flow,
+        "foreign": _render_foreign_flow,
+        "accum": _render_accumulation,
+        "replay": _render_replay,
+    }[active]
+    renderer(store, show_header=False)
+
+
 def main() -> None:
     configure_logging()  # persist dal `net-error` lines to logs/net.log
     st.set_page_config(page_title="CurrentFlow", layout="wide")
@@ -1445,37 +1554,22 @@ def main() -> None:
     )
     _maybe_bootstrap(store)  # slice 13: first-run auto-ingest into an empty store
 
-    module = st.sidebar.radio(
-        "Module", MODULES, index=0,
-        format_func=lambda k: _MODULE_ICON[k],   # icon is the label…
-        captions=[_MODULE_CAPTION[k] for k in MODULES],  # …title stacks beneath it
-        label_visibility="collapsed",
-    )
-    renderers = {
-        MODULES[0]: _render_broker_flow,
-        MODULES[1]: _render_foreign_flow,
-        MODULES[2]: _render_accumulation,
-        MODULES[3]: _render_replay,
-        MODULES[4]: _render_heatmap,
-        MODULES[5]: _render_sector,
-        MODULES[6]: _render_risk,
-        MODULES[7]: _render_sms,
-        MODULES[8]: _render_ranking,
-        MODULES[9]: _render_daily_top,
-        MODULES[10]: _render_ml,
-    }
-    # design shell: main module pane + the 296px ARMED-watchlist right rail
-    # (operator token + sign-out sit at the top of the rail, above the cards)
+    # design v2: the left module nav rail is removed — Signal Pipeline is the sole
+    # top-level view. Clicking a pipeline candidate opens that name's evidence tabs
+    # (Broker Flow / Foreign Flow / Accum. Detect / Money Replay); `‹ Pipeline` returns.
+    # The seven earlier modules (heatmap/sector/risk/sms/ranking/daily-top/ml) remain in
+    # code and under test but are no longer top-level per the v2 handoff (§9 tension
+    # logged in PROGRESS.md decisions).
     main_col, rail_col = st.columns([2.55, 1], gap="medium")
     with rail_col:
         _render_session_head(info)
         _render_watchlist_rail(store)
     with main_col:
-        if module in renderers:
-            renderers[module](store)
+        detail = st.session_state.get("cf_detail")
+        if detail:
+            _render_detail(store, detail)
         else:
-            st.subheader(module)
-            st.info("Not built yet — lands in a later slice (see PLAN.md).")
+            _render_pipeline(store)
 
     st.markdown(shell.ticker_html(), unsafe_allow_html=True)
 

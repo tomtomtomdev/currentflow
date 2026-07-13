@@ -165,3 +165,29 @@ SMS weights (Track B) surfaced in copy: `DIV 30 · Broker 35 · RVOL 15 · Block
 Target is **local-first Python: Streamlit + DuckDB/SQLite + Pandas/Polars + TA-Lib.** To hit this fidelity in Streamlit, inject a global CSS block with the tokens above (custom theme + `st.markdown` component CSS), load Geist/Geist Mono via `@font-face`/Google Fonts, and build panels as styled containers. Charts → Plotly/Altair themed to the palette (dark template, mono tick fonts, the shade/dashed-line conventions in §4). If a React front-end is chosen instead, port the inline styles directly — they are already framework-agnostic literals.
 
 Do **not** ship the `.dc.html` runtime or its `<x-dc>` / `DCLogic` scaffolding — it is design-tool-specific. Read it only for values, composition, and interaction logic.
+
+---
+
+## 8. v2 Signal Pipeline tokens (2026-07-13)
+The v2 restructure adds the **Signal Pipeline** as the sole top-level view and **removes the left
+nav rail** (the main column starts flush at the body's left edge; hide the Streamlit sidebar).
+Every token below is lifted verbatim from the v2 prototype — the full tables live in
+[`HANDOFF_v2.md`](HANDOFF_v2.md) (§Signal Pipeline). Summary:
+
+**Stage-cell state** (`gate`/`phase`/`sig`/`veto`), mark · fg · dot · bg · border:
+- `pass` `✓` `#7ee08a` · `#3fb950` · `rgba(63,185,80,0.05)` · `rgba(63,185,80,0.22)`
+- `fail` `✕` `#f6a9a4` · `#f85149` · `rgba(248,81,73,0.07)` · `rgba(248,81,73,0.38)`
+- `low` `▽` `#e8c168` · `#d29922` · `rgba(210,153,34,0.07)` · `rgba(210,153,34,0.38)`
+- `rev` `⤶` `#f0a0a8` · `#e06b7a` · `rgba(224,107,122,0.08)` · `rgba(224,107,122,0.42)` (EXITED only — Phase 2)
+- `skip` `·` `#3d4654` · `#3d4654` · `rgba(255,255,255,0.015)` · `rgba(255,255,255,0.04)`
+
+**Verdict cell** — label · dot · bg · border:
+- `ARMED` `#e8c168` · `#d29922` (`armedpulse`) · `rgba(210,153,34,0.08)` · `rgba(210,153,34,0.42)`
+- `WATCH` `#8fdcec` · `#58c4dd` · `rgba(88,196,221,0.06)` · `rgba(88,196,221,0.3)`
+- `REJECTED` `#8b98a9` · `#f85149` · `rgba(255,255,255,0.02)` · `rgba(255,255,255,0.07)`
+
+**Grid:** `grid-template-columns: 170px repeat(4,1fr) 150px; gap:8px` (candidate · 4 stages · result).
+Stage-card numbered chip: `15×15`, `#58c4dd` bg, `#04121a` glyph. Row is fully clickable → evidence tabs.
+
+The Streamlit implementation of these tokens lives in `currentflow/ui/shell.py` (`_STAGE_STYLE`,
+`_RESULT_STYLE`, the `.cf-pipe*`/`.cf-stage*`/`.cf-res*` classes) and `currentflow/ui/pipeline_view.py`.

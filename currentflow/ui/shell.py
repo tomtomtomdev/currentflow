@@ -139,46 +139,11 @@ button[data-testid="stExpandSidebarButton"]:hover {{
 .stMainBlockContainer, .block-container {{
   padding:14px 18px 8px !important; max-width:100% !important;
 }}
-/* Nav rail — design width 82px (SCREENS_terminal §shell); pin it so Streamlit's
-   ~244px default collapses to the design's icon-over-label rail. */
-section[data-testid="stSidebar"] {{
-  background:{TOKENS["bg_rail"]}; border-right:1px solid {TOKENS["border_panel"]};
-  width:146px !important; min-width:146px !important; max-width:146px !important;
-}}
-section[data-testid="stSidebar"] > div {{ width:146px !important; min-width:146px !important; }}
-section[data-testid="stSidebar"] div[data-testid="stSidebarUserContent"] {{ padding:8px 6px; }}
-/* nav-rail items stack vertically — icon glyph over title, centered (design:
-   the leftmost rail is icon-on-top-of-label, not a horizontal row). st.radio's
-   `captions=` renders the title directly beneath the icon label; the flex-column
-   label just centers the two and hides the radio circle. */
-section[data-testid="stSidebar"] div[data-testid="stRadio"] label {{
-  display:flex; flex-direction:column; align-items:center; text-align:center;
-  gap:1px; border-radius:9px; padding:9px 4px; line-height:1.2;
-  margin:2px 0; border:1px solid transparent; color:{TOKENS["text_muted"]};
-  width:100%; cursor:pointer;
-}}
-section[data-testid="stSidebar"] div[data-testid="stRadio"] label div[data-testid="stMarkdownContainer"] p {{
-  margin:0; font-size:17px; line-height:1.4;  /* the icon label */
-}}
-section[data-testid="stSidebar"] div[data-testid="stRadio"] label div[data-testid="stCaptionContainer"] {{
-  text-align:center;
-}}
-section[data-testid="stSidebar"] div[data-testid="stRadio"] label div[data-testid="stCaptionContainer"] p {{
-  margin:0; font-size:10px; letter-spacing:0.01em; line-height:1.2;  /* the title */
-}}
-section[data-testid="stSidebar"] div[data-testid="stRadio"] label:hover {{
-  color:{TOKENS["text"]};
-}}
-section[data-testid="stSidebar"] div[data-testid="stRadio"] label:hover div[data-testid="stCaptionContainer"] p {{
-  color:{TOKENS["text_secondary"]};
-}}
-section[data-testid="stSidebar"] div[data-testid="stRadio"] label:has(input:checked) {{
-  background:rgba(88,196,221,0.10); border-color:rgba(88,196,221,0.25);
-  color:{TOKENS["text"]};
-}}
-section[data-testid="stSidebar"] div[data-testid="stRadio"] label[data-baseweb="radio"] > div:first-child {{
-  display:none;  /* the radio circle — the design nav has none */
-}}
+/* v2 (design_handoff_flow_terminal): the left module nav rail is REMOVED — Signal
+   Pipeline is the sole top-level module, so the main column starts flush at the left
+   edge. Hide the sidebar and its expand control entirely (no rail to reopen). */
+section[data-testid="stSidebar"] {{ display:none !important; }}
+button[data-testid="stExpandSidebarButton"] {{ display:none !important; }}
 /* --- operator head + sign-out (top of the ARMED watchlist rail) ------------ */
 .cf-ophead {{
   display:flex; align-items:center; gap:7px; flex-wrap:wrap;
@@ -468,6 +433,91 @@ div[class*="st-key-cflogincard"] div[data-testid="stForm"] {{ border:none; paddi
   border:1px solid rgba(255,255,255,0.05); color:{TOKENS["text"]};
 }}
 .cf-matrix .cf-empty {{ border:1px dashed rgba(255,255,255,0.05); color:{TOKENS["text_faint"]}; }}
+/* --- Signal Pipeline (v2 main page) --------------------------------------- */
+.cf-pipehead {{
+  display:grid; grid-template-columns:170px repeat(4,1fr) 150px; gap:8px;
+  margin-bottom:4px; align-items:stretch;
+}}
+.cf-colcap {{
+  display:flex; align-items:flex-end; padding:8px 4px; font-size:10px;
+  color:{TOKENS["text_faint"]}; letter-spacing:0.06em;
+}}
+.cf-stagecard {{
+  position:relative; background:rgba(255,255,255,0.03); border:1px solid {TOKENS["border_bar"]};
+  border-radius:8px; padding:9px 12px;
+}}
+.cf-stagen {{
+  font-family:{_MONO}; font-size:9px; color:#04121a; background:{TOKENS["accent"]};
+  border-radius:4px; width:15px; height:15px; display:inline-flex; align-items:center;
+  justify-content:center; font-weight:600; flex:0 0 15px;
+}}
+.cf-stagetitle {{ font-size:10.5px; font-weight:600; letter-spacing:0.05em; color:{TOKENS["text_secondary"]}; }}
+.cf-stagesub {{ font-size:9.5px; color:{TOKENS["text_faint"]}; margin-top:4px; }}
+.cf-chev {{ position:absolute; right:-10px; top:50%; transform:translateY(-50%); color:#3d4654; font-size:13px; z-index:1; }}
+.cf-lanehead {{ display:flex; align-items:center; gap:10px; margin:14px 0 9px; }}
+.cf-lanechip {{
+  font-family:{_MONO}; font-weight:600; font-size:11px; letter-spacing:0.05em;
+  padding:3px 10px; border-radius:5px; background:rgba(88,196,221,0.12);
+  color:{TOKENS["accent"]}; border:1px solid rgba(88,196,221,0.3);
+}}
+.cf-lanedesc {{ font-size:11px; color:{TOKENS["text_muted"]}; }}
+.cf-lanerule {{ flex:1; height:1px; background:{TOKENS["border_panel"]}; }}
+.cf-lanecount {{ font-family:{_MONO}; font-size:10px; color:{TOKENS["text_faint"]}; }}
+.cf-lanenote {{ font-size:10px; color:{TOKENS["text_faint"]}; padding:4px 0 2px; }}
+.cf-piperow {{ display:grid; grid-template-columns:170px repeat(4,1fr) 150px; gap:8px; align-items:stretch; }}
+.cf-cand {{
+  background:{TOKENS["bg_panel"]}; border:1px solid {TOKENS["border_bar"]}; border-radius:8px;
+  padding:9px 12px; display:flex; flex-direction:column; justify-content:center; gap:3px;
+}}
+.cf-candtick {{ font-family:{_MONO}; font-weight:600; font-size:14px; color:{TOKENS["text"]}; }}
+.cf-candchg {{ font-family:{_MONO}; font-size:10px; }}
+.cf-candmeta {{ font-size:9.5px; color:{TOKENS["text_faint"]}; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }}
+.cf-stagecell {{ border-radius:8px; padding:9px 11px; min-height:64px; }}
+.cf-cellhead {{ display:flex; align-items:center; gap:6px; }}
+.cf-mark {{
+  width:16px; height:16px; border-radius:4px; display:inline-flex; align-items:center;
+  justify-content:center; font-size:10px; flex:0 0 16px; background:rgba(255,255,255,0.05);
+}}
+.cf-celltag {{ font-family:{_MONO}; font-size:8.5px; letter-spacing:0.05em; }}
+.cf-cellreason {{ font-size:10px; margin-top:5px; line-height:1.4; }}
+.cf-rescell {{ border-radius:8px; padding:9px 11px; }}
+.cf-resrow {{ display:flex; align-items:center; gap:7px; }}
+.cf-resdot {{ width:7px; height:7px; border-radius:50%; }}
+.cf-reslabel {{ font-family:{_MONO}; font-weight:600; font-size:11.5px; }}
+.cf-resnote {{ font-size:9px; color:{TOKENS["text_faint"]}; margin-top:5px; line-height:1.4; }}
+.cf-reswhy {{ font-size:9.5px; color:{TOKENS["accent"]}; margin-top:7px; }}
+.cf-pipefoot {{ margin-top:16px; font-size:10px; color:{TOKENS["text_faint"]}; line-height:1.5; }}
+/* clickable pipeline row: card HTML + an invisible full-width overlay button
+   (same pattern as the watchlist cards) — full-row click opens the evidence. */
+div[class*="st-key-cfpipe-"] {{ position:relative; margin-bottom:8px; }}
+div[class*="st-key-cfpipe-"] div[data-testid="stMarkdownContainer"] {{ margin:0 !important; }}
+div[class*="st-key-cfpipeopen-"] {{ position:absolute; inset:0; z-index:2; width:100% !important; height:100% !important; }}
+div[class*="st-key-cfpipeopen-"] div[data-testid="stButton"],
+div[class*="st-key-cfpipeopen-"] div[data-testid="stButton"] > div {{
+  position:absolute; inset:0; width:100% !important; height:100% !important; min-height:0; margin:0; padding:0;
+}}
+div[class*="st-key-cfpipeopen-"] button {{
+  position:absolute; inset:0; width:100% !important; height:100% !important; min-height:0;
+  padding:0; background:transparent; border:1px solid transparent; border-radius:10px; color:transparent;
+}}
+div[class*="st-key-cfpipeopen-"] button:hover {{ background:rgba(88,196,221,0.035); border-color:rgba(88,196,221,0.18); }}
+div[class*="st-key-cfpipeopen-"] button p {{ display:none; }}
+/* --- evidence tab bar + back-to-pipeline button --------------------------- */
+div[class*="st-key-cfback"] button {{
+  background:transparent; border:1px solid rgba(255,255,255,0.12); border-radius:7px;
+  color:{TOKENS["text_secondary"]}; font-size:11px; padding:6px 12px; white-space:nowrap;
+}}
+div[class*="st-key-cfback"] button:hover {{ background:rgba(255,255,255,0.06); border-color:rgba(255,255,255,0.22); }}
+div[class*="st-key-cfevbar"] {{ background:{TOKENS["bg_rail"]}; border-bottom:1px solid {TOKENS["border_panel"]}; padding:4px 0 8px; margin-bottom:8px; }}
+div[class*="st-key-cfevbar"] .cf-evlabel {{ font-size:9.5px; color:{TOKENS["text_faint"]}; letter-spacing:0.08em; }}
+div[class*="st-key-cfevbar"] div[data-testid="stButton"] button {{
+  border-radius:7px; font-size:11px; letter-spacing:0.02em; padding:6px 13px; width:100%;
+  background:transparent; color:{TOKENS["text_muted"]}; border:1px solid rgba(255,255,255,0.08);
+}}
+div[class*="st-key-cfevbar"] div[data-testid="stButton"] button[kind="primary"] {{
+  background:rgba(88,196,221,0.12); color:#8fdcec; border:1px solid rgba(88,196,221,0.35);
+}}
+div[class*="st-key-cfevbar"] div[data-testid="stButton"] button:hover {{ border-color:rgba(88,196,221,0.35); color:#8fdcec; }}
 @keyframes cf-livedot {{ 0%,100% {{ opacity:1; }} 50% {{ opacity:0.25; }} }}
 @keyframes cf-armedpulse {{
   0%,100% {{ box-shadow:0 0 0 0 rgba(210,153,34,0.5); }}
@@ -1213,6 +1263,115 @@ def login_hero_html() -> str:
         f'<div class="cf-ruleb" style="display:inline-block; margin-top:10px">'
         "RULE B · Observation-only — scores stay gated until paper-validated</div>"
         "</div>"
+    )
+
+
+# --- Signal Pipeline (v2 main page) ------------------------------------------------
+# The stage-header cards (design_handoff_flow_terminal §Signal Pipeline).
+PIPE_STAGE_HEADERS = (
+    ("1", "UNIVERSE GATE", "§3 hard liquidity floor · track assignment"),
+    ("2", "PHASE CLASSIFIER", "RULE A · only Wyckoff Phase C / D passes"),
+    ("3", "SIGNAL COMPONENTS", "§4 track-weighted · SMS internal (RULE B)"),
+    ("4", "VETO FILTERS", "§5 hard rejects — any one kills the signal"),
+)
+
+# stage-cell state → glyph + colors (design §Stage-cell state styling).
+_STAGE_STYLE = {
+    "pass": {"mark": "✓", "fg": "#7ee08a", "dot": "#3fb950", "bg": "rgba(63,185,80,0.05)", "bd": "rgba(63,185,80,0.22)", "rc": "#9fb0c0"},
+    "fail": {"mark": "✕", "fg": "#f6a9a4", "dot": "#f85149", "bg": "rgba(248,81,73,0.07)", "bd": "rgba(248,81,73,0.38)", "rc": "#d9b0ad"},
+    "low":  {"mark": "▽", "fg": "#e8c168", "dot": "#d29922", "bg": "rgba(210,153,34,0.07)", "bd": "rgba(210,153,34,0.38)", "rc": "#cbb27a"},
+    "rev":  {"mark": "⤶", "fg": "#f0a0a8", "dot": "#e06b7a", "bg": "rgba(224,107,122,0.08)", "bd": "rgba(224,107,122,0.42)", "rc": "#d3a3a8"},
+    "skip": {"mark": "·", "fg": "#3d4654", "dot": "#3d4654", "bg": "rgba(255,255,255,0.015)", "bd": "rgba(255,255,255,0.04)", "rc": "#3d4654"},
+}
+# verdict → colors (design §Result-cell verdict styling). EXITED deferred (Phase 2).
+_RESULT_STYLE = {
+    "ARMED":    {"c": "#e8c168", "dot": "#d29922", "anim": "animation:cf-armedpulse 1.8s ease-in-out infinite;", "bg": "rgba(210,153,34,0.08)", "bd": "rgba(210,153,34,0.42)"},
+    "WATCH":    {"c": "#8fdcec", "dot": "#58c4dd", "anim": "", "bg": "rgba(88,196,221,0.06)", "bd": "rgba(88,196,221,0.3)"},
+    "REJECTED": {"c": "#8b98a9", "dot": "#f85149", "anim": "", "bg": "rgba(255,255,255,0.02)", "bd": "rgba(255,255,255,0.07)"},
+}
+
+
+def pipeline_stage_header_html() -> str:
+    """The stage-flow header grid: CANDIDATE label + the four numbered stage cards
+    + RESULT·WHY? label."""
+    cards = ""
+    for n, title, sub in PIPE_STAGE_HEADERS:
+        cards += (
+            '<div class="cf-stagecard">'
+            f'<div class="cf-cellhead"><span class="cf-stagen">{n}</span>'
+            f'<span class="cf-stagetitle">{escape(title)}</span></div>'
+            f'<div class="cf-stagesub">{escape(sub)}</div>'
+            '<span class="cf-chev">›</span></div>'
+        )
+    return (
+        '<div class="cf-pipehead">'
+        '<div class="cf-colcap">CANDIDATE</div>'
+        f"{cards}"
+        '<div class="cf-colcap">RESULT · WHY?</div>'
+        "</div>"
+    )
+
+
+def pipeline_lane_header_html(lane: dict) -> str:
+    """A track lane header: track chip + description + hairline + verdict count."""
+    return (
+        '<div class="cf-lanehead">'
+        f'<span class="cf-lanechip">{escape(lane["label"])}</span>'
+        f'<span class="cf-lanedesc">{escape(lane["desc"])}</span>'
+        '<div class="cf-lanerule"></div>'
+        f'<span class="cf-lanecount">{escape(lane["count_str"])}</span>'
+        "</div>"
+    )
+
+
+def _stage_cell_html(cell: dict) -> str:
+    s = _STAGE_STYLE[cell["state"]]
+    return (
+        f'<div class="cf-stagecell" style="background:{s["bg"]}; border:1px solid {s["bd"]}">'
+        '<div class="cf-cellhead">'
+        f'<span class="cf-mark" style="color:{s["dot"]}">{s["mark"]}</span>'
+        f'<span class="cf-celltag" style="color:{s["fg"]}">{escape(cell["tag"])}</span></div>'
+        f'<div class="cf-cellreason" style="color:{s["rc"]}">{escape(cell["reason"])}</div>'
+        "</div>"
+    )
+
+
+def pipeline_row_html(row: dict) -> str:
+    """One candidate row: candidate cell + four stage cells + result cell. Clickable
+    via the overlay button the app stacks on top (opens the evidence tabs)."""
+    chg = row.get("chg")
+    price = row.get("price")
+    chg_color = TOKENS["buy"] if (chg or 0) >= 0 else TOKENS["sell"]
+    chg_str = f"{chg:+.2f}%" if chg is not None else "—"
+    price_str = f"{price:,.0f}" if price is not None else "—"
+    meta = f'{escape(row.get("name") or row["ticker"])} · {price_str}'
+    cand = (
+        '<div class="cf-cand">'
+        '<div style="display:flex; align-items:baseline; gap:7px;">'
+        f'<span class="cf-candtick">{escape(row["ticker"])}</span>'
+        f'<span class="cf-candchg" style="color:{chg_color}">{chg_str}</span></div>'
+        f'<div class="cf-candmeta">{meta}</div></div>'
+    )
+    cells = "".join(_stage_cell_html(c) for c in row["cells"])
+    r = _RESULT_STYLE[row["result"]]
+    res = (
+        f'<div class="cf-rescell" style="background:{r["bg"]}; border:1px solid {r["bd"]}">'
+        '<div class="cf-resrow">'
+        f'<span class="cf-resdot" style="background:{r["dot"]}; {r["anim"]}"></span>'
+        f'<span class="cf-reslabel" style="color:{r["c"]}">{escape(row["result"])}</span></div>'
+        f'<div class="cf-resnote">{escape(row["note"])}</div>'
+        '<div class="cf-reswhy">why? — tap for detail ›</div>'
+        "</div>"
+    )
+    return f'<div class="cf-piperow">{cand}{cells}{res}</div>'
+
+
+def pipeline_footer_html() -> str:
+    return (
+        '<div class="cf-pipefoot">Left → right is the locked pipeline order (§2): a candidate '
+        'stops at the first stage it fails — later stages are never evaluated (NOT EVALUATED). '
+        'Tap any row to open the evidence pages — broker flow, foreign flow, accumulation '
+        'detector, money replay — for that name. Observation, not a recommendation.</div>'
     )
 
 

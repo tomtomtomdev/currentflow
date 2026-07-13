@@ -117,6 +117,15 @@ Report net-of-full-fee-stack returns benchmarked to **LQ45 / sector**, never IHS
 The terminal's look & interaction are specified as a **high-fidelity design handoff** in
 [`design/`](design/) (the "VectorLab" handoff bundle):
 
+> **v2 restructure (2026-07-13, shipped in PLAN.md Slice 14):** the left module nav rail is
+> **removed**; **Signal Pipeline** is the sole top-level view (Track A/B triage grid → four locked
+> stages → verdict `ARMED`/`WATCH`/`REJECTED`; `EXITED` pending, PLAN.md Phase 2). Broker Flow,
+> Foreign Flow, Accumulation Detector, Money Replay are now **evidence tabs** opened from a pipeline
+> row. [`design/HANDOFF_v2.md`](design/HANDOFF_v2.md) is the authoritative v2 spec;
+> `currentflow/ui/pipeline_view.py` + `shell.py` (`.cf-pipe*`) implement it. RULE A/B unchanged.
+
+- [`design/HANDOFF_v2.md`](design/HANDOFF_v2.md) — **authoritative v2 per-screen spec** (pipeline +
+  the four evidence tabs, tokens, data model, interactions). Read this first for the current layout.
 - [`design/README.md`](design/README.md) — the handoff index: what the app is, fidelity,
   non-negotiable implementation constraints, shared design tokens, and reading order.
 - [`design/SCREENS_terminal.md`](design/SCREENS_terminal.md) — per-screen spec: global shell
@@ -144,7 +153,11 @@ the SMS/Rank module withholds its number (`•••`) until `paperValidated` (R
 module reconstructs from stored `as_of` (look-ahead audit). Keep the observation↔claim switch
 **server-authoritative** (promoted by the paper-trade engine), never a client toggle.
 
-The 8 modules map 1:1 to `LOCKED_SPEC.md` §9 and to `PLAN.md` slices 2–8.
+The §9 modules were built as slices 2–8 (each maps to `LOCKED_SPEC.md` §9). **v2 reorganizes the
+navigation, not the spec:** Signal Pipeline is the home; Broker/Foreign/Accum/Replay are its evidence
+tabs; and Smart Heatmap, Sector Rotate, Risk Monitor, SMS/Rank, AI Ranking, Daily Top, ML are no
+longer top-level (code + tests retained — see PROGRESS.md decisions). No `LOCKED_SPEC.md` bump — RULE
+A/B and §9's module *behavior* are unchanged; only the shell's nav model changed.
 
 ## Companion files
 

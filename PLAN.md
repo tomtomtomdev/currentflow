@@ -466,6 +466,45 @@ is empirically pinned (LD-5) — one cadence-entry edit, no code change.
 
 ---
 
+## Slice 14 — v2 UI restructure: Signal Pipeline home + evidence tabs  ✅  (2026-07-13)
+
+Rebuilt the terminal shell to the **VectorLab v2** design handoff (`design/HANDOFF_v2.md`).
+
+- **Nav rail removed.** The left module rail is gone; the main column starts flush at the left edge
+  (`shell.shell_css` hides the sidebar). **Signal Pipeline** is the sole top-level view.
+- **Signal Pipeline** (`ui/pipeline_view.py` + `shell.pipeline_*`): Track A / Track B lanes; each
+  candidate row shows all four locked stages (`gate → phase → sig → veto`) + a verdict, wired to
+  **real `engine.evaluate()`** output (not mock). RULE A gate visible before the signal cell; RULE B
+  holds — the signal cell shows a categorical `pass`/`low` + component observations, never the SMS
+  number (tested: no `internal_score` leaks).
+- **Evidence tabs:** clicking a pipeline row (or an ARMED-rail card) opens that name's Broker Flow /
+  Foreign Flow / Accum. Detect / Money Replay as tabs with a contextual "Why {TICKER} …" header and a
+  `‹ Pipeline` back button (the four existing renderers reused, `show_header=False`).
+- **Seven modules retained, unlinked** (Smart Heatmap, Sector Rotate, Risk Monitor, SMS/Rank, AI
+  Ranking, Daily Top, ML): code + tests kept; no longer top-level (§9 nav tension logged in PROGRESS).
+- **Tests:** `tests/test_pipeline_view.py` (7, TDD: stage mapping, lane grouping, gate-fail/phase-fail
+  skip, RULE B) + `tests/test_app_pipeline.py` (3, AppTest: pipeline home renders, row-click routing,
+  back/tab). Full suite green (497). **No `LOCKED_SPEC.md` bump** — presentation reorganization only.
+
+### Phase 2 — pipeline plumbing still to resolve (deferred, not orphaned)
+
+The v2 pipeline currently emits three verdicts (`ARMED`/`WATCH`/`REJECTED`) and a gate cell covering
+the §3 **liquidity-floor + track** leg. Two pieces are designed-for but **not yet wired** — resolve
+these before the pipeline is considered complete:
+
+- [ ] **EXITED verdict + `⤶` reversed-stage cell + realized P&L.** The design's fourth verdict — a
+  position that cleared the pipeline, was entered, then sold on a broken thesis. This data lives in
+  the **portfolio paper-trader** (`validation/portfolio_runner.py` closed positions: `SIGNAL_DECAY` /
+  thesis-break exits + net-of-fee realized P&L). Wire those closed positions into `pipeline_view`
+  (`rev` cell state + `EXITED` result + `exitPnl`). The view-model, shell (`_STAGE_STYLE['rev']`,
+  `_RESULT_STYLE` slot) and `_count_str` already have the hooks; `ui/app.py:_candidate` carries the
+  NOTE marking the seam.
+- [ ] **Full §3 Universe Gate in the Gate cell.** Today the gate cell derives the ADV-floor + track
+  leg from bars; the remaining §3 checks (history/IPO, data-gap, corp-action window, ARA/ARB bands
+  via `universe.gate.evaluate_gate`) are not run in the live app path. Add a store→`evaluate_gate`
+  assembly helper (SymbolInfo / corp_actions / board / coverage) and feed the real `GateDecision`
+  into the gate cell so all §3 rejections surface, not just the floor.
+
 ## Acceptance criteria (definition of done — `LOCKED_SPEC.md` §13)
 
 - [x] Look-ahead test passes (no `availability_ts >= decision_ts`).
