@@ -205,6 +205,7 @@ VETO_MARKUP_THIN_RVOL = 1.0           # … on ≤ 1× RVOL (no real demand behi
 VETO_WASH_RATIO = 0.70                # broker min(buy,sell)/max(buy,sell) ≥ 0.7 = churn
 VETO_DIST_CLOSE_POSITION = 0.5        # high-vol up bar closing in the lower half of its range
 VETO_ROTATION_MIN_DAYS = 3            # ≥3 concentrated days with a rotating top buyer = disguise
+VETO_FLIP_MIN_DAYS = 2                # dominant accumulator must net-sell ≥2 consecutive latest days
 
 # --- Stage-2 distribution / decay layer (spec §8 signal-decay; slice 5) -------------
 # The credibility/exit layer. These are OBSERVATION flags (categorical severities, not

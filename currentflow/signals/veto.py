@@ -74,14 +74,19 @@ def _distribution(broker: BrokerFlowSnapshot, phase_cls: PhaseClassification) ->
     if phase_cls.phase.value == "DISTRIBUTION":
         return Veto(VetoReason.DISTRIBUTION_DRESSED,
                     f"phase classifier flags distribution ({phase_cls.reason})")
-    # dominant window buyer flipping to net sell on the latest day
+    # dominant window buyer flipping to net sell — must be *sustained*, not a one-day
+    # blip. A single red day is noise (profit-taking, rebalancing); only a run of
+    # consecutive net-sell days across the latest window is real distribution.
     buyers = broker.top_buyers
     if buyers:
         dominant = buyers[0].broker_code
-        latest = broker.daily_nets.get(broker.end, {})
-        if latest.get(dominant, 0.0) < 0:
+        recent = sorted(broker.daily_nets)[-config.VETO_FLIP_MIN_DAYS:]
+        if len(recent) >= config.VETO_FLIP_MIN_DAYS and all(
+            broker.daily_nets[d].get(dominant, 0.0) < 0 for d in recent
+        ):
+            span = f"{recent[0]}→{recent[-1]}"
             return Veto(VetoReason.DISTRIBUTION_DRESSED,
-                        f"dominant accumulator {dominant} flipped to net sell on {broker.end}")
+                        f"dominant accumulator {dominant} net-selling {len(recent)} days running ({span})")
     return None
 
 

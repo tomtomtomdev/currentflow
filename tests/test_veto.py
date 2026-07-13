@@ -57,13 +57,23 @@ def test_distribution_phase_is_vetoed():
     assert VetoReason.DISTRIBUTION_DRESSED in res.reasons
 
 
-def test_dominant_buyer_flip_to_net_sell():
+def test_sustained_dominant_buyer_flip_to_net_sell():
     rows = [
-        brow("DX", Side.BUY, 10e9, D1), brow("DX", Side.BUY, 10e9, D2),
-        brow("DX", Side.SELL, 12e9, D3),                    # window-dominant flips to net sell
+        brow("DX", Side.BUY, 40e9, D1),                     # accumulates → stays window-dominant
+        brow("DX", Side.SELL, 12e9, D2), brow("DX", Side.SELL, 12e9, D3),   # net-sells 2 days running
         brow("KI", Side.BUY, 2e9, D3), brow("CC", Side.BUY, 1e9, D3),
     ]
     assert VetoReason.DISTRIBUTION_DRESSED in _veto(rows).reasons
+
+
+def test_single_day_flip_is_not_distribution():
+    """One red day for the dominant buyer is noise, not a flip — must not veto."""
+    rows = [
+        brow("DX", Side.BUY, 10e9, D1), brow("DX", Side.BUY, 10e9, D2),
+        brow("DX", Side.SELL, 12e9, D3),                    # only the latest day is negative
+        brow("KI", Side.BUY, 2e9, D3), brow("CC", Side.BUY, 1e9, D3),
+    ]
+    assert VetoReason.DISTRIBUTION_DRESSED not in _veto(rows).reasons
 
 
 def test_markup_on_thin_volume():
