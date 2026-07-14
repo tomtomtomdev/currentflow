@@ -1,6 +1,10 @@
-# IDX Smart-Money Screener & Flow Terminal — Locked Specification v1.3
+# IDX Smart-Money Screener & Flow Terminal — Locked Specification v1.5
 
 **Status:** LOCKED. v1.0 resolved the eight contradictions from `CONSOLIDATED_THESIS.md` into a decision engine. **v1.1 merges `vector-lab.md`** — the same domain re-framed as a private, single-operator flow *terminal* — into this spec: the v1.0 engine is kept intact as the core, wrapped in an observation/UI layer, hardened data posture, and a stricter presentation gate. Build to this; changes require a version bump and a documented reason.
+
+**Changelog — v1.5 (2026-07-14):** added **LD-12 (Haste Mode)** — a further, bounded relaxation of entry discipline, confined to an operator-armed **Haste-Mode** auto paper-trader. Fast Mode (LD-11) already buys every **ARMED** name at once (no Spring/LPS trigger, no R:R gate); Haste Mode additionally **drops the `ARMED@70` arming threshold**, so the auto-trader also enters the **WATCH** cohort — every candidate that already cleared the RULE A phase gate (Wyckoff C/D) **and** the §5 veto layer but scored below the arming cut. *Reason:* even Fast Mode's ARMED-only set arms too rarely (~1 trade/yr across 32 names, PROGRESS 2026-07-08) for forward paper to accrue a statistically meaningful sample, so **RULE B can never promote** and the LD-8 ML gate never opens (the standing deferral); the WATCH cohort is far larger, giving the whole validation path the throughput it depends on — at zero live risk (paper only). **The hard boundary:** Haste relaxes *only* the SMS arming threshold. **RULE A (phase gate) and every §5 veto still bind by construction** — `GATE_REJECTED` and `VETOED` are distinct engine states *upstream* of the `WATCH`/`ARMED` split (pipeline steps [3] and [5]), so neither auto-trader can ever enter a gate-rejected or vetoed name. Haste entries use the same [6′] fast entry geometry, the same §6 sizing/caps/circuit-breakers, and the same §8 exit as Fast Mode; they promote a **dedicated `haste_mode` validation lane** — **never** `fast_mode` and never the trigger-based modules (`sms`/`ai_ranking`/`daily_top`), because a different entry policy earns its own validation (RULE B honesty). **No SMS weight, no `ARMED@70` threshold *definition*, no veto, no phase-gate (RULE A), and no presentation-gate (RULE B) behavior changed** — only the *entry cohort* is widened, and only for Haste Mode. Entry/sizing/exit pinned in §6/§8. See PROGRESS.md decisions log (2026-07-14).
+
+**Changelog — v1.4 (2026-07-14):** added **LD-11 (Fast Mode)** — an operator-armed, hands-off auto paper-trader that **buys every ARMED watchlist name at once**, *without* waiting for the Spring/LPS confirmation trigger, and applies the **same §8 exit ladder** to each buy. This is a deliberate, documented **relaxation of LD-3** (which requires a Spring/LPS trigger + R:R ≥ 2:1 before entry), **confined to Fast Mode** — the standard manual/pipeline path keeps LD-3 in full. *Reason:* the trigger + R:R gate makes arming so rare (§4 changelog / PROGRESS 2026-07-08: ~1 trade/yr across 32 names) that forward paper can never accrue a statistically meaningful sample, so **RULE B can never promote any module** and the LD-8 ML gate never opens — the project's standing deferral. Fast Mode trades entry *precision* for validation *throughput*, and is **paper-only** (§15 unchanged; still no live execution). Fast-Mode entries use a different entry policy than the trigger pipeline, so they promote a **dedicated `fast_mode` validation lane** (RULE B) and **never** the trigger-based modules (`sms`/`ai_ranking`/`daily_top`). Entry geometry, sizing, caps, and the exit are pinned in §6/§8. **No SMS weight, no `ARMED@70` threshold, no veto, no phase-gate (RULE A), and no presentation-gate (RULE B) behavior changed** — only the *entry discipline* is relaxed, and only for Fast Mode. See PROGRESS.md decisions log (2026-07-14).
 
 **Changelog — v1.3 (2026-07-08):** §4 **SMS component calibration** corrected after a full-year backtest over 32 liquid names exposed a *deadlock*: the internal SMS never reached the `ARMED@70` threshold (max 62 across a year), so no module could ever accrue forward paper → RULE B could never promote. Root cause was two component-scoring defects, now fixed: **(a) Price-Volume Divergence** (weight 30, the spine) was computed over the *entire* passed-in history, so its flat-high-volume ratio diluted toward zero for anything that trended — it is now measured over a **recent window** (`SMS_DIVERGENCE_WINDOW_DAYS`, an unpinned implementation choice; §4's ±0.5%/corr conditions + weight are unchanged), and its `corr < 0.3` gate is now a **graduated factor in [0.5, 1.0]** (reducing to the old rule at corr 0 and 0.3) instead of a binary ×0.5 cliff that fired on nearly every name. **(b) Block-trade footprint** graded by a fixed IDR-1B floor OR'd with the %ADV test, which **saturated to 1.0 on any liquid name** (a flat, non-discriminating bonus); it now grades by the max single-broker buy as a **fraction of ADV** (§4's "> 1% ADV"), the IDR floor kept only as the ADV-unknown fallback. **RVOL was investigated and left unchanged** — its near-zero readings on quiet accumulation days are spec-faithful (it is the volume-*anomaly* component). *Reason:* the composite could not reach its own locked threshold on real data, blocking the entire validation path; these are scoring-shape corrections, not weight or threshold edits. **No decision (LD-1…LD-8), no SMS weight, no `ARMED@70` threshold, no veto, no pipeline stage, and no RULE A/B behavior changed.** Post-fix the deadlock is broken (max SMS 62→72; one genuine setup armed and round-tripped in a year-long **in-sample backtest**, net-of-fee) but arming remains rare — no tuning-to-manufacture-trades was done (RULE B). See PROGRESS.md decisions log (2026-07-08) for the full investigation + evidence.
 
@@ -40,6 +44,8 @@ Everything below serves two hard rules. They are orthogonal and compose — one 
 | **LD-8** | ML vs overfitting | **Deferred to Phase 4+ and gated.** Rules system must first show **≥3 months forward-paper with positive walk-forward Sharpe**. ML = signal-weight optimizer / ranker on engineered features ONLY. Mandatory purged/embargoed CV + out-of-sample. | Reflexive, non-stationary, small-sample IDX flow data overfits trivially. |
 | **LD-9** *(merge)* | Number-display discipline | **Presentation gate (RULE B).** No probability / score / buy-sell verb until `PAPER_VALIDATION_MONTHS` of fill-realistic forward paper. Pre-validation = observation-only. Per-module validation state drives the observation↔claim UI switch. | A self-built confidence number is the easiest thing to over-trust; IDX small-caps can't be honestly calibrated without forward validation. |
 | **LD-10** *(merge)* | Data & product posture | **Private single-user, own authenticated session, local-only, never redistributed.** No SaaS, no billing, no multi-user. Stack simplified to local-first (§10). | Personal analysis tool for one operator. Redistribution posture and cloud scale are out of scope. |
+| **LD-11** *(v1.4)* | Validation throughput vs entry precision | **Fast Mode — auto paper-trade every ARMED name at once, no trigger.** An operator-armed, hands-off paper auto-trader relaxes LD-3 **for Fast Mode only**: it buys each ARMED name on a marketable LIMIT without a Spring/LPS trigger and **without the R:R ≥ 2:1 gate** (R:R is still computed, as an observation). Stop = Wyckoff range support (invalidation); target = range resistance / measured move (§6). §6 sizing/caps/circuit-breakers and the §8 exit are **unchanged**. **Paper only.** Fast-Mode trades validate a **dedicated `fast_mode` module lane** — never the trigger-based modules. | The trigger + R:R gate arms so rarely (~1 trade/yr/32 names) that forward paper can't accrue enough trades for RULE B to ever promote — the standing deferral. Fast Mode trades entry precision for the validation throughput the whole RULE B / LD-8 path depends on, at zero live risk. The standard path keeps LD-3 intact. |
+| **LD-12** *(v1.5)* | Validation throughput vs signal strength | **Haste Mode — auto paper-trade the WATCH+ARMED watchlist, no arming threshold.** An operator-armed Haste-Mode auto-trader extends Fast Mode (LD-11) by **dropping the `ARMED@70` arming cut**: it enters every name in the `{WATCH ∪ ARMED}` set — phase C/D + no veto, *any* internal SMS — on the same triggerless marketable-limit entry (§6), and manages each with the §8 exit. RULE A (phase gate) and §5 veto still bind; only the SMS threshold is relaxed, Haste-only. **Paper only.** Promotes a dedicated `haste_mode` lane — never the trigger-based modules, never `fast_mode`. | Even Fast Mode's ARMED-only set arms too rarely (~1 trade/yr/32 names) for forward paper to accrue → RULE B can't promote, LD-8 can't open. The WATCH cohort is already phase-gated + veto-clean and far larger, so it supplies the validation throughput the whole path depends on, at zero live risk. A separate lane keeps every existing claim honest. |
 
 ---
 
@@ -63,10 +69,16 @@ SCHEDULER (fires on broker-summary publication, ~T+0 evening / T+1)
 [5] VETO FILTERS (§5)         — kill single-bandar / distribution / markup / wash / rotation / news
    ▼
    SMS ≥ 70  AND  phase ∈ {C,D}  AND  no veto  →  state = ARMED  (watchlist)
-   ▼
-[6] TECHNICAL TRIGGER (LD-3)  — Spring-test OR LPS; compute stop + R:R; require R:R ≥ 2:1
-   ▼
+   │                                                    │
+   │  standard path (LD-3)                              │  Fast/Haste Mode (LD-11/12, operator-armed, paper-only)
+   ▼                                                    ▼
+[6] TECHNICAL TRIGGER (LD-3)  — Spring-test OR LPS;    [6′] FAST/HASTE AUTO-ENTRY — no trigger; entry =
+     compute stop + R:R; require R:R ≥ 2:1                  marketable limit; stop = range support;
+   │                                                        target = range res/measured move; R:R
+   │                                                        observed, NOT gated
+   ▼                                                    ▼
 [7] FUNDAMENTAL TILT (LD-6/7) — MF rank (or sector proxy) → conviction & hold horizon
+   │   (both [6] and [6′] converge here, then on [8]→[9]→[10] — the shared fill engine + exit mgr)
    ▼
 [8] ORDER GEN                 — limit @ trigger; size to 1% risk (§6)
    ▼
@@ -81,6 +93,13 @@ SCHEDULER (fires on broker-summary publication, ~T+0 evening / T+1)
 [12] TERMINAL UI (§9)         — observation modules · replay · heatmap · risk monitor ·
                                 P&L / armed list / attribution vs benchmark
 ```
+
+> **Fast Mode vs Haste Mode cohort (LD-11 / LD-12).** Both auto-enter via **[6′]** (no trigger, R:R
+> observed-not-gated) and are **paper-only**. **Fast Mode** enters the **ARMED** subset (SMS ≥ 70).
+> **Haste Mode** drops the arming threshold and enters the whole `{WATCH ∪ ARMED}` set (phase ∈ {C,D}
+> AND no veto, *any* SMS). Steps **[3]** (phase gate, RULE A) and **[5]** (veto) are **upstream** of
+> the WATCH/ARMED split, so neither auto-trader can enter a `GATE_REJECTED` or `VETOED` name — RULE A
+> and every veto hold **by construction**. Fast → `fast_mode` lane; Haste → `haste_mode` lane (RULE B).
 
 ---
 
@@ -156,6 +175,45 @@ SCHEDULER (fires on broker-summary publication, ~T+0 evening / T+1)
 - **Exposure caps:** ≤ 10% equity per name; ≤ 30% per sector; correlated-pair / crowding check (§9 Risk Monitor).
 - **Circuit breakers:** halt new entries at −3% daily P&L; pause system at −10% peak-to-trough drawdown.
 
+**Fast Mode entry (LD-11, v1.4 — paper only, operator-armed):** when Fast Mode is armed, an ARMED
+name is entered **immediately, without waiting for a Spring/LPS trigger** — the relaxation of LD-3.
+Geometry is derived from the Wyckoff trading range the phase gate already established (never invented):
+
+- **Order:** still a **LIMIT** (never a market order) — a *marketable* limit at the ARMED-day
+  reference price so it fills at next-open under the paper engine's limit/ARA-ARB discipline (§12).
+- **Stop:** just below **range support** (the accumulation-range low) — the thesis-invalidation level,
+  never widened. If no coherent range exists (`stop ≥ entry`) the name is **skipped** (missing ≠ invented).
+- **Target:** **range resistance** (Phase C) or **resistance + one range span** (Phase D measured move) —
+  identical to the standard first target.
+- **R:R:** computed and surfaced as an **observation, not a gate** — a Fast-Mode entry is **not skipped
+  for R:R < 2:1** (this is the LD-11 relaxation). The standard [6] path still requires R:R ≥ 2:1.
+- **Sizing / caps / circuit-breakers:** **unchanged** — 1% risk, conviction multiplier (§7), the ≤10%/name
+  & ≤30%/sector caps, and the −3%/−10% breakers all bind exactly as above. Contested slots are ranked by
+  internal SMS (RULE B: ordering only; the score is never displayed).
+- **Scope:** every ARMED name, subject to the caps (emergent deployment, no gross-exposure target).
+
+Fast Mode is **auto paper execution only — never live** (§15). Its trades earn a **dedicated `fast_mode`
+validation lane** (RULE B); they do not promote the trigger-based modules.
+
+**Haste Mode entry (LD-12, v1.5 — paper only, operator-armed):** Haste Mode is Fast Mode with a **wider
+candidate set**. Everything about the entry is identical to Fast Mode above — same triggerless
+**marketable LIMIT**, same stop = **range support** (invalidation, skipped if `stop ≥ entry`), same
+target = **range resistance** (C) / **measured move** (D), same R:R **observed but not gated**, same 1%
+risk × conviction multiplier, the same ≤10%/name & ≤30%/sector caps and −3%/−10% circuit-breakers, and
+the same §8 exit — with **one** difference:
+
+- **Candidate set = `WATCH ∪ ARMED`, not `ARMED`.** Haste drops the `SMS ≥ 70` arming cut and enters
+  every name that reaches state `WATCH` **or** `ARMED` — i.e. phase ∈ {C,D} AND no §5 veto, at *any*
+  internal SMS. **RULE A and the §5 veto are unchanged and still bind:** a `GATE_REJECTED` (non-C/D) or
+  `VETOED` name is a distinct engine state and is **never** entered (the phase gate [3] and veto [5] run
+  upstream of the WATCH/ARMED split). Contested slots are still ranked by internal SMS (RULE B: ordering
+  only; the score is never displayed).
+
+Haste Mode is **auto paper execution only — never live** (§15). Its trades earn a **dedicated
+`haste_mode` validation lane** (RULE B) — never `fast_mode`, never the trigger-based modules, because a
+different entry policy earns its own validation. Only one auto-trader (Fast **xor** Haste) is armed at a
+time over the shared paper book / circuit state.
+
 ---
 
 ## 7. Fundamental Tilt (LD-6/7) — locked
@@ -174,6 +232,8 @@ Fundamentals **never block an entry** — they only set the multiplier and hold 
 ## 8. Exit, Benchmark, Validation — locked
 
 **Exit (any one triggers):** stop hit · target hit · trailing stop · **signal-decay** (NBSA flips negative / dominant broker flips to net sell / VPA prints UTAD or no-demand / phase rolls to distribution). **Divergence is the single best exit signal:** price rising while CMF / foreign-flow / A-D all fall.
+
+> **Fast Mode (LD-11) and Haste Mode (LD-12) use this exact exit ladder — no new exit logic.** A Fast-Mode or Haste-Mode buy is managed by the same stop → target → trailing → signal-decay manager as any other position; only its *entry* differs (§6) — and between the two auto-traders, only the entry *cohort* differs.
 
 **Benchmark:** Track A → LQ45. Track B → relevant sector index (or IDX SMC index). **Never IHSG** as headline benchmark. Bar to beat: buy-and-hold the applicable benchmark.
 
@@ -204,6 +264,8 @@ The pipeline (§2) is the engine; this is the workbench over it. Modules are tie
 - **Smart Money Score / Breakout components** — pre-validation show raw components; post-validation may show the SMS number (§4).
 - **AI Buy/Sell Ranking** — pre-validation a "flow-derived ranking, not a recommendation"; stronger language only once forward hit-rate is paper-validated (LD-8 also governs the ML ranker).
 - **Daily Top Opportunities** — "highest flow-signal names today," observation framing; narrative digest of what the flow shows.
+- **Fast Mode Auto-Trader** *(v1.4, LD-11)* — the operator-armed auto paper-trader over the ARMED watchlist (§6/§8). Shows the open **book** (positions, stops, targets) and **closed trades** with per-trade net-of-fee realized P&L (a *factual* observation, not a forecast — allowed once an entry price exists). The strategy's **aggregate** claim (hit-rate / expectancy / the promotable number) is **withheld** (`•••`) until the `fast_mode` module clears `PAPER_VALIDATION_MONTHS` of forward paper (RULE B). Closed positions surface in the Signal Pipeline as the `EXITED` verdict.
+- **Haste Mode Auto-Trader** *(v1.5, LD-12)* — the same operator-armed auto paper-trader over the **wider** `WATCH ∪ ARMED` watchlist (§6/§8) — no arming threshold. Same panel as Fast Mode: the open **book** and **closed trades** with per-trade net-of-fee realized P&L are *factual* observations (allowed once an entry price exists); the strategy's **aggregate** claim (hit-rate / expectancy) is **withheld** (`•••`) until the **`haste_mode`** module clears `PAPER_VALIDATION_MONTHS` of forward paper (RULE B) — a **dedicated lane**, never `fast_mode` or the trigger-based modules. Closed positions surface in the Signal Pipeline as the `EXITED` verdict.
 
 ### 9.1 Session gate (in-app login flow, v1.2)
 
@@ -254,6 +316,12 @@ Each slice is a full vertical (data → signal → view → test). Bootstraps of
 8. **Paper-trade validation wiring** — connect forward results to per-module validation state; implement the observation↔claim presentation switch (RULE B). Gated modules ship observation-only from step 4 and earn claims only as this step promotes them.
 9. **Scale / ML (gated)** — only after ≥3 months positive forward-paper walk-forward Sharpe; ML as ranker / weight-optimizer with purged CV (LD-8).
 
+*Operational slices after the build order (bootstraps off the paper-trade system; not new engine phases):*
+
+- **Fast Mode auto paper-trader (v1.4, LD-11)** — wire the existing portfolio paper-trader to a hands-off scheduler job that auto-enters every ARMED name (§6 Fast Mode entry) and manages it with the §8 exit, persisting a durable book and feeding the server-authoritative `ValidationLedger` (`fast_mode` lane). This is the mechanism that finally makes a real multi-month forward-paper run accrue, so RULE B can promote and the LD-8 gate can open.
+
+- **Haste Mode auto paper-trader (v1.5, LD-12)** — generalizes the Fast Mode auto-trader (same driver, persistence, scheduler job, and §8 exit) to a **wider candidate cohort**: it drops the `ARMED@70` arming cut and auto-enters the `WATCH ∪ ARMED` set (phase C/D + no veto, any SMS), feeding a **dedicated `haste_mode` lane**. Where Fast Mode's ARMED-only set still arms too rarely to forward-validate, Haste supplies the throughput — the WATCH cohort is far larger while staying phase-gated + veto-clean (RULE A / §5 intact).
+
 **Governing filter throughout:** if a signal can't survive fill-realistic paper trading, it does not earn the right to show a number.
 
 ---
@@ -278,6 +346,8 @@ Lots of 100 shares · auto-reject bands (±7% main board / ±10–25% dev board 
 - [ ] Money Flow Replay can reconstruct any past signal from stored `as_of` data (audit test).
 - [ ] All data stays local; nothing is republished (posture check).
 - [ ] No live hand-editing of SMS weights; tuning only via walk-forward optimizer.
+- [ ] **(v1.4)** Fast Mode enters an ARMED name with no trigger and R:R < 2:1 (LD-11), while the standard [6] path still skips it; the Fast-Mode buy exits via the same §8 ladder; its trades promote only the `fast_mode` lane (not `sms`/`ai_ranking`/`daily_top`) and its aggregate number stays withheld until validated (RULE B).
+- [ ] **(v1.5)** Haste Mode enters a `WATCH` name (phase C/D, no veto, SMS < 70) with no trigger/R:R (LD-12), while Fast Mode does **not** enter it and the standard [6] path skips it; a `GATE_REJECTED` (non-C/D) or `VETOED` name is **never** entered by either auto-trader (RULE A / §5 firewall); the Haste-Mode buy exits via the same §8 ladder; its trades promote only the `haste_mode` lane (not `fast_mode`/`sms`/`ai_ranking`/`daily_top`) and its aggregate number stays withheld until validated (RULE B).
 
 ---
 
@@ -294,10 +364,13 @@ Lots of 100 shares · auto-reject bands (±7% main board / ±10–25% dev board 
 - Private personal-use analytics tool. Not a product, not a service, not for redistribution.
 - Not investment advice. All outputs are observations for the operator's own decisions.
 - Data consumed from the operator's own session; used at own risk; not republished.
-- No live execution. Paper trading only. Paper results do not guarantee live performance.
+- No live execution. Paper trading only. Paper results do not guarantee live performance. **Fast Mode (v1.4, §6/LD-11) and Haste Mode (v1.5, §6/LD-12) auto-execute on the ARMED (Fast) / WATCH+ARMED (Haste) watchlist in *paper* only — they never place a live order.**
 - The operator's own Stockbit credentials/OTP are entered locally, used only to authenticate against the exodus endpoint, and never persisted, logged, or transmitted anywhere else (§9.1); only the resulting session tokens are stored (OS Keychain). Own-session login, own risk.
 
 ---
 
+*v1.5 (2026-07-14): LD-12 Haste Mode — operator-armed auto paper-trader over the WATCH+ARMED watchlist; drops the `ARMED@70` arming threshold (Haste Mode only); §1/§2/§6/§8/§9/§11/§13/§15 updated; paper-only, RULE A (phase gate) + §5 veto + RULE B unchanged, dedicated `haste_mode` validation lane.*
+*v1.4 (2026-07-14): LD-11 Fast Mode — operator-armed auto paper-trader over the ARMED watchlist; relaxes LD-3 (no trigger / no R:R gate) for Fast Mode only; §2/§6/§8/§9/§11/§15 updated; paper-only, RULE A/B unchanged, `fast_mode` validation lane.*
+*v1.3 (2026-07-08): §4 SMS component-scoring calibration (divergence recency + graduated corr; block-trade %ADV); no decision/weight/threshold/gate change.*
 *v1.2 (2026-07-03): in-app username/password (+MFA) login flow re-scope (§9.1/§10/§15); auth plumbing only, engine unchanged.*
 *v1.1 consolidated from: `LOCKED_SPEC.md` v1.0 (engine core) + `vector-lab.md` (terminal re-frame, presentation gate, data posture). Upstream: `CONSOLIDATED_THESIS.md` and the six source drafts.*

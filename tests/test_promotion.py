@@ -10,7 +10,7 @@ from currentflow import config
 from currentflow.execution.risk import ExitReason
 from currentflow.validation import metrics
 from currentflow.validation.promotion import ValidationLedger, resolve_state
-from currentflow.validation.state import ModuleState
+from currentflow.validation.state import GATED_MODULES, ModuleState
 from currentflow.validation.trade import PaperTrade
 
 
@@ -44,9 +44,11 @@ def test_resolve_state_gate():
 
 def test_ledger_starts_all_gated_modules_observation_only():
     led = ValidationLedger()
-    for m in ("sms", "ai_ranking", "daily_top"):
+    # Every gated module (incl. the LD-11 `fast_mode` lane) starts observation-only.
+    assert "fast_mode" in GATED_MODULES
+    for m in GATED_MODULES:
         assert led.state(m) is ModuleState.OBSERVATION_ONLY
-    assert led.states() == {m: ModuleState.OBSERVATION_ONLY for m in ("sms", "ai_ranking", "daily_top")}
+    assert led.states() == {m: ModuleState.OBSERVATION_ONLY for m in GATED_MODULES}
 
 
 def test_promotes_only_after_months_and_positive_walk_forward():

@@ -492,18 +492,156 @@ The v2 pipeline currently emits three verdicts (`ARMED`/`WATCH`/`REJECTED`) and 
 the §3 **liquidity-floor + track** leg. Two pieces are designed-for but **not yet wired** — resolve
 these before the pipeline is considered complete:
 
-- [ ] **EXITED verdict + `⤶` reversed-stage cell + realized P&L.** The design's fourth verdict — a
-  position that cleared the pipeline, was entered, then sold on a broken thesis. This data lives in
-  the **portfolio paper-trader** (`validation/portfolio_runner.py` closed positions: `SIGNAL_DECAY` /
-  thesis-break exits + net-of-fee realized P&L). Wire those closed positions into `pipeline_view`
-  (`rev` cell state + `EXITED` result + `exitPnl`). The view-model, shell (`_STAGE_STYLE['rev']`,
-  `_RESULT_STYLE` slot) and `_count_str` already have the hooks; `ui/app.py:_candidate` carries the
-  NOTE marking the seam.
+- [x] **EXITED verdict + `⤶` reversed-stage cell + realized P&L.** — **resolved by Slice 15 (Fast
+  Mode).** The design's fourth verdict — a position that cleared the pipeline, was entered, then sold
+  on a broken thesis. Closed positions now come from the persisted Fast-Mode book (`paper_trade`
+  table, fed by `validation/portfolio_runner` closed positions: `SIGNAL_DECAY` / stop / target /
+  trailing exits + net-of-fee realized P&L) and are wired into `pipeline_view` (`rev` cell state +
+  `EXITED` result + realized P&L), `shell._RESULT_STYLE['EXITED']`, and `ui/app.py:_candidate`.
 - [ ] **Full §3 Universe Gate in the Gate cell.** Today the gate cell derives the ADV-floor + track
   leg from bars; the remaining §3 checks (history/IPO, data-gap, corp-action window, ARA/ARB bands
   via `universe.gate.evaluate_gate`) are not run in the live app path. Add a store→`evaluate_gate`
   assembly helper (SymbolInfo / corp_actions / board / coverage) and feed the real `GateDecision`
   into the gate cell so all §3 rejections surface, not just the floor.
+
+## Slice 15 — Fast Mode auto paper-trader  ⬜  (spec v1.4, LD-11)
+
+**Operational slice (bootstraps off the paper-trade system; not a new engine phase).** An
+operator-armed, hands-off auto paper-trader that **buys every ARMED watchlist name at once** — no
+Spring/LPS trigger, no R:R gate (LD-11 relaxes LD-3 for Fast Mode only) — and manages each buy with
+the **same §8 exit ladder**. It is the vehicle that finally makes a real multi-month forward-paper
+run accrue, so RULE B can promote and the LD-8 ML gate can open (the standing deferral). **Paper
+only; RULE A (phase gate) and RULE B (presentation gate) unchanged.**
+
+> **Governing decisions (operator, 2026-07-14):** entry = *buy on ARMED at once* (overrides LD-3 →
+> **spec bump v1.3 → v1.4**); driver = *scheduler daemon* (one job/day after EOD ingest); *wire
+> EXITED* into the Signal Pipeline. Fast-Mode trades promote a **dedicated `fast_mode` lane**, never
+> the trigger-based modules (RULE B honesty — a different entry policy earns its own validation).
+
+**Docs (first — spec bump before divergent code, per CLAUDE.md):**
+- [ ] `LOCKED_SPEC.md` → **v1.4**: LD-11 + §6 Fast Mode entry + §8 exit note + §2 pipeline branch +
+      §9 gated module + §11 operational slice + §13 acceptance + §15 disclaimer + title/footer. *(done)*
+- [ ] `PROGRESS.md`: decisions-log v1.4 row; `fast_mode` module → OBSERVATION_ONLY (0/3).
+
+**Entry geometry — the crux (no trigger):** reuse `TriggerSignal` so downstream is untouched.
+- [ ] `execution/trigger.py` `fast_detect(...)` + `TriggerKind.FAST_ARMED`: entry = ARMED-day close ×
+      `(1 + FAST_MODE_LIMIT_PREMIUM)` (marketable limit); stop = `rng.support × (1 − STOP_BUFFER)`
+      (invalidation); target = `rng.resistance` (C) / `+ measured move` (D); `rr` computed;
+      **`valid = stop < entry` only — no R:R ≥ 2:1 gate.** No coherent range → skip (missing ≠ invented).
+- [ ] `config.py`: `FAST_MODE_LIMIT_PREMIUM`, `FAST_MODE_ENABLED=False` (opt-in), `SCHEDULER_FAST_MODE_TIME`.
+
+**Reuse the auto-trader + single-day stepper:**
+- [ ] `validation/runner.py`: `RunConfig.fast_mode` selects `fast_detect` vs `trigger.analyze`;
+      `_attempt_exit` **unchanged** (same exit strategy).
+- [ ] `validation/portfolio_runner.py`: `PortfolioConfig.fast_mode`; `_rank_candidates` fast branch
+      (ranking still internal-SMS descending, RULE B ordering only; §6 caps + breakers still bind);
+      extract the day-loop body into `step_day(...)` reused by the batch loop **and** the live daemon.
+
+**Persistence (new store tables — facts, keyed on dates + `as_of` for audit, no look-ahead firewall):**
+- [ ] `store/`: `paper_position` (durable open book: enough to run the §8 exit + build the closed
+      `PaperTrade` incl. entry cash-flow/fee so net P&L reconciles), `paper_trade` (closed trades,
+      idempotent insert), `fast_mode_state` (`enabled`, `since_date`) — follow the `scheduler_runs`
+      columns/Row/DDL/write/read pattern.
+
+**Driver + scheduler + RULE B lane:**
+- [ ] `validation/fast_mode.py` `run_fast_mode_step(store, day, cfg)`: no-op if disabled; load book;
+      build specs from ARMED scope; `step_day`; persist book + trades; feed
+      `ValidationLedger.record_forward_paper("fast_mode", ...)`.
+- [ ] `validation/state.py`: add `"fast_mode"` to `GATED_MODULES`.
+- [ ] `scheduler/schedule.py`: `FEED_FAST_MODE` + `FeedSchedule(DailyAt(SCHEDULER_FAST_MODE_TIME,
+      prior_trading_day=True), Scope.UNIVERSE)` after `eod_ingest` (candidate pool = SCR-0 universe;
+      the ARMED filter + fast entry run inside the step at the look-ahead-safe decision_ts, so the
+      candidate set is resolved consistently — not at real-time `now`); `scheduler/runner.py` action
+      in `_ACTIONS` (first job that *scores + executes* — noted in docstring; fail-loud-401 + durable
+      state come free from the tick loop).
+
+**UI + EXITED:**
+- [ ] `ui/fast_mode_view.py`: open book, closed trades (per-trade realized P&L = observation),
+      accrual `n/3` months; aggregate expectancy/hit-rate **gated** via `state.gated_display`.
+- [ ] `ui/app.py`: arm/disarm toggle in the rail control zone; book panel in main col; resolve the
+      `_candidate` EXITED seam.
+- [ ] `ui/pipeline_view.py` `_row` EXITED branch (read closed `paper_trade`) → `REV` cell + realized
+      P&L; `ui/shell.py` `_RESULT_STYLE["EXITED"]` + P&L element in `pipeline_row_html`.
+
+**CLI:**
+- [ ] `run.sh fast` (clone `schedule`) → `python -m currentflow.fast` (`enable`/`disable`/`--once`,
+      mirror `scheduler/__main__.py`).
+
+**Tests (TDD):**
+- [ ] fast entry: enters no-trigger; stop=support−buffer; R:R<2:1 still enters (vs standard skip);
+      incoherent range skips.
+- [ ] exit unchanged: reconciles with `runner.run_forward` exit on a one-name run (shared fill engine).
+- [ ] §6 caps/breakers still bind; persistence survives restart (no double-entry) + reconciles net P&L;
+      scheduler fires after EOD / fails loud on 401 / no-ops when disabled.
+- [ ] ledger: `fast_mode` promotes OBS→VALIDATING→VALIDATED; `sms`/`ai_ranking`/`daily_top` NOT
+      promoted; aggregate number withheld until validated; pipeline EXITED cell shows P&L, no score leak.
+
+## Slice 16 — Haste Mode auto paper-trader  ⬜  (spec v1.5, LD-12)
+
+**Operational slice (bootstraps off the Fast Mode auto-trader; not a new engine phase).** Haste Mode
+is **Fast Mode with a wider candidate cohort**: it drops the `SMS ≥ 70` (`ARMED@70`) arming cut and
+auto-enters the `WATCH ∪ ARMED` set — every name that already cleared the RULE A phase gate (C/D) and
+the §5 veto layer, at *any* internal SMS. Same triggerless entry geometry, same §6 sizing/caps/
+breakers, same §8 exit. It exists because even Fast Mode's ARMED-only set arms too rarely to
+forward-validate; the WATCH cohort is far larger while staying phase-gated + veto-clean. **Paper only;
+RULE A (phase gate) and RULE B (presentation gate) unchanged.**
+
+> **Governing decisions (operator, 2026-07-14):** cohort = *drop the arming threshold, enter
+> WATCH+ARMED* (overrides the `ARMED@70` entry cut → **spec bump v1.4 → v1.5**); Haste is a **separate
+> mode** with a **dedicated `haste_mode` lane** (never `fast_mode`, never the trigger-based modules —
+> a different entry policy earns its own validation); one auto-trader (Fast **xor** Haste) armed at a
+> time over the shared paper book. **The safety boundary is provable in code:** `res.state` is only
+> `WATCH`/`ARMED` after the phase gate + veto pass, so a `GATE_REJECTED`/`VETOED` name can never enter.
+
+**Docs (first — spec bump before divergent code, per CLAUDE.md):**
+- [x] `LOCKED_SPEC.md` → **v1.5**: LD-12 + §2 pipeline cohort note + §6 Haste entry paragraph + §8 exit
+      note + §9 gated module + §11 operational slice + §13 acceptance + §15 disclaimer + title/footer.
+- [x] `PROGRESS.md`: decisions-log v1.5 row; `haste_mode` module → OBSERVATION_ONLY (0/3).
+
+**Cohort — the one behavioral change (2 sites, reusing the proven `{ARMED, WATCH}` predicate from
+`scheduler/runner.py:81`):**
+- [ ] `validation/portfolio_runner.py` `_rank_candidates` (line ~143): `if not res.armed:` →, when a new
+      `PortfolioConfig.include_watch` is set, `if res.state not in (EngineState.ARMED, EngineState.WATCH): continue`.
+      Ranking by internal SMS desc unchanged (RULE B: ordering only). Entry geometry (`fast_analyze`) unchanged.
+- [ ] `validation/runner.py` `_attempt_entry` (line ~108): same widening behind `RunConfig.include_watch`.
+- [ ] `config.py`: `HASTE_MODE_ENABLED=False` (symmetry; durable state row is the effective flag),
+      `SCHEDULER_HASTE_MODE_TIME=time(9,12)` (a beat after Fast's 9:10); reuse `FAST_MODE_LIMIT_PREMIUM`/
+      `STOP_BUFFER`/`TARGET_MEASURED_MOVE_MULT`/`LIMIT_UNDERCUT` (identical geometry).
+
+**Persistence — add a `mode` discriminator (the one place Fast Mode isn't parameterized):**
+- [ ] `store/`: add `mode` (default `"FAST"`) to `paper_trade` (required — lane accrual filters by mode)
+      and `fast_mode_state` key (required — per-lane RULE B `since_date` clock; replace the single
+      `"singleton"` key with a per-mode key), + `paper_position` (per-mode open book). Thread a
+      `mode="FAST"` arg through the `read/replace_fast_positions`/`read/append_fast_trades`/
+      `read/write_fast_mode_state` methods (default preserves Fast). *(Fallback if touching shipped
+      tables is undesirable: parallel `haste_*` tables — more duplication, zero Fast risk.)*
+
+**Driver + lane + scheduler:**
+- [ ] `validation/fast_mode.py`: parametrize `run_fast_mode_step`/`set_enabled`/`accrue_*` by `mode`;
+      `HASTE_MODE_MODULE="haste_mode"` sibling to `FAST_MODE_MODULE`; `mode="HASTE"` selects
+      `include_watch=True` + the `haste_mode` lane + the per-mode state key; entry via `fast_detect`
+      unchanged; `set_enabled` refuses arming Haste while Fast is armed (and vice-versa).
+- [ ] `validation/state.py`: add `"haste_mode"` to `GATED_MODULES` (promotion.py unchanged — lane is the key).
+- [ ] `scheduler/schedule.py`: `FEED_HASTE_MODE` + `FeedSchedule(DailyAt(SCHEDULER_HASTE_MODE_TIME,
+      prior_trading_day=True), Scope.UNIVERSE)` after the Fast entry; `scheduler/runner.py` `_act_haste_mode`
+      mirroring `_act_fast_mode` + an `_ACTIONS` entry (fail-loud-401 + durable state come free).
+
+**UI + CLI:**
+- [ ] `ui/fast_mode_view.py` parametrized by mode (or a thin `haste_mode_view`); `ui/app.py` Haste
+      arm/disarm toggle + book panel mirroring `_toggle_fast_mode`/`_render_fast_mode_panel`; extend
+      `_fast_exits` to union both modes' closed trades so Haste exits also surface as `EXITED`.
+- [ ] `run.sh haste` (clone the `fast` block) → `python -m currentflow.haste` (`enable`/`disable`/
+      `status`/`run [--day] [--db]`, mirroring `currentflow/fast/__main__.py`).
+
+**Tests (TDD):**
+- [ ] **firewall (the crux):** a `WATCH` name (C/D, no veto, SMS<70) enters under Haste, is skipped by
+      Fast and by the standard [6] path; a `GATE_REJECTED` and a `VETOED` name are **never** entered
+      under Haste (RULE A + §5 hold).
+- [ ] exit reconciles with the shared fill engine on a one-name run; §6 caps/breakers still bind;
+      persistence survives restart (no double-entry) + reconciles net P&L; scheduler fires after EOD /
+      fails loud on 401 / no-ops when disarmed; arming is mutually exclusive with Fast.
+- [ ] ledger: `haste_mode` promotes OBS→VALIDATING→VALIDATED; `fast_mode`/`sms`/`ai_ranking`/`daily_top`
+      NOT promoted; aggregate withheld until validated; pipeline EXITED cell shows P&L, no score leak.
 
 ## Acceptance criteria (definition of done — `LOCKED_SPEC.md` §13)
 

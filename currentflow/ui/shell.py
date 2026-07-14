@@ -1283,10 +1283,12 @@ _STAGE_STYLE = {
     "rev":  {"mark": "⤶", "fg": "#f0a0a8", "dot": "#e06b7a", "bg": "rgba(224,107,122,0.08)", "bd": "rgba(224,107,122,0.42)", "rc": "#d3a3a8"},
     "skip": {"mark": "·", "fg": "#3d4654", "dot": "#3d4654", "bg": "rgba(255,255,255,0.015)", "bd": "rgba(255,255,255,0.04)", "rc": "#3d4654"},
 }
-# verdict → colors (design §Result-cell verdict styling). EXITED deferred (Phase 2).
+# verdict → colors (design §Result-cell verdict styling). EXITED (v1.4, LD-11) = a closed
+# Fast-Mode position — the reversed-stage verdict, carries realized net-of-fee P&L.
 _RESULT_STYLE = {
     "ARMED":    {"c": "#e8c168", "dot": "#d29922", "anim": "animation:cf-armedpulse 1.8s ease-in-out infinite;", "bg": "rgba(210,153,34,0.08)", "bd": "rgba(210,153,34,0.42)"},
     "WATCH":    {"c": "#8fdcec", "dot": "#58c4dd", "anim": "", "bg": "rgba(88,196,221,0.06)", "bd": "rgba(88,196,221,0.3)"},
+    "EXITED":   {"c": "#c9b6e0", "dot": "#a371d6", "anim": "", "bg": "rgba(163,113,214,0.07)", "bd": "rgba(163,113,214,0.34)"},
     "REJECTED": {"c": "#8b98a9", "dot": "#f85149", "anim": "", "bg": "rgba(255,255,255,0.02)", "bd": "rgba(255,255,255,0.07)"},
 }
 
@@ -1354,11 +1356,19 @@ def pipeline_row_html(row: dict) -> str:
     )
     cells = "".join(_stage_cell_html(c) for c in row["cells"])
     r = _RESULT_STYLE[row["result"]]
+    # EXITED rows carry realized net-of-fee P&L — a factual observation (RULE-B-safe).
+    pnl = row.get("exit_pnl")
+    pnl_html = ""
+    if row["result"] == "EXITED" and pnl is not None:
+        pnl_color = TOKENS["buy"] if pnl >= 0 else TOKENS["sell"]
+        pnl_str = f'{"+" if pnl >= 0 else "−"}IDR {abs(pnl):,.0f}'
+        pnl_html = f'<div class="cf-respnl" style="color:{pnl_color}; font-weight:600;">{escape(pnl_str)}</div>'
     res = (
         f'<div class="cf-rescell" style="background:{r["bg"]}; border:1px solid {r["bd"]}">'
         '<div class="cf-resrow">'
         f'<span class="cf-resdot" style="background:{r["dot"]}; {r["anim"]}"></span>'
         f'<span class="cf-reslabel" style="color:{r["c"]}">{escape(row["result"])}</span></div>'
+        f"{pnl_html}"
         f'<div class="cf-resnote">{escape(row["note"])}</div>'
         '<div class="cf-reswhy">why? — tap for detail ›</div>'
         "</div>"

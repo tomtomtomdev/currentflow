@@ -46,6 +46,9 @@ from currentflow.store.schema import (
     BROKER_NET_COLUMNS,
     DAILY_BAR_COLUMNS,
     DDL,
+    FAST_MODE_STATE_COLUMNS,
+    FAST_POSITION_COLUMNS,
+    FAST_TRADE_COLUMNS,
     KSEI_COLUMNS,
     SCHEDULER_RUNS_COLUMNS,
     SCR0_COLUMNS,
@@ -57,6 +60,9 @@ from currentflow.store.schema import (
     SCR4_COLUMNS,
     SCR_EXIT_COLUMNS,
     SYMBOL_INDEX_COLUMNS,
+    FastModeStateRow,
+    FastPositionRow,
+    FastTradeRow,
     SchedulerRunRow,
 )
 
@@ -106,6 +112,8 @@ def _coerce_enum(cls: type[_E], raw: object, *, table: str, symbol: str) -> _E |
 
 
 class Store:
+    _FAST_STATE_KEY = "singleton"   # fast_mode_state is a single-row table (LD-11, slice 15)
+
     def __init__(self, path: str = ":memory:") -> None:
         self._con = duckdb.connect(path)
         self._con.execute(DDL)
@@ -249,6 +257,94 @@ class Store:
             (r.feed, r.last_fired_at, r.rows_written, r.outcome) for r in rows_in
         ]
         return self._insert("scheduler_runs", SCHEDULER_RUNS_COLUMNS, rows)
+
+    # --- Fast Mode paper book (slice 15, LD-11) -----------------------------------
+
+    def replace_fast_positions(self, rows_in: Iterable[FastPositionRow]) -> int:
+        """Replace the entire open Fast-Mode book with `rows_in`. The book is small and fully
+        rewritten each day-step (closed names drop, new entries appear), so a wholesale
+        replace is simpler and safer than per-row upsert/delete. Returns the new row count."""
+        rows = [
+            (r.symbol, r.as_of, r.track, r.sector, r.board, r.tier, r.tilt_kind,
+             r.entry_date, r.entry_price, r.stop, r.target, r.trail_pct, r.qty,
+             r.risk_idr, r.entry_fee)
+            for r in rows_in
+        ]
+        self._con.execute("DELETE FROM paper_position")
+        if rows:
+            placeholders = ", ".join("?" for _ in FAST_POSITION_COLUMNS)
+            self._con.executemany(
+                f'INSERT INTO paper_position ({_cols(FAST_POSITION_COLUMNS)}) '
+                f"VALUES ({placeholders})",
+                rows,
+            )
+        return len(rows)
+
+    def read_fast_positions(self) -> list[FastPositionRow]:
+        """The current open Fast-Mode book (the daemon reloads it each day-step)."""
+        sql = f'SELECT {_cols(FAST_POSITION_COLUMNS)} FROM paper_position ORDER BY "symbol"'
+        return [
+            FastPositionRow(
+                symbol=r[0], as_of=r[1], track=r[2], sector=r[3], board=r[4], tier=r[5],
+                tilt_kind=r[6], entry_date=r[7], entry_price=r[8], stop=r[9], target=r[10],
+                trail_pct=r[11], qty=r[12], risk_idr=r[13], entry_fee=r[14],
+            )
+            for r in self._con.execute(sql).fetchall()
+        ]
+
+    def append_fast_trades(self, rows_in: Iterable[FastTradeRow]) -> int:
+        """Append closed Fast-Mode trades — ingest-once (a re-recorded (symbol, entry, exit)
+        is an exact-key no-op). The durable forward-paper record that feeds the ledger."""
+        rows = [
+            (r.symbol, r.entry_date, r.exit_date, r.as_of, r.track, r.tilt_kind, r.qty,
+             r.entry_price, r.exit_price, r.entry_fee, r.exit_fee, r.exit_reason,
+             r.stop, r.risk_idr)
+            for r in rows_in
+        ]
+        return self._insert("paper_trade", FAST_TRADE_COLUMNS, rows)
+
+    def read_fast_trades(self) -> list[FastTradeRow]:
+        """All closed Fast-Mode trades, oldest exit first (ledger accrual + EXITED verdict)."""
+        sql = (
+            f'SELECT {_cols(FAST_TRADE_COLUMNS)} FROM paper_trade '
+            'ORDER BY "exit_date", "symbol"'
+        )
+        return [
+            FastTradeRow(
+                symbol=r[0], entry_date=r[1], exit_date=r[2], as_of=r[3], track=r[4],
+                tilt_kind=r[5], qty=r[6], entry_price=r[7], exit_price=r[8], entry_fee=r[9],
+                exit_fee=r[10], exit_reason=r[11], stop=r[12], risk_idr=r[13],
+            )
+            for r in self._con.execute(sql).fetchall()
+        ]
+
+    def read_fast_mode_state(self) -> FastModeStateRow | None:
+        """The Fast-Mode run singleton (arm flag + carried §6 circuit state). None until set."""
+        sql = (
+            f'SELECT {_cols(FAST_MODE_STATE_COLUMNS)} FROM fast_mode_state WHERE "key" = ?'
+        )
+        r = self._con.execute(sql, [self._FAST_STATE_KEY]).fetchone()
+        if r is None:
+            return None
+        return FastModeStateRow(
+            enabled=bool(r[1]), since_date=r[2], last_run_day=r[3],
+            realized_pnl=r[4], prev_equity=r[5], peak_equity=r[6],
+        )
+
+    def write_fast_mode_state(self, state: FastModeStateRow) -> None:
+        """Upsert the Fast-Mode run singleton (the one mutable-in-place store row)."""
+        sql = (
+            f'INSERT INTO fast_mode_state ({_cols(FAST_MODE_STATE_COLUMNS)}) '
+            "VALUES (?, ?, ?, ?, ?, ?, ?) "
+            'ON CONFLICT ("key") DO UPDATE SET '
+            '"enabled"=excluded."enabled", "since_date"=excluded."since_date", '
+            '"last_run_day"=excluded."last_run_day", "realized_pnl"=excluded."realized_pnl", '
+            '"prev_equity"=excluded."prev_equity", "peak_equity"=excluded."peak_equity"'
+        )
+        self._con.execute(sql, [
+            self._FAST_STATE_KEY, state.enabled, state.since_date, state.last_run_day,
+            state.realized_pnl, state.prev_equity, state.peak_equity,
+        ])
 
     def _insert(self, table: str, columns: Sequence[str], rows: list[tuple]) -> int:
         if not rows:

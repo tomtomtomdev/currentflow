@@ -69,6 +69,7 @@ FEED_EOD_INGEST = "eod_ingest"            # broker_summary + ohlcv_foreign (one 
 FEED_UNIVERSE_SCREENER = "universe_screener"  # run_scr0 → scr0_eligible
 FEED_INDEX_MEMBERSHIP = "index_membership"    # symbol_info.indexes → refresh_membership
 FEED_KSEI_OWNERSHIP = "ksei_ownership"        # ksei_ownership → store.write_ksei_ownership
+FEED_FAST_MODE = "fast_mode_autotrade"        # LD-11 auto paper-trade step (validation.fast_mode)
 
 MON = 0
 
@@ -89,6 +90,16 @@ FEED_SCHEDULES: tuple[FeedSchedule, ...] = (
     # Weekly rosters (Monday morning): index membership (§3 Track source) + KSEI ownership.
     FeedSchedule(FEED_INDEX_MEMBERSHIP, WeeklyAt(MON, config.SCHEDULER_EOD_TIME), Scope.UNIVERSE),
     FeedSchedule(FEED_KSEI_OWNERSHIP, WeeklyAt(MON, config.SCHEDULER_EOD_TIME), Scope.UNIVERSE),
+    # Fast Mode (LD-11) auto paper-trade step — LAST, at 09:10, so it reads the day's freshly
+    # ingested bars/broker (EOD 09:00) + refreshed universe (09:05). Candidate pool = the SCR-0
+    # universe; the ARMED filter + fast entry (§6) run inside the step at the look-ahead-safe
+    # decision_ts. Unlike every feed above this one SCORES + auto-executes (paper) — it is a no-op
+    # unless the operator has armed `fast_mode_state`. Prior completed trading day (like EOD).
+    FeedSchedule(
+        FEED_FAST_MODE,
+        DailyAt(config.SCHEDULER_FAST_MODE_TIME, prior_trading_day=True),
+        Scope.UNIVERSE,
+    ),
 )
 
 # --- Deferred feeds (no cache sink yet) --------------------------------------------

@@ -33,9 +33,10 @@ from currentflow.store.db import Store
 
 
 class TriggerKind(str, Enum):
-    SPRING = "SPRING"   # Phase C spring-test close
-    LPS = "LPS"         # Phase D last-point-of-support pullback
-    NONE = "NONE"       # no confirmation trigger
+    SPRING = "SPRING"       # Phase C spring-test close
+    LPS = "LPS"             # Phase D last-point-of-support pullback
+    NONE = "NONE"           # no confirmation trigger
+    FAST_ARMED = "FAST_ARMED"  # LD-11 Fast Mode: buy on ARMED at once, no trigger
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,3 +135,74 @@ def analyze(
     """Read look-ahead-safe bars and compute the entry trigger for `symbol`."""
     bars = store.read_daily_bars(symbol, decision_ts, start=start, end=end)
     return detect(symbol, phase_cls, bars, decision_ts)
+
+
+def fast_detect(
+    symbol: str,
+    phase_cls: PhaseClassification,
+    bars: list[DailyBar],
+    decision_ts: datetime,
+) -> TriggerSignal:
+    """Fast Mode entry (spec §6, LD-11) — buy an ARMED name AT ONCE, no Spring/LPS trigger.
+
+    The relaxation of LD-3, confined to Fast Mode: there is no confirmation trigger, and the
+    **R:R ≥ 2:1 gate is dropped** (R:R is still computed and carried, as an observation). The
+    geometry is hung on the Wyckoff trading range the phase gate already established (never
+    invented): entry = a marketable limit just above the last visible close; stop = just below
+    range support (invalidation); target = range resistance (C) / measured move (D). `valid` is
+    True on a coherent `stop < entry` alone — a Fast-Mode entry is not skipped for a poor R:R.
+    `missing ≠ zero`: no coherent range / no visible close → no entry (valid=False)."""
+
+    def skip(reason: str) -> TriggerSignal:
+        return TriggerSignal(
+            symbol=symbol, decision_ts=decision_ts, kind=TriggerKind.FAST_ARMED,
+            trigger_price=None, entry_limit=None, stop=None, target=None, rr=None,
+            valid=False, reason=reason,
+        )
+
+    rng = phase_cls.trading_range
+    if not phase_cls.tradeable or rng is None or rng.support <= 0:
+        return skip(f"not tradeable / no range (phase {phase_cls.phase.value})")
+
+    ref_bar = next(
+        (b for b in reversed(bars) if b.status is RowStatus.TRADED and b.close is not None),
+        None,
+    )
+    if ref_bar is None or ref_bar.close is None:
+        return skip("no visible close to price the fast-mode entry")
+
+    ref = ref_bar.close
+    entry = ref * (1 + config.FAST_MODE_LIMIT_PREMIUM)     # marketable limit at/above last close
+    stop = rng.support * (1 - config.STOP_BUFFER)          # below range support (invalidation)
+    if phase_cls.phase is WyckoffPhase.C:
+        target = rng.resistance                            # AR high
+    else:                                                  # Phase D measured move
+        target = rng.resistance + config.TARGET_MEASURED_MOVE_MULT * rng.span
+
+    if not (stop < entry):
+        return skip(f"incoherent geometry (stop {stop:.2f} ≥ entry {entry:.2f})")
+
+    rr = (target - entry) / (entry - stop)                 # observed, not gated (LD-11)
+    reason = (
+        f"FAST_ARMED[{phase_cls.phase.value}]: entry {entry:.2f}, stop {stop:.2f}, "
+        f"target {target:.2f}, R:R {rr:.2f} (observed, not gated) → ENTER"
+    )
+    return TriggerSignal(
+        symbol=symbol, decision_ts=decision_ts, kind=TriggerKind.FAST_ARMED,
+        trigger_price=ref, entry_limit=entry, stop=stop, target=target, rr=rr,
+        valid=True, reason=reason,
+    )
+
+
+def fast_analyze(
+    store: Store,
+    symbol: str,
+    decision_ts: datetime,
+    phase_cls: PhaseClassification,
+    *,
+    start: Date | None = None,
+    end: Date | None = None,
+) -> TriggerSignal:
+    """Read look-ahead-safe bars and compute the Fast Mode (LD-11) entry for `symbol`."""
+    bars = store.read_daily_bars(symbol, decision_ts, start=start, end=end)
+    return fast_detect(symbol, phase_cls, bars, decision_ts)

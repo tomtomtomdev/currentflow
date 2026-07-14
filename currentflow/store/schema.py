@@ -7,6 +7,7 @@ Column identifiers are always double-quoted in generated SQL because several
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date as Date
 from datetime import datetime
 from enum import Enum
 
@@ -183,6 +184,89 @@ class SchedulerRunRow:
     rows_written: int
     outcome: str
 
+
+# --- Fast Mode (LD-11, slice 15) — the durable paper book + run state ----------------
+# Store-owned operational tables (like scheduler_runs), NOT DAL feeds. They record the
+# realized/held FACTS of the auto paper-trader, so they carry an `as_of` audit stamp but
+# skip the `as_of < decision_ts` look-ahead firewall (a closed trade is a fact, not a
+# point-in-time signal read). `exit_reason` is a free VARCHAR (values from
+# execution.risk.ExitReason), mirroring scheduler_runs.outcome — no cross-package CHECK.
+FAST_POSITION_COLUMNS: tuple[str, ...] = (
+    "symbol", "as_of", "track", "sector", "board", "tier", "tilt_kind",
+    "entry_date", "entry_price", "stop", "target", "trail_pct", "qty",
+    "risk_idr", "entry_fee",
+)
+
+FAST_TRADE_COLUMNS: tuple[str, ...] = (
+    "symbol", "entry_date", "exit_date", "as_of", "track", "tilt_kind", "qty",
+    "entry_price", "exit_price", "entry_fee", "exit_fee", "exit_reason",
+    "stop", "risk_idr",
+)
+
+FAST_MODE_STATE_COLUMNS: tuple[str, ...] = (
+    "key", "enabled", "since_date", "last_run_day",
+    "realized_pnl", "prev_equity", "peak_equity",
+)
+
+
+@dataclass(frozen=True, slots=True)
+class FastPositionRow:
+    """One open Fast-Mode paper position (LD-11). Carries enough to run the §8 exit and
+    rebuild the closed PaperTrade on exit (`entry_fee` lets net-of-fee P&L reconcile with
+    `validation.trade.from_fills`)."""
+
+    symbol: str
+    as_of: datetime
+    track: str
+    sector: str
+    board: str
+    tier: str
+    tilt_kind: str
+    entry_date: Date
+    entry_price: float
+    stop: float
+    target: float | None
+    trail_pct: float
+    qty: int
+    risk_idr: float | None
+    entry_fee: float
+
+
+@dataclass(frozen=True, slots=True)
+class FastTradeRow:
+    """One closed Fast-Mode paper trade (LD-11) — the durable forward-paper record that
+    feeds the `ValidationLedger` (`fast_mode` lane) and the pipeline EXITED verdict."""
+
+    symbol: str
+    entry_date: Date
+    exit_date: Date
+    as_of: datetime
+    track: str
+    tilt_kind: str
+    qty: int
+    entry_price: float
+    exit_price: float
+    entry_fee: float
+    exit_fee: float
+    exit_reason: str
+    stop: float
+    risk_idr: float | None
+
+
+@dataclass(frozen=True, slots=True)
+class FastModeStateRow:
+    """The Fast-Mode run singleton (LD-11): the operator arm/disarm flag + the carried §6
+    circuit state (prev/peak equity) so the daemon's breakers bind across days. `key` is a
+    fixed constant added by the store — a single row."""
+
+    enabled: bool
+    since_date: Date | None
+    last_run_day: Date | None
+    realized_pnl: float
+    prev_equity: float
+    peak_equity: float
+
+
 DDL = f"""
 CREATE TABLE IF NOT EXISTS daily_bar (
     "symbol"            VARCHAR   NOT NULL,
@@ -332,5 +416,53 @@ CREATE TABLE IF NOT EXISTS scheduler_runs (
     "rows_written"  BIGINT    NOT NULL,
     "outcome"       VARCHAR   NOT NULL,
     PRIMARY KEY ("feed", "last_fired_at")
+);
+
+CREATE TABLE IF NOT EXISTS paper_position (
+    "symbol"      VARCHAR   NOT NULL,
+    "as_of"       TIMESTAMP NOT NULL,
+    "track"       VARCHAR   NOT NULL,
+    "sector"      VARCHAR   NOT NULL,
+    "board"       VARCHAR   NOT NULL,
+    "tier"        VARCHAR   NOT NULL,
+    "tilt_kind"   VARCHAR   NOT NULL,
+    "entry_date"  DATE      NOT NULL,
+    "entry_price" DOUBLE    NOT NULL,
+    "stop"        DOUBLE    NOT NULL,
+    "target"      DOUBLE,
+    "trail_pct"   DOUBLE    NOT NULL,
+    "qty"         BIGINT    NOT NULL,
+    "risk_idr"    DOUBLE,
+    "entry_fee"   DOUBLE    NOT NULL,
+    PRIMARY KEY ("symbol")
+);
+
+CREATE TABLE IF NOT EXISTS paper_trade (
+    "symbol"      VARCHAR   NOT NULL,
+    "entry_date"  DATE      NOT NULL,
+    "exit_date"   DATE      NOT NULL,
+    "as_of"       TIMESTAMP NOT NULL,
+    "track"       VARCHAR   NOT NULL,
+    "tilt_kind"   VARCHAR   NOT NULL,
+    "qty"         BIGINT    NOT NULL,
+    "entry_price" DOUBLE    NOT NULL,
+    "exit_price"  DOUBLE    NOT NULL,
+    "entry_fee"   DOUBLE    NOT NULL,
+    "exit_fee"    DOUBLE    NOT NULL,
+    "exit_reason" VARCHAR   NOT NULL,
+    "stop"        DOUBLE    NOT NULL,
+    "risk_idr"    DOUBLE,
+    PRIMARY KEY ("symbol", "entry_date", "exit_date")
+);
+
+CREATE TABLE IF NOT EXISTS fast_mode_state (
+    "key"          VARCHAR   NOT NULL,
+    "enabled"      BOOLEAN   NOT NULL,
+    "since_date"   DATE,
+    "last_run_day" DATE,
+    "realized_pnl" DOUBLE    NOT NULL,
+    "prev_equity"  DOUBLE    NOT NULL,
+    "peak_equity"  DOUBLE    NOT NULL,
+    PRIMARY KEY ("key")
 );
 """

@@ -45,6 +45,19 @@ def test_pipeline_is_the_home_view(_session):
 
 
 @patch("currentflow.dal.session.session_status", return_value=_FAKE_SESSION)
+def test_fast_mode_panel_and_toggle_render(_session):
+    """The LD-11 Fast Mode panel renders on the pipeline home with an arm/disarm toggle,
+    defaulted OFF (opt-in), and the app raises no exception (wiring is sound)."""
+    at = _authed_app()
+    toggles = {t.key: t for t in at.toggle}
+    if "cf_fast_toggle" not in toggles:
+        pytest.skip("no data ingested in the checked-in store → panel not reached")
+    tog = toggles["cf_fast_toggle"]
+    assert tog.value is False                    # off by default (opt-in — never auto-trades)
+    assert "Fast Mode" in tog.label              # the panel's arm control rendered
+
+
+@patch("currentflow.dal.session.session_status", return_value=_FAKE_SESSION)
 def test_row_click_opens_evidence_then_back_returns(_session):
     at = _authed_app()
     opens = [b for b in at.button if b.key and b.key.startswith("cfpipeopen-")]

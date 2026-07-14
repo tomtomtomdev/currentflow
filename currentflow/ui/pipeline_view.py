@@ -39,17 +39,27 @@ from currentflow.signals.phase import WyckoffPhase
 
 # stage-cell states, matching the design's `s` field
 PASS, FAIL, LOW, REV, SKIP = "pass", "fail", "low", "rev", "skip"
-# verdicts (EXITED deferred — see module docstring / PLAN.md Phase 2)
-ARMED, WATCH, REJECTED = "ARMED", "WATCH", "REJECTED"
+# verdicts. EXITED (v1.4, LD-11) = a name that cleared the pipeline, was auto-entered by Fast
+# Mode, then sold on the §8 exit ladder — fed by the persisted paper-trade book.
+ARMED, WATCH, REJECTED, EXITED = "ARMED", "WATCH", "REJECTED", "EXITED"
 
 STAGES = ("gate", "phase", "sig", "veto")
+
+# exit reason (execution.risk.ExitReason value) → short reversed-stage cell tag
+_EXIT_TAG = {
+    "STOP": "STOPPED OUT",
+    "TARGET": "TARGET HIT",
+    "TRAILING": "TRAILING STOP",
+    "SIGNAL_DECAY": "SIGNAL DECAY",
+    "NONE": "EXITED",
+}
 
 _LANE_DESC = {
     "A": "large-cap · LQ45/IDX80 · foreign-flow reliable — NBSA co-lead (wt 25)",
     "B": "lapis-2 · passes hard floor only · broker-concentration reliable (wt 35)",
 }
 
-_VERDICT_ORDER = {ARMED: 0, WATCH: 1, REJECTED: 2}
+_VERDICT_ORDER = {ARMED: 0, WATCH: 1, EXITED: 2, REJECTED: 3}
 
 # component key → operator-facing label for the signal-cell reason (observation only)
 _COMP_LABEL = {
@@ -79,6 +89,14 @@ def _bn(value: float | None) -> str:
         return "—"
     bn = value / 1e9
     return f"{bn:.0f}" if bn >= 100 else f"{bn:.1f}".rstrip("0").rstrip(".")
+
+
+def _signed_idr(value: float | None) -> str:
+    """Signed IDR (realized paper P&L is a factual measurement, RULE-B-safe)."""
+    if value is None:
+        return "—"
+    sign = "+" if value >= 0 else "−"
+    return f"{sign}IDR {abs(value):,.0f}"
 
 
 def _cell(stage: str, state: str, tag: str, reason: str) -> dict:
@@ -200,6 +218,20 @@ def _row(candidate: dict) -> dict:
     else:
         verdict, note = ARMED, "on watchlist — flow + phase aligned; awaiting trigger (LD-3)"
 
+    # -- EXITED override (v1.4, LD-11) — a closed Fast-Mode position for this name. The row
+    # shows the reversed-stage `⤶` cell + realized net-of-fee P&L (a factual observation).
+    exit_payload = candidate.get("exit")
+    exit_pnl = None
+    if exit_payload is not None:
+        exit_pnl = exit_payload.get("pnl")
+        reason = exit_payload.get("reason", "NONE")
+        ex_date = exit_payload.get("exit_date")
+        ve = _cell("veto", REV, _EXIT_TAG.get(reason, reason),
+                   f"exited {ex_date} · realized {_signed_idr(exit_pnl)} net of fees")
+        verdict = EXITED
+        note = (f"Fast Mode entered then exited ({_EXIT_TAG.get(reason, reason)}) — "
+                f"realized {_signed_idr(exit_pnl)} net of fees")
+
     return {
         "ticker": r.symbol,
         "name": candidate.get("name", r.symbol),
@@ -211,17 +243,19 @@ def _row(candidate: dict) -> dict:
         "cells": [gate, ph, sig, ve],
         "result": verdict,
         "note": note,
+        "exit_pnl": exit_pnl,
         # RULE-B-safe ordering key: internal SMS orders rows but is never emitted
         "_order": (_VERDICT_ORDER[verdict], -r.sms.internal_score),
     }
 
 
 def _count_str(rows: list[dict]) -> str:
-    counts = {ARMED: 0, WATCH: 0, REJECTED: 0}
+    counts = {ARMED: 0, WATCH: 0, EXITED: 0, REJECTED: 0}
     for row in rows:
         counts[row["result"]] += 1
-    # EXITED omitted until the portfolio paper-trader feeds it (Phase 2)
-    return f"{counts[ARMED]} armed · {counts[WATCH]} watch · {counts[REJECTED]} rejected"
+    base = f"{counts[ARMED]} armed · {counts[WATCH]} watch · {counts[REJECTED]} rejected"
+    # EXITED shown only when Fast Mode has closed a position in this lane (LD-11).
+    return base + (f" · {counts[EXITED]} exited" if counts[EXITED] else "")
 
 
 def build_row(candidate: dict) -> dict:
@@ -231,7 +265,9 @@ def build_row(candidate: dict) -> dict:
     return row
 
 
-_VERDICT_PHRASE = {ARMED: "is ARMED", WATCH: "is on WATCH", REJECTED: "was REJECTED"}
+_VERDICT_PHRASE = {
+    ARMED: "is ARMED", WATCH: "is on WATCH", REJECTED: "was REJECTED", EXITED: "was EXITED",
+}
 
 
 def detail_header(row: dict) -> dict:

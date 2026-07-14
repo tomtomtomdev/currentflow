@@ -76,6 +76,7 @@ class RunConfig:
     portfolio: Portfolio | None = None
     circuit: CircuitState = CircuitState.OK
     registry: dict[str, BrokerDNA] | None = None
+    fast_mode: bool = False   # LD-11: enter on ARMED at once (no trigger / no R:R gate)
 
 
 def _decision_ts(day: Date) -> datetime:
@@ -106,7 +107,11 @@ def _attempt_entry(store, symbol: str, day: Date, cfg: RunConfig,
     res = engine_mod.evaluate(store, symbol, dts, track=cfg.track, registry=cfg.registry)
     if not res.armed:
         return None
-    sig = trigger_mod.analyze(store, symbol, dts, res.phase)
+    # LD-11 Fast Mode buys ARMED at once (no Spring/LPS trigger, no R:R gate); the standard
+    # path requires a valid Spring/LPS trigger with R:R ≥ 2:1. Both yield a TriggerSignal.
+    sig = (trigger_mod.fast_analyze if cfg.fast_mode else trigger_mod.analyze)(
+        store, symbol, dts, res.phase
+    )
     if not sig.valid:
         return None
     order = generate_order(

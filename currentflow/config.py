@@ -251,6 +251,16 @@ LIMIT_UNDERCUT = 0.0              # limit placed at trigger; >0 shaves it below 
 # targets the automatic-rally high (range resistance) directly.
 TARGET_MEASURED_MOVE_MULT = 1.0
 
+# --- Fast Mode (spec §6, LD-11; slice 15) --------------------------------------------
+# Operator-armed auto paper-trader that buys every ARMED name AT ONCE, without waiting for
+# the Spring/LPS trigger and WITHOUT the R:R≥2:1 gate (R:R is still computed, as an
+# observation). Paper only — never a live order (§15). Off by default (opt-in), matching
+# the ML/regime "gated shut" posture.
+FAST_MODE_ENABLED = False          # global default; the durable fast_mode_state overrides it
+# The fast-mode entry is a *marketable* limit: reference (last visible close) × (1 + premium),
+# so the next-open fill lands at/under the limit (honest under ARA/ARB, §12). Small by design.
+FAST_MODE_LIMIT_PREMIUM = 0.005    # 0.5% above the reference close
+
 # --- Execution: sizing / order gen (spec §6; slice 7) --------------------------------
 RISK_PCT = 0.01                    # position risk locked at 1% of equity (IDX manipulation tax)
 LOT_SIZE = 100                     # IDX board lot = 100 shares (§12)
@@ -348,6 +358,9 @@ SCHEDULER_EOD_TIME = time(9, 0)
 # Universe screener refresh a beat later so the day's fresh survivor set lands after
 # the morning EOD ingest (steady state: per-symbol feeds use the prior refresh).
 SCHEDULER_SCREENER_TIME = time(9, 5)
+# Fast Mode (LD-11) auto-trade step fires a beat AFTER the EOD ingest + screener refresh so
+# it reads the day's freshly-cached bars/broker + universe. Prior completed trading day.
+SCHEDULER_FAST_MODE_TIME = time(9, 10)
 # The loop wakes this often to ask each feed "due?" against durable run-state. A tick
 # that finds nothing due (or is outside the window) is a cheap no-op.
 SCHEDULER_TICK_SECONDS = 60

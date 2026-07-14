@@ -1,9 +1,13 @@
 """The scheduler loop (slice 12): tick → find due feeds → run them through the EXISTING
 ingest surface → record durable run-state.
 
-Nothing here scores, ranks, or touches RULE A/B — it only fills the DuckDB cache the calc
-engine already reads. All the look-ahead/`as_of`/ingest-once discipline lives in the surfaces
-it calls (`ingest.pipeline`, `screeners.scr0`), unchanged.
+Most feeds only fill the DuckDB cache the calc engine reads — they don't score or rank. The
+**one exception is the LD-11 Fast Mode feed** (`_act_fast_mode`), which scores + auto-executes
+(paper) the ARMED watchlist; it still honours RULE A (the phase gate runs in `engine.evaluate`)
+and RULE B (it feeds the `ValidationLedger`, never displays a number), and it is a no-op unless
+the operator has armed `fast_mode_state`. All the look-ahead/`as_of`/ingest-once discipline lives
+in the surfaces the feeds call (`ingest.pipeline`, `screeners.scr0`, `validation.fast_mode`),
+unchanged.
 
 Error policy:
   * **401 → fail loud.** An `AuthError` propagates out of the tick (the run-state row is NOT
@@ -31,6 +35,7 @@ from currentflow.ingest.pipeline import ingest_universe, refresh_membership
 from currentflow.scheduler import calendar as cal
 from currentflow.scheduler.schedule import (
     FEED_EOD_INGEST,
+    FEED_FAST_MODE,
     FEED_INDEX_MEMBERSHIP,
     FEED_KSEI_OWNERSHIP,
     FEED_SCHEDULES,
@@ -135,6 +140,24 @@ async def _act_ksei(client, store, symbols, *, now):
     return total, OUTCOME_OK, f"{len(symbols)} names"
 
 
+async def _act_fast_mode(client, store, symbols, *, now):
+    """LD-11 Fast Mode: advance the auto paper-trade book by one trading day. Unlike every
+    other feed this SCORES + auto-executes (paper) — but only when the operator has armed
+    `fast_mode_state`; otherwise it is a no-op. Makes no network call (reads the freshly cached
+    store), so it never raises AuthError. Look-ahead-safe: the step decides at the prior day's
+    pre-open decision_ts and fills at that day's open."""
+    from currentflow.universe.sectors import OPERATOR_SECTOR_MAP
+    from currentflow.validation.fast_mode import run_fast_mode_step
+
+    day = cal.previous_trading_day(now.date())
+    result = run_fast_mode_step(
+        store, symbols, day, sector_map=OPERATOR_SECTOR_MAP, now=now,
+    )
+    if not result.enabled:
+        return 0, OUTCOME_EMPTY, "fast mode disarmed"
+    return result.rows_written, OUTCOME_OK, result.detail
+
+
 _Action = Callable[..., Awaitable[tuple[int, str, str]]]
 
 _ACTIONS: dict[str, _Action] = {
@@ -142,6 +165,7 @@ _ACTIONS: dict[str, _Action] = {
     FEED_UNIVERSE_SCREENER: _act_screener,
     FEED_INDEX_MEMBERSHIP: _act_membership,
     FEED_KSEI_OWNERSHIP: _act_ksei,
+    FEED_FAST_MODE: _act_fast_mode,
 }
 
 

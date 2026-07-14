@@ -34,6 +34,7 @@ from currentflow.signals import (
 from currentflow.signals.broker_flow import analyze, buyer_seller_matrix
 from currentflow.signals.risk_monitor import Portfolio, Position
 from currentflow.store.db import Store
+from currentflow.universe import sectors as sectors_mod
 from currentflow.universe import track as track_mod
 from currentflow.ui.trap_view import ribbon_banner, ribbon_rows
 from currentflow.ui.accumulation_view import (
@@ -78,7 +79,8 @@ from currentflow.ui.risk_view import (
 from currentflow.ui import shell
 from currentflow.ui.sector_view import scatter_points, sector_rows
 from currentflow.ui.sms_view import GATE_BANNER, WATCHLIST_FRAMING, component_rows, score_display, state_label
-from currentflow.ui import daily_top_view, ml_view, pipeline_view, ranking_view, watchlist_view
+from currentflow.ui import daily_top_view, fast_mode_view, ml_view, pipeline_view, ranking_view, watchlist_view
+from currentflow.validation import fast_mode as fast_mode_mod
 from currentflow.validation.promotion import ValidationLedger
 
 # The pre-v2 left module nav rail is removed (design v2). Signal Pipeline is the sole
@@ -93,11 +95,9 @@ _IHSG_SYMBOLS = ("IHSG", "COMPOSITE", "^JKSE", "JKSE")
 
 # Operator sector map — ILLUSTRATIVE, seeded from the design handoff ticker reference
 # (design/SCREENS_terminal.md). Like the broker-DNA registry, it is operator knowledge to verify
-# and extend; unmapped symbols fall back to UNKNOWN (never silently grouped).
-OPERATOR_SECTOR_MAP = {
-    "BRMS": "Basic Materials", "NCKL": "Basic Materials", "MBMA": "Basic Materials",
-    "PTRO": "Energy", "RAJA": "Energy", "CUAN": "Energy", "DEWA": "Energy",
-}
+# and extend; unmapped symbols fall back to UNKNOWN (never silently grouped). Canonical home is
+# `universe.sectors` (shared with the Fast-Mode auto-trader); re-exported here for the views.
+OPERATOR_SECTOR_MAP = sectors_mod.OPERATOR_SECTOR_MAP
 
 
 def _db_path() -> str:
@@ -1415,15 +1415,28 @@ def _last_close_and_change(bars) -> tuple[float | None, float | None]:
     return price, chg
 
 
-def _candidate(store: Store, symbol: str, decision_ts: datetime) -> dict:
+def _fast_exits(store: Store) -> dict[str, dict]:
+    """Most-recent closed Fast-Mode trade per name that is NOT currently open — the source
+    of the pipeline's EXITED verdict (v1.4, LD-11). Realized net-of-fee P&L is a fact."""
+    open_syms = {p.symbol for p in store.read_fast_positions()}
+    latest: dict[str, dict] = {}
+    for t in store.read_fast_trades():  # oldest first → last per symbol = most recent exit
+        latest[t.symbol] = {
+            "pnl": (t.exit_price - t.entry_price) * t.qty - (t.entry_fee + t.exit_fee),
+            "reason": t.exit_reason,
+            "exit_date": t.exit_date,
+        }
+    return {s: e for s, e in latest.items() if s not in open_syms}
+
+
+def _candidate(
+    store: Store, symbol: str, decision_ts: datetime, *, exit: dict | None = None
+) -> dict:
     """One Signal-Pipeline candidate: the real engine result + display meta. Track is
     the spec §3 assignment; adv20 reconciles with the gate/track ADV (`engine._adv20`).
 
-    NOTE (Phase 2 — unconnected plumbing to resolve): the verdict here is ARMED / WATCH /
-    REJECTED only. The design's fourth verdict, EXITED (a position that entered then sold
-    on a broken thesis, with realized P&L + a ⤶ reversed stage), is NOT surfaced — that
-    data lives in the portfolio paper-trader (`validation.portfolio_runner` closed
-    positions) and is not yet wired into the pipeline. See PLAN.md 'Phase 2'."""
+    `exit` (v1.4, LD-11) carries a closed Fast-Mode trade for this name → the row renders
+    the EXITED verdict + realized P&L (`_fast_exits` supplies it; None for a live candidate)."""
     bars = store.read_daily_bars(symbol, decision_ts)
     track = track_mod.resolve_track(store, symbol, decision_ts, bars)
     result = engine.evaluate(store, symbol, decision_ts, track=track)
@@ -1435,6 +1448,7 @@ def _candidate(store: Store, symbol: str, decision_ts: datetime) -> dict:
         "chg": chg,
         "adv20": engine._adv20(bars),
         "sector": OPERATOR_SECTOR_MAP.get(symbol),
+        "exit": exit,
     }
 
 
@@ -1461,6 +1475,71 @@ _EVIDENCE_TABS = (
 )
 
 
+def _toggle_fast_mode(store: Store) -> None:
+    """Arm/disarm callback for the Fast-Mode toggle (writes the server-authoritative state)."""
+    fast_mode_mod.set_enabled(store, bool(st.session_state.get("cf_fast_toggle", False)))
+
+
+def _render_fast_mode_panel(store: Store) -> None:
+    """Fast Mode (LD-11) control + book: the arm/disarm toggle, open/closed positions with
+    realized/unrealized P&L (facts), and RULE B accrual toward the `fast_mode` lane. The
+    aggregate hit-rate / expectancy is withheld (`•••`) until the lane validates."""
+    led = _ledger()
+    fast_mode_mod.accrue_fast_mode(store, led, now=datetime.now())  # derive state from facts
+    view = fast_mode_view.build_view(store, led, now=datetime.now())
+
+    open_default = bool(view["enabled"] or view["n_open"] or view["n_closed"])
+    with st.expander(
+        "⚡ Fast Mode — auto paper-trade the ARMED watchlist (LD-11 · paper only)",
+        expanded=open_default,
+    ):
+        st.caption(view["framing"])
+        st.toggle(
+            "Arm Fast Mode — auto paper-buy every ARMED name at once; same §8 exit strategy",
+            value=view["enabled"], key="cf_fast_toggle",
+            on_change=_toggle_fast_mode, args=(store,),
+        )
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Open", view["n_open"])
+        c2.metric("Closed", view["n_closed"])
+        c3.metric("Realized P&L (net of fees)", f"IDR {view['realized_pnl']:,.0f}")
+        c4.metric(
+            "Forward paper",
+            f"{view['months_accrued']:.1f} / {view['required_months']} mo",
+        )
+        st.caption(
+            f"Validation lane `fast_mode` — state **{view['module_state']}**; "
+            f"hit-rate {view['hit_rate_display']} · expectancy {view['expectancy_display']} "
+            "(withheld until validated — RULE B)."
+        )
+        if view["open_positions"]:
+            st.markdown("**Open book**")
+            st.dataframe(
+                [
+                    {
+                        "symbol": p["symbol"], "qty": p["qty"],
+                        "entry": p["entry_price"], "stop": p["stop"], "target": p["target"],
+                        "mark": p["mark"],
+                        "unrealized (net)": p["unrealized_pnl"],
+                    }
+                    for p in view["open_positions"]
+                ],
+                hide_index=True, use_container_width=True,
+            )
+        if view["closed_trades"]:
+            st.markdown("**Closed trades**")
+            st.dataframe(
+                [
+                    {
+                        "symbol": t["symbol"], "entry": t["entry_date"], "exit": t["exit_date"],
+                        "reason": t["exit_reason"], "net P&L": t["net_pnl"], "won": t["won"],
+                    }
+                    for t in view["closed_trades"]
+                ],
+                hide_index=True, use_container_width=True,
+            )
+
+
 def _render_pipeline(store: Store) -> None:
     """The Signal Pipeline — the sole top-level view (design v2). Every ingested name
     flows through the four locked stages; rows are grouped into Track A / Track B lanes.
@@ -1477,8 +1556,11 @@ def _render_pipeline(store: Store) -> None:
         st.warning("No data ingested yet — run the ingest pipeline first.")
         return
 
+    _render_fast_mode_panel(store)  # v1.4 (LD-11): the auto paper-trade book + arm state
+
     decision_ts = datetime.now()
-    candidates = [_candidate(store, s, decision_ts) for s in symbols]
+    exits = _fast_exits(store)  # closed Fast-Mode positions → EXITED verdict
+    candidates = [_candidate(store, s, decision_ts, exit=exits.get(s)) for s in symbols]
     lanes = pipeline_view.build_lanes(candidates)
 
     st.markdown(shell.pipeline_stage_header_html(), unsafe_allow_html=True)
@@ -1506,7 +1588,9 @@ def _render_detail(store: Store, ticker: str) -> None:
     EVIDENCE tab bar, and the active evidence view (reusing the four module renderers,
     each keyed off the rail-selected symbol)."""
     decision_ts = datetime.now()
-    row = pipeline_view.build_row(_candidate(store, ticker, decision_ts))
+    row = pipeline_view.build_row(
+        _candidate(store, ticker, decision_ts, exit=_fast_exits(store).get(ticker))
+    )
     hd = pipeline_view.detail_header(row)
 
     back_col, head_col = st.columns([0.13, 0.87], gap="small")

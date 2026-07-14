@@ -21,7 +21,11 @@
 #   ./run.sh schedule     run the automated per-feed ingestion daemon (slice 12) —
 #                         fires each feed on its cadence during Mon–Fri trading hours;
 #                         --once runs a single tick and exits. Usually launchd-driven
-#                         (deploy/com.currentflow.scheduler.plist).
+#                         (deploy/com.currentflow.scheduler.plist). Now also drives the
+#                         LD-11 Fast Mode auto paper-trade step once armed.
+#   ./run.sh fast ...     Fast Mode auto paper-trader control (slice 15, LD-11; paper only):
+#                           ./run.sh fast enable | disable | status
+#                           ./run.sh fast run [--day YYYY-MM-DD]   (one manual step)
 #   ./run.sh log          tail the network-error log (logs/net.log; -f to follow)
 #   ./run.sh test         run the test suite
 #   ./run.sh stop         stop the running terminal (kills the Streamlit on $PORT)
@@ -91,6 +95,15 @@ case "$cmd" in
     shift || true
     exec "$PY" -m currentflow.scheduler "$@"
     ;;
+  fast)
+    ensure_venv; ensure_deps
+    # LD-11 Fast Mode control (slice 15): enable | disable | status | run. Operates on the
+    # already-ingested local store (no network), so no session check — arm it, then the
+    # scheduler daemon drives the daily step, or 'run' steps once manually. Paper only.
+    shift || true
+    [[ $# -ge 1 ]] || die "usage: ./run.sh fast {enable|disable|status|run} [--day YYYY-MM-DD] [--db PATH]"
+    exec "$PY" -m currentflow.fast "$@"
+    ;;
   log)
     # No venv/deps needed — just read the local net-error log (dal/netlog.py).
     [[ -f "$NET_LOG" ]] || die "no log yet — $NET_LOG (written once a net-error occurs)"
@@ -138,6 +151,6 @@ case "$cmd" in
       --server.headless true
     ;;
   *)
-    die "unknown command '$cmd' — use: serve | login | paste | check | ingest | schedule | log | test | stop"
+    die "unknown command '$cmd' — use: serve | login | paste | check | ingest | schedule | fast | log | test | stop"
     ;;
 esac

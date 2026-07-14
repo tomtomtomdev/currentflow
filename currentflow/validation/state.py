@@ -23,7 +23,10 @@ class ModuleState(str, Enum):
 
 
 # Gated modules (spec §9). All start observation-only — no number until earned.
-GATED_MODULES = ("sms", "ai_ranking", "daily_top")
+# `fast_mode` (LD-11, slice 15) is the auto paper-trader's own lane: its aggregate
+# hit-rate/expectancy stays withheld until its forward-paper record clears validation —
+# it never rides on the trigger-based modules' validation, nor they on it.
+GATED_MODULES = ("sms", "ai_ranking", "daily_top", "fast_mode")
 
 _DEFAULT_STATES: dict[str, ModuleState] = {m: ModuleState.OBSERVATION_ONLY for m in GATED_MODULES}
 
