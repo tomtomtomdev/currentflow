@@ -172,10 +172,26 @@ def _attempt_exit(store, held: _Held, day: Date, cfg: RunConfig,
     )
 
 
+def assert_regime_clamped(days: list[Date], track: str) -> None:
+    """Fail loud if a historical run reaches before `regime_start(track)` (REGIME.md,
+    slice 20). A backtest over pre-regime data (COVID unwind / pre-FCA) run with current
+    -regime constants is a bug, not a bigger sample — refuse it, naming the boundary."""
+    if not days:
+        return
+    floor = config.regime_start(track)
+    start = min(days)
+    if start < floor:
+        raise ValueError(
+            f"backtest start {start} is before the Track {track} regime boundary "
+            f"{floor} (REGIME.md §1) — clamp the window or fix the seed"
+        )
+
+
 def run_backtest(store, symbol: str, trading_days: list[Date], cfg: RunConfig) -> list[PaperTrade]:
     """Batch code path: sweep the whole window, one position at a time (spec §11)."""
-    dates, by_date = _traded_bars(store, symbol)
     days = sorted(trading_days)
+    assert_regime_clamped(days, cfg.track)
+    dates, by_date = _traded_bars(store, symbol)
     trades: list[PaperTrade] = []
     i = 0
     while i < len(days):

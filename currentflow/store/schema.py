@@ -153,6 +153,19 @@ SYMBOL_INDEX_COLUMNS: tuple[str, ...] = (
     "indexes",
 )
 
+# Historical point-in-time index roster (slice 20, §17.3). Reconstructed from published
+# IDX index announcements (operator CSVs under data/rosters/) so Track A/B can be
+# resolved as-of any past day. `effective_to` NULL = current period; keyed without
+# `as_of` (one row per constituent period — ingest-once, first load wins).
+INDEX_ROSTER_PIT_COLUMNS: tuple[str, ...] = (
+    "index_name",
+    "symbol",
+    "effective_from",
+    "effective_to",
+    "source",
+    "as_of",
+)
+
 # KSEI monthly ownership slices (foreign-ownership-trend overlay, spec §9).
 KSEI_COLUMNS: tuple[str, ...] = (
     "symbol",
@@ -160,6 +173,32 @@ KSEI_COLUMNS: tuple[str, ...] = (
     "as_of",
     "foreign_pct",
     "local_pct",
+)
+
+# Pattern catalog (slice 21, LD-14). `spec_json`/`results_json` hold the definition and
+# the per-horizon measured results; versioned append-only (a definition change bumps
+# `version`), status/results mutate in place for a given version.
+PATTERN_CATALOG_COLUMNS: tuple[str, ...] = (
+    "pattern_id",
+    "version",
+    "track",
+    "status",
+    "spec_json",
+    "results_json",
+    "as_of",
+)
+
+# One flagged pattern instance with its outcome-resolution state (slice 21).
+PATTERN_INSTANCE_COLUMNS: tuple[str, ...] = (
+    "pattern_id",
+    "version",
+    "symbol",
+    "flag_date",
+    "horizon_days",
+    "outcome",
+    "resolved_on",
+    "window",
+    "as_of",
 )
 
 # Scheduler durable run-state (slice 12). Store-owned metadata, NOT a DAL feed — one
@@ -172,6 +211,51 @@ SCHEDULER_RUNS_COLUMNS: tuple[str, ...] = (
     "rows_written",
     "outcome",
 )
+
+
+@dataclass(frozen=True, slots=True)
+class IndexRosterRow:
+    """One point-in-time index-membership period (slice 20). `effective_to=None` marks
+    the still-open current period. `source` is the IDX announcement reference (no silent
+    provenance); `as_of` is the load stamp."""
+
+    index_name: str
+    symbol: str
+    effective_from: Date
+    effective_to: Date | None
+    source: str
+    as_of: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class PatternCatalogRow:
+    """A catalog entry version (slice 21). `spec_json` = definition/outcome_spec/sources/
+    provenance; `results_json` = per-horizon n/rate/CI/null/confounds/OOS (None until
+    ESTIMATED). `status` ∈ FOLK|DEFINED|ESTIMATED|OOS_CHECKED|REJECTED."""
+
+    pattern_id: str
+    version: int
+    track: str
+    status: str
+    spec_json: str
+    results_json: str | None
+    as_of: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class PatternInstanceRow:
+    """One flagged instance (slice 21). `flag_date` is the decision_ts date (look-ahead
+    -safe). `outcome` ∈ OPEN|HIT|MISS|TERMINAL_<kind>; `window` ∈ EST|OOS."""
+
+    pattern_id: str
+    version: int
+    symbol: str
+    flag_date: Date
+    horizon_days: int
+    outcome: str
+    resolved_on: Date | None
+    window: str
+    as_of: datetime
 
 
 @dataclass(frozen=True, slots=True)
@@ -401,6 +485,16 @@ CREATE TABLE IF NOT EXISTS symbol_index (
     PRIMARY KEY ("symbol", "as_of")
 );
 
+CREATE TABLE IF NOT EXISTS index_roster_pit (
+    "index_name"     VARCHAR   NOT NULL,          -- 'LQ45' | 'IDX80'
+    "symbol"         VARCHAR   NOT NULL,
+    "effective_from" DATE      NOT NULL,          -- announcement effective date
+    "effective_to"   DATE,                        -- NULL = current period
+    "source"         VARCHAR   NOT NULL,          -- IDX announcement ref (no silent provenance)
+    "as_of"          TIMESTAMP NOT NULL,          -- when loaded
+    PRIMARY KEY ("index_name", "symbol", "effective_from")
+);
+
 CREATE TABLE IF NOT EXISTS ksei_ownership (
     "symbol"      VARCHAR   NOT NULL,
     "date"        DATE      NOT NULL,
@@ -408,6 +502,30 @@ CREATE TABLE IF NOT EXISTS ksei_ownership (
     "foreign_pct" DOUBLE,
     "local_pct"   DOUBLE,
     PRIMARY KEY ("symbol", "date", "as_of")
+);
+
+CREATE TABLE IF NOT EXISTS pattern_catalog (
+    "pattern_id"   VARCHAR   NOT NULL,
+    "version"      INTEGER   NOT NULL,
+    "track"        VARCHAR   NOT NULL,           -- 'A' | 'B'
+    "status"       VARCHAR   NOT NULL,           -- FOLK|DEFINED|ESTIMATED|OOS_CHECKED|REJECTED
+    "spec_json"    VARCHAR   NOT NULL,           -- definition, outcome_spec, sources, provenance
+    "results_json" VARCHAR,                      -- n/rate/ci/null/confounds/oos per horizon
+    "as_of"        TIMESTAMP NOT NULL,
+    PRIMARY KEY ("pattern_id", "version")
+);
+
+CREATE TABLE IF NOT EXISTS pattern_instance (
+    "pattern_id"   VARCHAR   NOT NULL,
+    "version"      INTEGER   NOT NULL,
+    "symbol"       VARCHAR   NOT NULL,
+    "flag_date"    DATE      NOT NULL,           -- decision_ts date (look-ahead-safe)
+    "horizon_days" INTEGER   NOT NULL,
+    "outcome"      VARCHAR   NOT NULL,           -- OPEN|HIT|MISS|TERMINAL_<kind>
+    "resolved_on"  DATE,
+    "window"       VARCHAR   NOT NULL,           -- 'EST' | 'OOS'
+    "as_of"        TIMESTAMP NOT NULL,
+    PRIMARY KEY ("pattern_id", "version", "symbol", "flag_date", "horizon_days")
 );
 
 CREATE TABLE IF NOT EXISTS scheduler_runs (

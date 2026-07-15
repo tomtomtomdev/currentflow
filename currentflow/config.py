@@ -7,7 +7,7 @@ IDX has one exchange timezone; we do not mix zones. `as_of` (availability_ts) an
 
 from __future__ import annotations
 
-from datetime import time, timedelta
+from datetime import date, time, timedelta
 from pathlib import Path
 
 EXODUS_BASE_URL = "https://exodus.stockbit.com"
@@ -128,6 +128,33 @@ MIN_HISTORY_TRADING_DAYS = 60           # IPO with < 60 trading days of history 
 CORP_ACTION_WINDOW_DAYS = 5             # exclude ±5 calendar days around a corp action
 ADV_WINDOW_DAYS = 20
 TRACK_A_INDEXES = frozenset({"LQ45", "IDX80"})
+
+# --- Regime boundaries (REGIME.md; slice 20) --------------------------------------
+# All engine constants above are pinned to the CURRENT IDX regime. Any historical
+# computation over data generated under earlier rules (COVID unwind, pre-FCA) is
+# invalid unless clamped to these boundaries. There is no era-versioned constant
+# system — the repo is current-regime-scoped (REGIME.md §4). Two ⚠ VERIFY items on
+# the exact IDX announcement dates remain operator actions (REGIME.md §2).
+REGIME_START_TRACK_A = date(2024, 1, 1)   # post COVID-rule unwind (LQ45/IDX80 large caps)
+REGIME_START_TRACK_B = date(2024, 7, 1)   # post-FCA settle (lapis-2 / IDXSMC-LIQ)
+CATALOG_HOLDOUT_START = date(2026, 1, 1)  # pattern-catalog estimation/OOS seam (REGIME.md §3)
+
+
+def regime_start(track: str) -> date:
+    """The per-name regime clamp (REGIME.md §1) — the single definition. A historical
+    read for a name is bounded below by this; a backtest reaching earlier is a bug, not
+    a bigger sample. Portfolio runs spanning both tracks clamp at the Track B boundary
+    (the stricter/later of the two)."""
+    return REGIME_START_TRACK_A if track == "A" else REGIME_START_TRACK_B
+
+
+# --- Regime-scoped historical backfill (slice 20) ---------------------------------
+# The backfill seed universe is the current SCR-0 pull (seed only — point-in-time
+# correctness comes from pit_universe, not the seed). Pacing is a courtesy pause between
+# backfilled names, ON TOP of the client's reactive per-call backoff (paywall intent —
+# within a name the client's backoff already paces the day-by-day broker calls).
+BACKFILL_UNIVERSE_SCOPE = "SCR0"           # candidate list source for the backfill seed
+BACKFILL_BATCH_PAUSE_S = 1.0               # paywall pacing between backfilled names
 
 # --- ARA/ARB bands (spec §12; derivation DATA_SOURCES §3.2) ------------------------
 # Spec pins: main ±7% / dev board ±10–25% / first 15 trading days post-IPO ±35%.
@@ -339,6 +366,16 @@ ML_WEIGHT_SUM = 100               # weights sum to 100 per track (locked §4 str
 # Structurally-locked zero weights the optimizer must never fund (LD-1): Track B excludes
 # foreign flow (unreliable on lapis-2). Keyed by track → set of components pinned to 0.
 ML_LOCKED_ZEROS: dict[str, frozenset[str]] = {"A": frozenset(), "B": frozenset({"foreign_flow"})}
+
+# --- Pattern catalog (LD-14, v1.7; slice 21, PATTERN-CATALOG-SPEC.md) --------------
+# Event-cadence base rates confined to the catalog view under P1–P4. A base rate is a
+# measurement (like a z-score), never a forward claim: it never renders on a live
+# candidate/pipeline/rail surface, never carries a buy/sell verb, and never multiplies
+# into SMS. Attaching a pattern's stats to a live name is a claim → the standard RULE B
+# path (a dedicated ValidationLedger lane), not the catalog.
+CATALOG_MIN_N = 20              # n < this → the rate cell renders the interval only (P4)
+CATALOG_CI_CONFIDENCE = 0.90    # Wilson interval confidence (two-sided 90%)
+CATALOG_CI_Z = 1.6448536269514722  # z for the two-sided 90% Wilson interval
 
 # --- Automated ingestion scheduler (slice 12) -------------------------------------
 # Infra, not a spec slice: fires the already-implemented feeds on their own cadence

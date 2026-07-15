@@ -719,6 +719,75 @@ observation-first.
       until raised; RULE A C/D decisions unchanged with the confluence wired; view labels the
       approximation; no number.
 
+## Slice 20 — Regime-scoped historical backfill + point-in-time universe  ✅  (companion: `REGIME.md`)
+
+> **Numbering note:** drafted as "Slice 17" in `PLAN-SLICES-17-18.md`; renumbered — 17–19
+> are reserved above for the LD-13 detection-enrichment verticals. **Infra / cache-only**
+> (slice-10/12 posture): writes store only, never scores, RULE A/B untouched → **no spec bump**.
+
+**Goal:** a regime-pure 2024→now dataset with survivorship-honest per-day universes — the
+substrate every base rate, backtest, and derived statistic stands on.
+
+- [x] **Config + `regime_start(track)`** (`config.py`): `REGIME_START_TRACK_A = 2024-01-01`,
+      `REGIME_START_TRACK_B = 2024-07-01`, `CATALOG_HOLDOUT_START = 2026-01-01`,
+      `BACKFILL_UNIVERSE_SCOPE`, `BACKFILL_BATCH_PAUSE_S`. (Two ⚠ VERIFY items on the exact
+      IDX announcement dates remain operator actions — REGIME.md §2.)
+- [x] **`index_roster_pit` table + roster loader** (`universe/roster.py`, `data/rosters/`):
+      point-in-time LQ45/IDX80 membership from operator CSVs; loader rejects overlapping
+      periods + missing-source rows (fail-loud, all-or-nothing across the dir).
+- [x] **PIT track resolution** (`universe/track.py::resolve_track_pit`) + **PIT universe**
+      (`universe/pit.py::pit_universe`): reconstructs the offline-checkable §3 gate legs
+      (history/ADV/price/pin/broker-presence); names the sink-less legs in `unchecked_legs`
+      (corp-action window, suspend/UMA — never faked); records stopped names in
+      `known_missing`; a roster-gap day → Track B + `roster_gap_days` (no silent caps).
+- [x] **Regime clamp at the read boundary**: `Store.read_daily_bars(clamp_regime=track)`
+      floors reads at `regime_start(track)`; `runner.run_backtest` / `portfolio_runner.
+      run_portfolio_forward` **refuse** a start before the boundary (fail loud, boundary named;
+      portfolio spans clamp at the Track B boundary).
+- [x] **Backfill CLI** (`ingest/backfill.py` + `run.sh backfill`): SCR-0 seed (or explicit
+      names) from `regime_start(track)` → today via `ingest_symbol`; resumable/ingest-once;
+      paywall budget printed up front; `--rosters` also loads `data/rosters/`.
+- [x] **Tests** (`test_regime_clamp`, `test_roster`, `test_pit`, `test_backfill`): boundary
+      clamp, roster overlap/no-source reject, PIT selection + `known_missing` + unchecked-legs
+      honesty, PIT-track reconciliation + roster-gap→B, backfill idempotency (zero broker calls
+      on a completed re-run, transport spy). **18 tests, all green.**
+
+## Slice 21 — Pattern catalog + base-rate estimation  ✅  (spec v1.7, **LD-14**; companion: `PATTERN-CATALOG-SPEC.md`)
+
+> **Numbering note:** drafted as "Slice 18 / LD-13, v1.6"; renumbered to **Slice 21 / LD-14,
+> v1.7** — LD-13/v1.6 and PLAN slices 17–19 were already taken by detection enrichment.
+> Depends on slice 20.
+
+**Goal:** event-cadence statistical evidence — the throughput complement to LD-11/12. A new
+presentation category (catalog-confined historical frequencies) → **documented bump LD-14, v1.7**.
+
+- [x] **Feature vocabulary** (`signals/pattern_features.py`): pure §4 features reusing
+      broker_flow / foreign_flow / phase / sms-divergence / distribution internals (one math).
+- [x] **Catalog store** (`pattern_catalog` + `pattern_instance` DDL + row dataclasses +
+      upsert/read helpers): versioned append-only; the **null-attached write guard** rejects a
+      stored point rate that omits its `rate_uncond` (§5.4).
+- [x] **Scanner** (`patterns/scan.py`): walks `pit_universe(day)` per day; **refuses a non-PIT
+      source** (§5.1, type-enforced); overlap-collapses within one horizon; look-ahead-safe.
+- [x] **Outcome resolver** (`patterns/outcome.py`): forward-bar resolution incl. **terminal
+      outcomes** (delist/suspend counted, never dropped, §5.6); unresolved stay OPEN.
+- [x] **Estimator** (`patterns/estimate.py`): per (pattern, horizon) n / hit rate / **Wilson 90%
+      CI** / **unconditional null** on the identical window/universe / confound strata (liquidity
+      tier + regime; sector named-deferred) / OOS split at `CATALOG_HOLDOUT_START` / decay flag.
+      Deterministic (byte-identical re-run).
+- [x] **Catalog view** (`ui/catalog_view.py` + `app._render_catalog`): **P1–P4** — a dedicated
+      full-width research surface (no ARMED rail beside it), both rates always shown, small-n
+      interval-only, "no instances" never 0%, `stability: UNKNOWN (current regime only)` on every
+      card, no buy/sell verb, no composite. Opened via its own button; never an evidence tab.
+- [x] **Scheduler feed** `pattern_oos_accrual` (`MonthlyAt` cadence, cache-only): seeds + extends
+      + resolves forward of the seam; never a network call, never scores/gates/arms.
+- [x] **Seeds** (`patterns/catalog.py`): the six FOLK/DEFINED entries with sources;
+      `dominant-broker-flip` and `stealth-divergence` reach ESTIMATED end-to-end (their
+      definitions already exist — veto §5 / SCR-1C).
+- [x] **Tests** (`test_pattern_catalog`, `test_catalog_view`, `test_pattern_scheduler`): PIT
+      dependency, look-ahead, overlap collapse, terminal counted, null-attached reject,
+      determinism, P1 firewall (base rates absent from pipeline/rail source), P4 small-n,
+      no-advice-verb, MonthlyAt due-math, cache-only accrual. **21 tests, all green.**
+
 ## Acceptance criteria (definition of done — `LOCKED_SPEC.md` §13)
 
 - [x] Look-ahead test passes (no `availability_ts >= decision_ts`).

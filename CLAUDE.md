@@ -106,6 +106,15 @@ Report net-of-full-fee-stack returns benchmarked to **LQ45 / sector**, never IHS
   optimizer. They are the only tunable surface.
 - **Missing data is never zero flow.** Distinguish "no trades" / "not yet published" / "gap".
 - **No silent caps.** If coverage is bounded (top-N, sampling, no-retry), `log` what was dropped.
+- **Regime-clamped history.** Historical computations are regime-clamped per [`REGIME.md`](REGIME.md);
+  a backtest reaching before `config.regime_start(track)` is a bug, not a bigger sample (it fails
+  loud). Base rates / backtests run only over the current IDX regime; there is no era-versioned
+  constant system.
+- **Pattern-catalog base rates are presentation-confined (LD-14).** Historical frequencies live
+  **only** in the dedicated catalog view under P1–P4 ([`PATTERN-CATALOG-SPEC.md`](PATTERN-CATALOG-SPEC.md));
+  never on a live candidate/pipeline/rail/evidence surface, never a buy/sell verb or composite,
+  never multiplied into SMS. Attaching a pattern's stats to a live name is a claim → the standard
+  RULE B path, not the catalog.
 - **Commits:** `type(scope): lowercase description`. No AI attribution / Co-Authored-By lines.
 - **Disclaimers (§15):** private personal-use tool; not investment advice; paper only; own-session
   data used at own risk; nothing republished.
@@ -163,4 +172,8 @@ A/B and §9's module *behavior* are unchanged; only the shell's nav model change
 
 - [`PLAN.md`](PLAN.md) — slice-by-slice execution plan (from §11).
 - [`PROGRESS.md`](PROGRESS.md) — durable log of shipped slices + each module's validation state.
+- [`REGIME.md`](REGIME.md) — market-regime boundaries (governs every backtest / base-rate / historical
+  window; slice 20). Same posture as `DATA_SOURCES.md`: pinned from evidence, open items named.
+- [`PATTERN-CATALOG-SPEC.md`](PATTERN-CATALOG-SPEC.md) — subordinate spec for the LD-14 pattern
+  catalog (P1–P4 presentation rules, feature vocabulary, estimation-honesty protocol).
 - [`design/`](design/) — hifi UI design target (VectorLab handoff: index + screen specs + HTML prototype).

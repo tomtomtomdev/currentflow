@@ -13,6 +13,7 @@ invent Track A from absent data (missing ≠ zero).
 
 from __future__ import annotations
 
+from datetime import date as Date
 from datetime import datetime
 from enum import Enum
 
@@ -50,3 +51,14 @@ def resolve_track(
     row = store.read_symbol_index_latest(symbol, decision_ts)
     indexes = row.indexes if row is not None else ()
     return assign_track(indexes, _adv20(bars)).value
+
+
+def resolve_track_pit(store, symbol: str, day: Date, bars: list[DailyBar]) -> str:
+    """The name's *point-in-time* track for a historical `day` (slice 20). Membership
+    comes from the reconstructed `index_roster_pit` (the roster row effective ON `day`),
+    ADV from the bars up to `day`; the SAME `assign_track` rule as the live path, so the
+    two reconcile where the live snapshot and the roster overlap. A roster gap on `day`
+    yields empty membership → the ADV leg alone decides → Track B (missing ≠ zero)."""
+    indexes = store.read_index_roster_pit(symbol, day)
+    window = [b for b in bars if b.date <= day]
+    return assign_track(indexes, _adv20(window)).value

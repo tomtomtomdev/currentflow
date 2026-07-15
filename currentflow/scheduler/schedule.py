@@ -53,7 +53,13 @@ class Interval:
     session_only: bool = True
 
 
-Cadence = DailyAt | WeeklyAt | Interval
+@dataclass(frozen=True, slots=True)
+class MonthlyAt:
+    day: int  # day of month (clamped to the month's length); fires once per month at/after `at`
+    at: time
+
+
+Cadence = DailyAt | WeeklyAt | Interval | MonthlyAt
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,6 +76,7 @@ FEED_UNIVERSE_SCREENER = "universe_screener"  # run_scr0 → scr0_eligible
 FEED_INDEX_MEMBERSHIP = "index_membership"    # symbol_info.indexes → refresh_membership
 FEED_KSEI_OWNERSHIP = "ksei_ownership"        # ksei_ownership → store.write_ksei_ownership
 FEED_FAST_MODE = "fast_mode_autotrade"        # LD-11 auto paper-trade step (validation.fast_mode)
+FEED_PATTERN_OOS_ACCRUAL = "pattern_oos_accrual"  # LD-14 catalog OOS accrual (cache-only)
 
 MON = 0
 
@@ -99,6 +106,16 @@ FEED_SCHEDULES: tuple[FeedSchedule, ...] = (
         FEED_FAST_MODE,
         DailyAt(config.SCHEDULER_FAST_MODE_TIME, prior_trading_day=True),
         Scope.UNIVERSE,
+    ),
+    # Pattern-catalog OOS accrual (LD-14, slice 21) — MONTHLY, cache-only. Appends new
+    # instances + resolves outcomes forward of the holdout seam; it reads the store only
+    # (never a network call, never scores/gates/arms — P1/P2). Full re-estimation happens
+    # only on a seam move (manual, REGIME.md §3), not here. Scope NONE: it walks the PIT
+    # universe itself per day rather than a single cached symbol set.
+    FeedSchedule(
+        FEED_PATTERN_OOS_ACCRUAL,
+        MonthlyAt(1, config.SCHEDULER_EOD_TIME),
+        Scope.NONE,
     ),
 )
 
