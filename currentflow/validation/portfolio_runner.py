@@ -57,6 +57,7 @@ from currentflow.validation.runner import (
     _Held,
     _prev_close,
     _traded_bars,
+    assert_regime_clamped,
 )
 from currentflow.validation.trade import PaperTrade
 
@@ -255,6 +256,11 @@ def run_portfolio_forward(
     adv20, registry); the per-run equity comes from `cfg` and overrides each spec's.
     `cfg.fast_mode` (LD-11) applies the buy-on-ARMED-at-once entry to every spec."""
     days = sorted(trading_days)
+    # A portfolio spanning both tracks clamps at the Track B boundary — the later/stricter
+    # of the two (REGIME.md §1). With only Track A specs it clamps at the Track A boundary.
+    if specs:
+        clamp_track = "B" if any(s.track == "B" for s in specs.values()) else "A"
+        assert_regime_clamped(days, clamp_track)
     if cfg.fast_mode:
         specs = {sym: replace(spec, fast_mode=True) for sym, spec in specs.items()}
     bars_idx = {sym: _traded_bars(store, sym) for sym in specs}

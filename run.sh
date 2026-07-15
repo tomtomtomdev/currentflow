@@ -18,6 +18,12 @@
 #                         first run), e.g.
 #                           ./run.sh ingest BBCA BBRI --days 90
 #                           ./run.sh ingest BBCA --from 2026-04-01 --to 2026-07-03
+#   ./run.sh backfill ...  regime-scoped historical backfill (slice 17): fills a
+#                         regime-pure 2024→now dataset for the SCR-0 seed (or explicit
+#                         names). Resumable/ingest-once. --rosters also loads
+#                         data/rosters/ point-in-time index rosters. e.g.
+#                           ./run.sh backfill --rosters
+#                           ./run.sh backfill BBCA BBRI
 #   ./run.sh schedule     run the automated per-feed ingestion daemon (slice 12) —
 #                         fires each feed on its cadence during Mon–Fri trading hours;
 #                         --once runs a single tick and exits. Usually launchd-driven
@@ -85,6 +91,16 @@ case "$cmd" in
     [[ $# -ge 1 ]] || die "usage: ./run.sh ingest SYM [SYM ...] [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--days N] [--db PATH]"
     exec "$PY" -m currentflow.ingest "$@"
     ;;
+  backfill)
+    ensure_venv; ensure_deps
+    # Regime-scoped historical backfill (slice 17). Needs the operator's own session
+    # (build_live_client reads the Keychain Bearer). Resumable — a re-run is a no-op.
+    if ! "$PY" -m currentflow.dal.login status >/dev/null 2>&1; then
+      die "no session — run './run.sh login' before backfilling"
+    fi
+    shift || true
+    exec "$PY" -m currentflow.ingest.backfill "$@"
+    ;;
   schedule)
     ensure_venv; ensure_deps
     # Headless daemon: needs the operator's own session (build_live_client reads the
@@ -151,6 +167,6 @@ case "$cmd" in
       --server.headless true
     ;;
   *)
-    die "unknown command '$cmd' — use: serve | login | paste | check | ingest | schedule | fast | log | test | stop"
+    die "unknown command '$cmd' — use: serve | login | paste | check | ingest | backfill | schedule | fast | log | test | stop"
     ;;
 esac

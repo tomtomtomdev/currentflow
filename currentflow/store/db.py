@@ -13,6 +13,7 @@ Guarantees:
 
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import Iterable, Sequence
 from datetime import date as Date
@@ -21,6 +22,8 @@ from enum import Enum
 from typing import TYPE_CHECKING, TypeVar
 
 import duckdb
+
+from currentflow import config
 
 if TYPE_CHECKING:
     from currentflow.store.integrity import EnumIntegrityReport
@@ -49,7 +52,10 @@ from currentflow.store.schema import (
     FAST_MODE_STATE_COLUMNS,
     FAST_POSITION_COLUMNS,
     FAST_TRADE_COLUMNS,
+    INDEX_ROSTER_PIT_COLUMNS,
     KSEI_COLUMNS,
+    PATTERN_CATALOG_COLUMNS,
+    PATTERN_INSTANCE_COLUMNS,
     SCHEDULER_RUNS_COLUMNS,
     SCR0_COLUMNS,
     SCR1A_COLUMNS,
@@ -63,6 +69,9 @@ from currentflow.store.schema import (
     FastModeStateRow,
     FastPositionRow,
     FastTradeRow,
+    IndexRosterRow,
+    PatternCatalogRow,
+    PatternInstanceRow,
     SchedulerRunRow,
 )
 
@@ -74,6 +83,34 @@ _E = TypeVar("_E", bound=Enum)
 
 def _cols(names: Sequence[str]) -> str:
     return ", ".join(f'"{n}"' for n in names)
+
+
+def _validate_results_json(pattern_id: str, results_json: str | None) -> None:
+    """The null always travels with the rate (§5.4). A `results_json` must carry a
+    non-null `rate_uncond` for every horizon, else the write is rejected — a base rate
+    with no null beside it is not a storable measurement."""
+    if results_json is None:
+        return
+    try:
+        parsed = json.loads(results_json)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{pattern_id}: results_json is not valid JSON: {exc}") from exc
+    horizons = parsed.get("horizons") if isinstance(parsed, dict) else None
+    if not isinstance(horizons, dict) or not horizons:
+        raise ValueError(f"{pattern_id}: results_json must carry per-horizon results")
+    for key, entry in horizons.items():
+        if not isinstance(entry, dict) or "rate_uncond" not in entry:
+            raise ValueError(
+                f"{pattern_id}: horizon {key} omits rate_uncond — the null must "
+                "travel with the rate (§5.4)"
+            )
+        # A stored point rate MUST carry a computed null; an honestly empty horizon
+        # (no resolved instances → rate None) may carry a null of None (missing ≠ zero).
+        if entry.get("rate") is not None and entry.get("rate_uncond") is None:
+            raise ValueError(
+                f"{pattern_id}: horizon {key} has a rate but no rate_uncond — a base "
+                "rate is only storable beside its null (§5.4)"
+            )
 
 
 def _row_arity_ok(r: tuple, expected: int, *, table: str, symbol: str) -> bool:
@@ -249,6 +286,105 @@ class Store:
         rows = [(r.symbol, r.as_of, ",".join(r.indexes)) for r in rows_in]
         return self._insert("symbol_index", SYMBOL_INDEX_COLUMNS, rows)
 
+    def write_index_roster(self, rows_in: Iterable[IndexRosterRow]) -> int:
+        """Point-in-time index-roster periods (slice 20, §17.3). Ingest-once on
+        `(index_name, symbol, effective_from)` — a re-load of an already-stored period
+        is an exact-key no-op (the loader validates overlaps before calling this)."""
+        rows = [
+            (r.index_name, r.symbol, r.effective_from, r.effective_to, r.source, r.as_of)
+            for r in rows_in
+        ]
+        return self._insert("index_roster_pit", INDEX_ROSTER_PIT_COLUMNS, rows)
+
+    def upsert_pattern_catalog(self, row: PatternCatalogRow) -> None:
+        """Write/refresh a catalog entry version (slice 21). A definition change bumps
+        `version` (append-only); status/results progress in place for a given version,
+        so this upserts on `(pattern_id, version)`. Null-attached guard (§18.3): a
+        `results_json` that omits `rate_uncond` on any horizon is rejected — the null
+        always travels with the rate (spec §5.4)."""
+        _validate_results_json(row.pattern_id, row.results_json)
+        sql = (
+            f"INSERT INTO pattern_catalog ({_cols(PATTERN_CATALOG_COLUMNS)}) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?) "
+            'ON CONFLICT ("pattern_id", "version") DO UPDATE SET '
+            '"track"=excluded."track", "status"=excluded."status", '
+            '"spec_json"=excluded."spec_json", "results_json"=excluded."results_json", '
+            '"as_of"=excluded."as_of"'
+        )
+        self._con.execute(sql, [
+            row.pattern_id, row.version, row.track, row.status,
+            row.spec_json, row.results_json, row.as_of,
+        ])
+
+    def read_pattern_catalog(self, pattern_id: str | None = None) -> list[PatternCatalogRow]:
+        """Catalog entries (all, or one pattern's versions). Ordered for stable display."""
+        where = "" if pattern_id is None else 'WHERE "pattern_id" = ? '
+        params = [] if pattern_id is None else [pattern_id]
+        sql = (
+            f"SELECT {_cols(PATTERN_CATALOG_COLUMNS)} FROM pattern_catalog "
+            f'{where}ORDER BY "pattern_id", "version"'
+        )
+        return [
+            PatternCatalogRow(
+                pattern_id=r[0], version=r[1], track=r[2], status=r[3],
+                spec_json=r[4], results_json=r[5], as_of=r[6],
+            )
+            for r in self._con.execute(sql, params).fetchall()
+        ]
+
+    def write_pattern_instances(self, rows_in: Iterable[PatternInstanceRow]) -> int:
+        """Insert flagged instances (scanner, OPEN) or update their outcome (resolver).
+        Upserts on the full PK so a resolution overwrites the OPEN row in place; the
+        instance is never dropped (terminal outcomes stay counted, §5.6)."""
+        rows = [
+            (r.pattern_id, r.version, r.symbol, r.flag_date, r.horizon_days,
+             r.outcome, r.resolved_on, r.window, r.as_of)
+            for r in rows_in
+        ]
+        if not rows:
+            return 0
+        before = self._count("pattern_instance")
+        sql = (
+            f"INSERT INTO pattern_instance ({_cols(PATTERN_INSTANCE_COLUMNS)}) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            'ON CONFLICT ("pattern_id", "version", "symbol", "flag_date", "horizon_days") '
+            'DO UPDATE SET "outcome"=excluded."outcome", '
+            '"resolved_on"=excluded."resolved_on", "window"=excluded."window", '
+            '"as_of"=excluded."as_of"'
+        )
+        self._con.executemany(sql, rows)
+        return self._count("pattern_instance") - before
+
+    def read_pattern_instances(
+        self,
+        pattern_id: str,
+        version: int,
+        *,
+        window: str | None = None,
+        outcome: str | None = None,
+    ) -> list[PatternInstanceRow]:
+        """Instances for a (pattern_id, version), optionally filtered by EST/OOS window or
+        outcome. Ordered by (symbol, flag_date) so the estimator is deterministic."""
+        where = ['"pattern_id" = ?', '"version" = ?']
+        params: list = [pattern_id, version]
+        if window is not None:
+            where.append('"window" = ?')
+            params.append(window)
+        if outcome is not None:
+            where.append('"outcome" = ?')
+            params.append(outcome)
+        sql = (
+            f"SELECT {_cols(PATTERN_INSTANCE_COLUMNS)} FROM pattern_instance "
+            f"WHERE {' AND '.join(where)} ORDER BY \"symbol\", \"flag_date\", \"horizon_days\""
+        )
+        return [
+            PatternInstanceRow(
+                pattern_id=r[0], version=r[1], symbol=r[2], flag_date=r[3],
+                horizon_days=r[4], outcome=r[5], resolved_on=r[6], window=r[7], as_of=r[8],
+            )
+            for r in self._con.execute(sql, params).fetchall()
+        ]
+
     def write_scheduler_run(self, rows_in: Iterable[SchedulerRunRow]) -> int:
         """Record scheduler fires (slice 12). One row per fire; latest per feed drives
         due-ness (read_scheduler_run_latest). Not ingest-once — each fire is a distinct
@@ -378,7 +514,16 @@ class Store:
         decision_ts: datetime,
         start: Date | None = None,
         end: Date | None = None,
+        *,
+        clamp_regime: str | None = None,
     ) -> list[DailyBar]:
+        """`clamp_regime` (a track "A"/"B") floors the read at `regime_start(track)`
+        (REGIME.md, slice 20): a clamped read never returns a bar dated before the
+        regime boundary, so historical scans cannot silently reach into an earlier IDX
+        regime. Live reads pass it as None (no clamp)."""
+        if clamp_regime is not None:
+            floor = config.regime_start(clamp_regime)
+            start = floor if start is None else max(start, floor)
         rows = self._read("daily_bar", DAILY_BAR_COLUMNS, symbol, decision_ts, start, end)
         out: list[DailyBar] = []
         for r in rows:
@@ -581,6 +726,33 @@ class Store:
         indexes = tuple(i for i in r[2].split(",") if i)  # "" → () (no membership known)
         return SymbolIndexRow(symbol=r[0], as_of=r[1], indexes=indexes)
 
+    # --- point-in-time index roster (slice 20) ------------------------------------
+
+    def read_index_roster_pit(self, symbol: str, day: Date) -> tuple[str, ...]:
+        """The index names `symbol` was a member of on `day`, from the reconstructed
+        roster: `effective_from <= day` AND (`effective_to` open OR `>= day`). Reference
+        data (announcement-effective), so not `decision_ts`-gated — the effective date IS
+        the availability. Empty tuple when the roster records no membership."""
+        sql = (
+            'SELECT DISTINCT "index_name" FROM index_roster_pit '
+            'WHERE "symbol" = ? AND "effective_from" <= ? '
+            'AND ("effective_to" IS NULL OR "effective_to" >= ?) '
+            'ORDER BY "index_name"'
+        )
+        rows = self._con.execute(sql, [symbol, day, day]).fetchall()
+        return tuple(r[0] for r in rows)
+
+    def roster_covers(self, day: Date) -> bool:
+        """Does the reconstructed roster span `day` at all (any index, any name)? A day
+        no loaded period covers is a *roster gap* — track then falls back to the ADV leg
+        only (→ Track B) and the day is counted (`roster_gap_days`, no silent caps)."""
+        sql = (
+            "SELECT 1 FROM index_roster_pit "
+            'WHERE "effective_from" <= ? '
+            'AND ("effective_to" IS NULL OR "effective_to" >= ?) LIMIT 1'
+        )
+        return self._con.execute(sql, [day, day]).fetchone() is not None
+
     # --- scheduler run-state (slice 12) -------------------------------------------
 
     def read_scheduler_run_latest(self, feed: str) -> SchedulerRunRow | None:
@@ -607,6 +779,14 @@ class Store:
                 f'SELECT DISTINCT "symbol" FROM {table} ORDER BY "symbol"'
             ).fetchall()
         ]
+
+    def latest_bar_date(self) -> Date | None:
+        """The newest trading day present in `daily_bar` (any symbol) — the market's
+        latest date, used to tell a delisted/suspended name (bars stopped while the
+        market kept trading) from a name simply at the present edge. Not look-ahead
+        gated; an operational maximum, not a signal read."""
+        r = self._con.execute('SELECT max("date") FROM daily_bar').fetchone()
+        return r[0] if r and r[0] is not None else None
 
     def scr0_universe(self, decision_ts: datetime) -> list[str]:
         """The latest cached SCR-0 survivor set visible at `decision_ts` — the

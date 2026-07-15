@@ -79,7 +79,7 @@ from currentflow.ui.risk_view import (
 from currentflow.ui import shell
 from currentflow.ui.sector_view import scatter_points, sector_rows
 from currentflow.ui.sms_view import GATE_BANNER, WATCHLIST_FRAMING, component_rows, score_display, state_label
-from currentflow.ui import daily_top_view, fast_mode_view, ml_view, pipeline_view, ranking_view, watchlist_view
+from currentflow.ui import catalog_view, daily_top_view, fast_mode_view, ml_view, pipeline_view, ranking_view, watchlist_view
 from currentflow.validation import fast_mode as fast_mode_mod
 from currentflow.validation.promotion import ValidationLedger
 
@@ -1467,6 +1467,16 @@ def _set_tab(tab: str) -> None:
     st.session_state["cf_tab"] = tab
 
 
+def _open_catalog() -> None:
+    """Open the dedicated Pattern Catalog research view (LD-14, P1: a separate surface —
+    never joined to the pipeline/rail)."""
+    st.session_state["cf_view"] = "catalog"
+
+
+def _close_catalog() -> None:
+    st.session_state["cf_view"] = None
+
+
 _EVIDENCE_TABS = (
     ("broker", "Broker Flow"),
     ("foreign", "Foreign Flow"),
@@ -1618,6 +1628,54 @@ def _render_detail(store: Store, ticker: str) -> None:
     renderer(store, show_header=False)
 
 
+def _render_catalog(store: Store) -> None:
+    """Pattern Catalog (LD-14) — a DEDICATED research surface (P1). Full width, its own
+    back button, and NO ARMED rail: base rates never sit next to a live name. Renders each
+    pattern's historical frequency beside its unconditional null, small-n as interval-only,
+    every card labelled `stability: UNKNOWN (current regime only)`. No buy/sell verb, no
+    composite score (P2)."""
+    from currentflow.patterns.accrual import seed_catalog
+
+    if not store.read_pattern_catalog():
+        seed_catalog(store, now=datetime.now())  # first visit → establish the DEFINED seeds
+
+    back_col, head_col = st.columns([0.13, 0.87], gap="small")
+    with back_col, st.container(key="cfback"):
+        st.button("‹ Pipeline", key="cfcatback", on_click=_close_catalog)
+    with head_col:
+        _module_header(
+            "Pattern Catalog", catalog_view.CATALOG_BADGE, "derived",
+            "CATALOG · research only",
+        )
+
+    summary = catalog_view.catalog_summary(store)
+    st.caption(summary["disclaimer"])
+
+    for card in catalog_view.catalog_cards(store):
+        title = f"{card['pattern_id']} · v{card['version']} · Track {card['track']}"
+        st.markdown(f"**{title}**  \n`{card['status']}` · stability: {card['stability']}")
+        st.markdown(f"_{card['folk_claim']}_")
+        st.caption(f"definition: {card['definition']} → outcome: {card['outcome_label']}")
+        st.caption(f"source: {card['source']}")
+        if card["estimated"] and card["horizons"]:
+            table = [
+                {
+                    "horizon (td)": h["horizon_days"],
+                    "historical freq (n · 90% CI)": h["rate"]["display"],
+                    "null (unconditional)": h["null"],
+                    "n": h["n"],
+                    "OOS n": h["n_oos"],
+                    "OOS rate": h["rate_oos"],
+                    "decay": "⚠" if h["decay_flag"] else "",
+                }
+                for h in card["horizons"]
+            ]
+            st.dataframe(table, hide_index=True, use_container_width=True)
+        else:
+            st.caption("not yet estimated — DEFINED (definition only, no measured rate)")
+        st.divider()
+
+
 def main() -> None:
     configure_logging()  # persist dal `net-error` lines to logs/net.log
     st.set_page_config(page_title="CurrentFlow", layout="wide")
@@ -1644,6 +1702,13 @@ def main() -> None:
     # The seven earlier modules (heatmap/sector/risk/sms/ranking/daily-top/ml) remain in
     # code and under test but are no longer top-level per the v2 handoff (§9 tension
     # logged in PROGRESS.md decisions).
+    # The Pattern Catalog (LD-14) is a dedicated research surface (P1): full width, no
+    # ARMED rail beside it — base rates never sit next to a live name.
+    if st.session_state.get("cf_view") == "catalog":
+        _render_catalog(store)
+        st.markdown(shell.ticker_html(), unsafe_allow_html=True)
+        return
+
     main_col, rail_col = st.columns([2.55, 1], gap="medium")
     with rail_col:
         _render_session_head(info)
@@ -1654,6 +1719,8 @@ def main() -> None:
             _render_detail(store, detail)
         else:
             _render_pipeline(store)
+            st.button("▸ Pattern Catalog (research · base rates)",
+                      key="cfopencat", on_click=_open_catalog)
 
     st.markdown(shell.ticker_html(), unsafe_allow_html=True)
 

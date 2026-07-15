@@ -38,6 +38,7 @@ from currentflow.scheduler.schedule import (
     FEED_FAST_MODE,
     FEED_INDEX_MEMBERSHIP,
     FEED_KSEI_OWNERSHIP,
+    FEED_PATTERN_OOS_ACCRUAL,
     FEED_SCHEDULES,
     FEED_UNIVERSE_SCREENER,
     FeedSchedule,
@@ -158,6 +159,19 @@ async def _act_fast_mode(client, store, symbols, *, now):
     return result.rows_written, OUTCOME_OK, result.detail
 
 
+async def _act_pattern_oos(client, store, symbols, *, now):
+    """LD-14 pattern-catalog OOS accrual (slice 21). Cache-only: seeds the catalog if
+    needed, extends + resolves instances forward of the holdout seam, and re-estimates
+    the estimable patterns. Reads the store only (no network → never raises AuthError);
+    it never scores, gates, or arms — evidence at event cadence (P1/P2)."""
+    from currentflow.patterns.accrual import accrue_oos
+
+    touched, ids = accrue_oos(store, now=now)
+    if not ids:
+        return 0, OUTCOME_EMPTY, "no estimable patterns / no data yet"
+    return touched, OUTCOME_OK, f"{len(ids)} patterns, {touched} OOS instances"
+
+
 _Action = Callable[..., Awaitable[tuple[int, str, str]]]
 
 _ACTIONS: dict[str, _Action] = {
@@ -166,6 +180,7 @@ _ACTIONS: dict[str, _Action] = {
     FEED_INDEX_MEMBERSHIP: _act_membership,
     FEED_KSEI_OWNERSHIP: _act_ksei,
     FEED_FAST_MODE: _act_fast_mode,
+    FEED_PATTERN_OOS_ACCRUAL: _act_pattern_oos,
 }
 
 

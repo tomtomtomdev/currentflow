@@ -16,11 +16,12 @@ and is logged. A `holidays.txt` calendar is a documented deferral.
 
 from __future__ import annotations
 
+import calendar as _cal
 from datetime import date as Date
 from datetime import datetime, timedelta
 
 from currentflow import config
-from currentflow.scheduler.schedule import Cadence, DailyAt, Interval, WeeklyAt
+from currentflow.scheduler.schedule import Cadence, DailyAt, Interval, MonthlyAt, WeeklyAt
 
 
 def is_trading_time(now: datetime) -> bool:
@@ -85,6 +86,25 @@ def _interval_next(cadence: Interval, last_run: datetime | None, now: datetime) 
     return last_run + timedelta(minutes=cadence.minutes)
 
 
+def _monthly_occurrence(ref: Date, day: int, at) -> datetime:
+    """The scheduled instant in `ref`'s month, `day` clamped to the month's length."""
+    dim = _cal.monthrange(ref.year, ref.month)[1]
+    return datetime.combine(ref.replace(day=min(day, dim)), at)
+
+
+def _first_of_next_month(d: Date) -> Date:
+    return Date(d.year + (d.month // 12), d.month % 12 + 1, 1)
+
+
+def _monthly_next(cadence: MonthlyAt, last_run: datetime | None, now: datetime) -> datetime:
+    if last_run is None:
+        return _monthly_occurrence(now.date(), cadence.day, cadence.at)
+    occ = _monthly_occurrence(last_run.date(), cadence.day, cadence.at)
+    while occ <= last_run:
+        occ = _monthly_occurrence(_first_of_next_month(occ.date()), cadence.day, cadence.at)
+    return occ
+
+
 def next_fire(cadence: Cadence, last_run: datetime | None, now: datetime) -> datetime:
     """The next instant at which `cadence` becomes due, given it last fired at `last_run`
     (None = never). Pure schedule math — ignores weekends/window (see `applies_now`)."""
@@ -94,6 +114,8 @@ def next_fire(cadence: Cadence, last_run: datetime | None, now: datetime) -> dat
         return _weekly_next(cadence, last_run, now)
     if isinstance(cadence, Interval):
         return _interval_next(cadence, last_run, now)
+    if isinstance(cadence, MonthlyAt):
+        return _monthly_next(cadence, last_run, now)
     raise TypeError(f"unknown cadence: {cadence!r}")
 
 
