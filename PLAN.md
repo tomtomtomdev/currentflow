@@ -643,6 +643,82 @@ RULE A (phase gate) and RULE B (presentation gate) unchanged.**
 - [ ] ledger: `haste_mode` promotes OBS→VALIDATING→VALIDATED; `fast_mode`/`sms`/`ai_ranking`/`daily_top`
       NOT promoted; aggregate withheld until validated; pipeline EXITED cell shows P&L, no score leak.
 
+## Slice 17 — KSEI Institutional-Ownership Delta  ⬜  (spec v1.6, LD-13)
+
+**Detection-enrichment vertical (data → signal → view → test).** Wires the KSEI shareholder-composition
+feed — **already fetched + stored** (`ksei_ownership`, slice 3) but today consumed **only by the UI**
+(`foreign_flow.py:217` carries it into the snapshot; only `ui/foreign_flow_view`/`ui/app` read it) —
+into detection as a **slow-money accumulation confirmation** (Bandarmology §2/§10: institutions are the
+real, slow bandar; Wyckoff CM). **The signal is inert until earned (LD-13):** it registers as a §4
+candidate component **pinned at weight 0** and ships first as a RULE-B-clean observation module.
+
+> **Data-cadence caveat:** KSEI publishes monthly with an undisclosed lag (`as_of` = fetch time,
+> conservative by construction — slice 3). This is a **slow confirmation across the range**, never a
+> daily driver; the signal must degrade gracefully when the composition is stale (`missing ≠ zero`).
+
+- [ ] `signals/ownership.py`: look-ahead-safe ownership-delta observation over the accumulation window —
+      institutional/foreign holding change (rising ↔ CM accumulation; falling-while-price-flat/up ↔
+      distribution). Categorical severities (INFO/WATCH/WARN), **no number** (RULE B). `missing ≠ zero`.
+- [ ] **Veto refinement:** feed the §5 distribution-dressed veto a "ownership falling while marked up"
+      corroborator (strengthens, never a new hard reject on its own — coarse monthly data).
+- [ ] **§4 candidate component (weight 0):** ownership-delta sub-signal added to the SMS simplex pinned
+      at 0 (the LD-1 Track-B `foreign_flow=0` pattern); optimizer-only raise, RULE-B-gated. Running score
+      unchanged on landing.
+- [ ] **View:** promote the Foreign Flow dashboard's KSEI overlay from a display sparkline into a
+      categorical observation panel; surface in the pipeline row's Foreign Flow evidence tab.
+- [ ] **Tests:** ownership-delta fires on labeled accumulation/distribution composition series; stale
+      composition degrades to neutral (never a false distribution flag); look-ahead-safe read; candidate
+      component contributes **0** to SMS until the optimizer raises it (running-score-unchanged assertion);
+      observation renders no number (RULE B).
+
+## Slice 18 — VPA bar-character (No-Demand / No-Supply / Absorption)  ⬜  (spec v1.6, LD-13)
+
+**Detection-enrichment vertical.** Adds the close-position-within-the-spread read that Coulling's VPA
+turns on — **absent today**: the divergence spine (`sms.py:_divergence`) sees only volume vs `|Δclose|`,
+never *where* the bar closed in its high–low range. Pure stored-OHLCV analytics; backtestable,
+look-ahead-safe. **Inert until earned (LD-13):** candidate refinement at weight 0, observation-first.
+
+- [ ] `signals/vpa.py`: per-bar character from spread + close position + relative volume —
+      **No-Demand** (narrow up bar, low vol, after a rally), **No-Supply** (narrow down bar, low vol,
+      after a decline), **Absorption / Stopping / Churn** (wide/narrow spread with high vol, close
+      position), effort-vs-result flag. Volume calibrated vs the recent 10–20 bar average (Coulling),
+      not an absolute threshold. Categorical, no number.
+- [ ] **Phase-detector corroboration (RULE A unchanged):** feed the Spring / UTAD / SOS detectors an
+      effort-vs-result confirmation *input* — the C/D gate **decision rule is not altered** (corroboration,
+      not a new gate).
+- [ ] **§4 candidate refinement (weight 0):** a bar-character term for the divergence spine, added inert;
+      optimizer-only raise, RULE-B-gated.
+- [ ] **View:** VPA bar-character ribbon/lane on the Money Flow Replay + Accumulation Detector tabs.
+- [ ] **Tests:** each bar-character classification fires on its labeled bar (No-Demand/No-Supply/
+      Absorption/effort-vs-result); volume calibration is *relative* (same shape at different absolute
+      volumes); clean trend stays clean (no false No-Demand); look-ahead-safe; candidate term contributes
+      0 to SMS until raised; RULE A C/D decisions **byte-identical** with the corroborator wired (gate
+      unchanged); observation renders no number.
+
+## Slice 19 — Approximate Volume Profile (POC / VAH / VAL / HVN / LVN)  ⬜  (spec v1.6, LD-13)
+
+**Detection-enrichment vertical.** Wyckoff 2.0's signature addition — **does not exist anywhere today**.
+Computed as a **daily-bar volume-at-price approximation** (each bar's volume distributed across its
+high–low range). **Inert until earned (LD-13):** candidate `phase_bonus` enrichment at weight 0,
+observation-first.
+
+> **Fidelity honesty (`missing ≠ zero` analogue, spec §4.1):** true POC / value-area precision needs
+> intraday depth the system does not backtest. The module must **never render or imply more precision
+> than daily bars support** — label it an approximation in every view.
+
+- [ ] `signals/volume_profile.py`: look-ahead-safe daily-bar VAP over a rolling range → POC, VAH, VAL
+      (70% value area), HVN / LVN nodes. Deterministic bucketing; `missing ≠ zero`.
+- [ ] **Phase-context corroboration (RULE A unchanged):** expose Spring@VAL / UTAD@VAH / LPS@POC
+      confluence as a phase-detector *input* — decision rule not altered.
+- [ ] **§4 candidate enrichment (weight 0):** a `phase_bonus` VP-confluence term added inert;
+      optimizer-only raise, RULE-B-gated.
+- [ ] **View:** VP overlay (POC/VAH/VAL/nodes) on the phase / replay chart, explicitly marked
+      "approximate — daily bars".
+- [ ] **Tests:** POC/VAH/VAL/HVN/LVN reproduce a hand-checked daily-bar profile; value area brackets 70%
+      of volume; look-ahead-safe (no future bar in the profile); candidate term contributes 0 to SMS
+      until raised; RULE A C/D decisions unchanged with the confluence wired; view labels the
+      approximation; no number.
+
 ## Acceptance criteria (definition of done — `LOCKED_SPEC.md` §13)
 
 - [x] Look-ahead test passes (no `availability_ts >= decision_ts`).

@@ -1,7 +1,7 @@
 # CLAUDE.md — CurrentFlow repo conventions
 
 CurrentFlow is a **private, single-operator IDX smart-money screener & flow terminal**.
-Source of truth: [`LOCKED_SPEC.md`](LOCKED_SPEC.md) (v1.2, LOCKED), with data mapping in
+Source of truth: [`LOCKED_SPEC.md`](LOCKED_SPEC.md) (v1.6, LOCKED), with data mapping in
 [`DATA_SOURCES.md`](DATA_SOURCES.md) and server-side pre-filters in [`screeners.md`](screeners.md).
 
 **Read the spec before writing code.** Any change to locked behavior requires a spec version
