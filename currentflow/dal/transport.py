@@ -52,12 +52,14 @@ class HttpxTransport:
         self._client = client or httpx.AsyncClient(timeout=timeout)
 
     def _auth_headers(self) -> dict[str, str]:
+        """Bearer + the browser-shaped block (config.BROWSER_HEADERS). The block is
+        spread FIRST so `Authorization` can never be shadowed by it."""
         token = self._token_provider()
         if not token:
             raise AuthError(
                 "no Bearer token captured — run `python -m currentflow.dal.login paste`"
             )
-        return {"Authorization": f"Bearer {token}"}
+        return {**config.BROWSER_HEADERS, "Authorization": f"Bearer {token}"}
 
     def _url(self, path: str) -> str:
         return f"{self._base_url}/{path.lstrip('/')}"

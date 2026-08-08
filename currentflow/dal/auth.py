@@ -155,7 +155,11 @@ class AuthClient:
         """POST JSON; return the response's `data` object. Maps errors per the DAL
         taxonomy. NEVER logs `body` (it carries password/OTP/recaptcha/tokens)."""
         try:
-            resp = await self._client.post(self._url(path), json=body)
+            # Browser-shaped headers: the bare httpx UA draws a bodyless 403 from the
+            # edge filter (config.BROWSER_HEADERS). No Bearer here — login predates it.
+            resp = await self._client.post(
+                self._url(path), json=body, headers=config.BROWSER_HEADERS
+            )
         except httpx.TransportError as exc:  # connect/read/timeout — retryable class
             log_net_error(log, method="POST", path=path, error_class=type(exc).__name__,
                           outcome="raised-to-caller", retryable=True)

@@ -129,6 +129,26 @@ The final `access.token` is the `Authorization: Bearer …` the rest of the DAL 
   - arbitrary junk string (`"not-a-real-recaptcha-token…"`) → **200, logged in**
   - empty / absent token → **`400 "Permintaan tidak valid"`**
 - So there is **no Google `siteverify`** on the backend to satisfy. A pure-Python login **is** possible: no browser, DevTools console snippet, bookmarklet, or headless engine is needed. The client sends a fixed non-empty placeholder (`config.AUTH_RECAPTCHA_PLACEHOLDER = "currentflow"`). `recaptcha_version` still sent as `RECAPTCHA_VERSION_3`.
+
+> ⚠️ **SUPERSEDED IN PART (2026-08-08) — an EDGE filter now sits in front of this route.**
+> The reCAPTCHA finding above still holds (the *application* does not validate the token),
+> but "no browser needed" no longer follows on headers alone. From 2026-08-08 the CLI began
+> drawing a **bodyless `403`** from `login/v6/username` (18 occurrences, `logs/net.log`
+> 14:53–15:14) while the same account signed in from Chrome **15 seconds after the last
+> failure**. Diagnosis: application rejections always carry a `message` (both documented
+> 400s do), so an empty 403 means the request never reached the app — and the CLI's request
+> was trivially bot-shaped (`python-httpx/0.28.1`, no `Origin`, no `Referer`, `Accept: */*`,
+> HTTP/1.1).
+>
+> **Mitigation:** `config.BROWSER_HEADERS` — UA / Origin / Referer / Accept / `sec-ch-ua*` /
+> `Sec-Fetch-*` lifted verbatim from the operator's own capture — now applied by both
+> `AuthClient._post` and `HttpxTransport` (`Authorization` merged last so it cannot be
+> shadowed). Pinned by `tests/test_browser_headers.py`.
+>
+> **Not yet proven to work:** the fix addresses a *header*-level filter. If the edge
+> fingerprints TLS/HTTP2 (JA3/JA4) instead, the 403 will persist and the standing fallback
+> is `./run.sh paste` with a Bearer lifted from a browser session. Record the outcome of the
+> next real login attempt here.
 - The public v3 site key (`6LeBXZYqAAAAAIAqBYdAV5HuBc6i0YeVziSYrXAZ`) is retained in config for reference only; it is no longer used to mint anything. `dal/recaptcha.py` (the console-snippet module) was **removed**.
 
 **Resolved — `player_id` is the DEVICE-TRUST ANCHOR (live probe 2026-07-03):**
