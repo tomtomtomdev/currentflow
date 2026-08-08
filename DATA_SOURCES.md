@@ -121,7 +121,7 @@ The final `access.token` is the `Authorization: Bearer …` the rest of the DAL 
 
 **5 · `POST /login/v6/new-device/verify`**  (only after `CHALLENGE_FINISH`)
 - req: `{ multi_factor: { login_token } }`  (the `login_token` from step 1)
-- resp: `data.access.{ token, expired_at }`, `data.refresh.{ token, expired_at }`, plus `data.user.{ id, username, email, exchange, privilege, … }`. Observed lifetimes: **access ≈ 24h, refresh ≈ 7d** (ISO-8601 `expired_at`).
+- resp: `data.access.{ token, expired_at }`, `data.refresh.{ token, expired_at }`, plus `data.user.{ id, username, email, exchange, privilege, … }` and `data.onesignal_hash` (64-char). Lifetimes are **exact, not approximate** (re-measured 2026-08-08): issued `08:04:29Z` → access `expired_at` **+24h to the second**, refresh **+7d to the second** (ISO-8601).
 
 **Resolved — `recaptcha_token` is PRESENCE-ONLY, not validated (live probe 2026-07-03, supersedes the earlier "enforced/browser-minted" conclusion):**
 - The server checks only that `recaptcha_token` is **present and non-empty** — NOT its content or freshness. Live-probed against the own account:
@@ -136,8 +136,55 @@ The final `access.token` is the `Authorization: Bearer …` the rest of the DAL 
 - It selects the response branch: a **previously-verified** `player_id` → trusted-device direct session (no MFA); a **fresh** `player_id` → new-device MFA branch (one-time OTP). Confirmed by sending a random UUID (→ MFA handles) vs. the known one (→ direct session).
 - **Approach:** generate a random UUIDv4 **once**, persist it (Keychain, `KEYCHAIN_PLAYER_ID_ACCOUNT`), reuse forever. `KeychainTokenStore.player_id()` mints-on-first-read; it survives sign-out (`clear()`) so the device stays trusted; `clear_player_id()` forgets it to force a fresh MFA. First login on a new machine does the OTP loop once; every login after is direct.
 
-**Still open (not resolved by this HAR — do not guess in code):**
-- **Refresh endpoint** — access was valid for the whole capture, so the refresh route + request/response shape are **unconfirmed**. Capture a token-refresh exchange (or an expiry) before wiring `dal/auth.refresh`.
+**Re-verified 2026-08-08 (`stockbit.com.har`, second independent capture) — contract UNCHANGED:**
+- All five steps, paths, and field shapes reproduce exactly, including the 36-char handles, the masked `target`, `next_attempt_in: 60`, and the multi-round OTP loop (email → WhatsApp → `CHALLENGE_FINISH`). The loop is the **norm for this account, not a one-off** — the driver must never assume a single round.
+- **Second distinct 400 reason found.** Bad credentials return `400 { message: "Username atau password salah. Mohon coba lagi.", error_type: "INVALID_PARAMETER" }` — separate from the malformed-request `400 "Permintaan tidak valid"` above. So a 400 on step 1 is *at least* two different failures.
+- **`error_type` is a newly-observed response field**, not previously recorded. Deliberately NOT wired: only one sample exists, and the malformed-request 400's `error_type` is unknown, so it may not discriminate. `netlog`'s `server_message` carve-out already separates these from the human-readable `message`. Capture a malformed-request 400 before relying on `error_type`.
+- The capture's `player_id` is the **browser's**, not the CLI's, so it is no evidence either way about whether the repo's persisted `player_id` earns the trusted-device branch. That claim still rests only on the 2026-07-03 probe.
+
+### 4.2 Fetch timing — measured 2026-08-08 (`stockbit.com.har`, 47 stockbit calls)
+
+**Per-call latency (the wall-clock floor on any backfill).** Median exodus round-trip
+**131 ms**; the heavier data endpoints cluster **380–433 ms** (`prices/close` 433,
+`order-trade/broker/top` 395, `charts/{sym}/daily` 383). Light metadata calls
+(`special-board` 107, `prices/{sym}/market` 88) are cheaper.
+
+> ⚠️ **No `marketdetectors` sample in this capture** (it is a login/landing trace, not a
+> data-browsing one), so the *broker-summary* latency — the one that actually governs the
+> backfill — is still **unmeasured**. Treat the 380–433 ms band as the closest proxy.
+
+Implied serial floors, network only, **before** `BACKFILL_BATCH_PAUSE_S` (1.0 s/name) and
+any paywall backoff:
+
+| Pull | Broker calls | Network floor @ ~400 ms |
+|---|---|---|
+| Study 1 dense (200 names × 512 d) | 102,400 | **~11.4 h** |
+| Premise strided (200 names, stride 10) | ~13,600 | **~1.5 h** |
+
+This *lowers* the `BACKTEST_PHASE0.md` estimate (~28 h), which assumed a 1 req/s pace
+rather than measured latency. The 1 s inter-name pause and backoff still dominate a real
+run — the floor is a floor, not a forecast.
+
+**Data freshness / the `today` trap.** The capture ran **Saturday 2026-08-08 15:04 WIB**
+(market closed since Friday):
+- `company-price-feed/prices/IHSG/market` → `data.date = 2026-08-07` — correctly the last
+  trading day.
+- `charts/IHSG/daily?timeframe=today` → **also Friday** (`2026-08-07 08:58:00`). The
+  endpoint named `today` silently serves the **last trading session** on a non-trading day,
+  with no staleness flag beyond the embedded date. Anything reading it must stamp `as_of`
+  from the payload's own date, never from wall-clock `now`.
+- In the same payload `prices[0].date = 0` while the real timestamp is only in
+  `formatted_date`. A parser keying on `date` gets the epoch.
+
+Neither is a live defect today: `charts/` is unparsed and the DAL's `regime()` method is
+not implemented (`signals/regime.py` reads stored bars, not this feed). Recorded here so
+whoever wires the §1 regime gate does not step in it.
+
+**Still open (not resolved by either HAR — do not guess in code):**
+- **EOD broker-summary publish latency** (§4 risk table) — unresolved, and this capture
+  cannot help: it is a weekend trace with no `marketdetectors` call. Still requires the
+  empirical measurement `ingest/publish_latency.py` exists for.
+- **Refresh endpoint** — access was valid for the whole of both captures (the 2026-08-08 one spans ~110 s), so the refresh route + request/response shape remain **unconfirmed**. Capture a token-refresh exchange (or let an access token expire) before wiring `dal/auth.refresh`.
 
 ---
 
@@ -184,4 +231,4 @@ Build order maps 1:1 to spec §11: step 1 = `broker_summary` + `ohlcv_foreign` +
 
 ---
 
-*Source: HAR capture `stockbit.com_Archive [26-07-01 12-38-52].har`, authenticated Pro session. fitem_ids verified against `fundachart/metrics` + `keystats/ratio/v1`.*
+*Sources: HAR capture `stockbit.com_Archive [26-07-01 12-38-52].har` (feed map + §4.1 login contract) and `stockbit.com.har` 2026-08-08 (§4.1 re-verification — contract unchanged, two 400 reasons, exact token lifetimes). Both authenticated Pro sessions, own-account. fitem_ids verified against `fundachart/metrics` + `keystats/ratio/v1`.*
