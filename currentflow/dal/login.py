@@ -48,7 +48,9 @@ async def _run_login() -> int:
     # No reCAPTCHA capture: the server validates only presence, not content (§4.1), so
     # AuthClient sends a fixed placeholder. The stable device `player_id` (generated
     # once, persisted) is the trust anchor — a previously-verified device logs in
-    # straight through; the FIRST login on a new device does the OTP loop below once.
+    # straight through; a new device drives the OTP loop below. That loop is
+    # MULTI-ROUND by norm, not exception: both captures (2026-07-03, 2026-08-08)
+    # needed two rounds across different channels before CHALLENGE_FINISH.
     store = KeychainTokenStore()
     player_id = store.player_id()
 

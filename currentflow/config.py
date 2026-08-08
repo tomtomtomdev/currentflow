@@ -113,6 +113,38 @@ AUTH_REFRESH_PATH: str | None = None
 # tidak valid". So there is no Google `siteverify` on the backend to satisfy: no
 # browser, console snippet, bookmarklet, or headless engine is needed. We send a fixed
 # non-empty placeholder to clear the presence check. See DATA_SOURCES §4.1.
+# --- browser-shaped request headers (2026-08-08) ------------------------------------
+# From 2026-08-08 `login/v6/username` began returning a BODYLESS 403 to the CLI while the
+# same account signed in from Chrome 15 seconds later. Application rejections always carry
+# a `message` (see the two documented 400s), so an empty 403 means the request never
+# reached the app — an edge/bot filter. The CLI's request was trivially bot-shaped:
+# `python-httpx/x.y` with no Origin or Referer.
+#
+# Values are lifted VERBATIM from the operator's own browser capture (DATA_SOURCES §4.1,
+# `stockbit.com.har`) rather than invented, so they stay evidence-pinned like every other
+# constant here. Same §10 posture as the rest of the DAL: the operator's own session,
+# local-only, never redistributed.
+#
+# NOTE: this only addresses a HEADER-level filter. If the edge fingerprints TLS/HTTP2
+# (JA3/JA4) the 403 will persist and the fallback is `./run.sh paste` with a Bearer from
+# the browser. `Authorization` is deliberately absent — it is per-request.
+BROWSER_HEADERS: dict[str, str] = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/json",
+    "Accept-Language": "EN",
+    "Origin": "https://stockbit.com",
+    "Referer": "https://stockbit.com/",
+    "sec-ch-ua": '"Not=A?Brand";v="99", "Google Chrome";v="151", "Chromium";v="151"',
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": '"macOS"',
+    "Sec-Fetch-Dest": "empty",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Site": "same-site",
+}
+
 AUTH_RECAPTCHA_VERSION = "RECAPTCHA_VERSION_3"
 AUTH_RECAPTCHA_PLACEHOLDER = "currentflow"   # any non-empty string clears the presence check
 AUTH_RECAPTCHA_SITE_KEY = "6LeBXZYqAAAAAIAqBYdAV5HuBc6i0YeVziSYrXAZ"  # public v3 key (unused; kept for reference)
