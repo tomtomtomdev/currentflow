@@ -368,6 +368,26 @@ div[class*="st-key-cflogincard"] div[data-testid="stForm"] {{ border:none; paddi
 .cf-valbar .cf-valstate {{ font-family:{_MONO}; font-size:11.5px; }}
 .cf-valtrack {{ height:5px; border-radius:3px; background:rgba(255,255,255,0.07); margin-top:8px; }}
 .cf-valtrack span {{ display:block; height:5px; border-radius:3px; }}
+/* --- Time Machine (rewound read path) ------------------------------------
+   Deliberately the loudest band in the shell: a rewound terminal must never be
+   mistaken for a live one. Divergence purple (not amber) so it can't be read as a
+   RULE-B gate pill, and a static dot — the live pulse belongs to live only. */
+.cf-tmbar {{
+  border:1px solid rgba(188,140,255,0.42); background:rgba(188,140,255,0.09);
+  border-radius:9px; padding:9px 13px; margin:8px 0 12px;
+  font-size:11px; color:{TOKENS["text_secondary"]};
+}}
+.cf-tmbar .cf-tmhead {{
+  display:flex; align-items:center; gap:9px; flex-wrap:wrap;
+  color:{TOKENS["divergence"]}; font-weight:600; letter-spacing:0.06em;
+}}
+.cf-tmbar .cf-tmdot {{
+  display:inline-block; width:7px; height:7px; border-radius:50%; flex:none;
+  background:{TOKENS["divergence"]};
+}}
+.cf-tmbar .cf-tmnote {{ color:{TOKENS["text_muted"]}; margin-top:5px; }}
+.cf-tmbar ul {{ margin:6px 0 0; padding-left:17px; color:{TOKENS["text_faint"]}; font-size:10px; }}
+.cf-tmbar li {{ margin:2px 0; }}
 .cf-ticker {{
   display:flex; align-items:center; gap:12px; height:26px; margin-top:6px;
   background:{TOKENS["bg_rail"]}; border-top:1px solid {TOKENS["border_bar"]};
@@ -552,22 +572,63 @@ def top_bar_html(
     ihsg: float | None = None,
     ihsg_change_pct: float | None = None,
     published: str = "Broker summary published · T+1",
+    rewound_to: str | None = None,
 ) -> str:
     """The 52px top status bar: logo/wordmark, live publish note, as-of stamp,
     RULE-B pill, IHSG quote, track chip. The masked operator + sign-out live at the
-    top of the ARMED watchlist rail (`operator_head_html`), not here."""
+    top of the ARMED watchlist rail (`operator_head_html`), not here.
+
+    `rewound_to` — the Time Machine day when the read path is rewound. It replaces the
+    pulsing live dot with a static purple REWOUND chip, so no rewound screen can be
+    read as live; the full banner (`timemachine_banner_html`) carries the detail."""
     stamp = escape(as_of) if as_of else "—"
+    if rewound_to is None:
+        mode = f'<div><span class="cf-livedot"></span>&nbsp; {escape(published)}</div>'
+    else:
+        mode = (
+            f'<div style="color:{TOKENS["divergence"]}">'
+            '<span class="cf-tmdot"></span>&nbsp; REWOUND to '
+            f'<span class="cf-mono">{escape(rewound_to)}</span> · not live</div>'
+        )
     return (
         '<div class="cf-topbar">'
         '<div class="cf-logo">V</div>'
         '<div><div class="cf-word">VECTOR·LAB</div>'
         '<div class="cf-sub">IDX SMART-MONEY FLOW TERMINAL</div></div>'
-        f'<div><span class="cf-livedot"></span>&nbsp; {escape(published)}</div>'
+        f"{mode}"
         f'<div>as-of <span class="cf-mono">{stamp}</span> WIB</div>'
         f'<div style="flex:1"></div><div class="cf-ruleb">{RULE_B_PILL}</div>'
         f'<div>{ihsg_html(ihsg, ihsg_change_pct)}</div>'
         f'<div>Track <span class="cf-mono">{escape(track)}</span></div>'
         "</div>"
+    )
+
+
+def timemachine_banner_html(
+    *,
+    day: str,
+    decision_ts: str,
+    last_visible_day: str,
+    caveats: tuple[str, ...] = (),
+) -> str:
+    """The rewound-mode banner: which moment the whole terminal is reading at, the newest
+    day that moment can see, and everything that does NOT rewind with it (named, never
+    faked — same posture as `pit.PitUniverse.unchecked_legs`).
+
+    Rendered only while rewound; live mode shows no banner at all."""
+    items = "".join(f"<li>{escape(c)}</li>" for c in caveats)
+    return (
+        '<div class="cf-tmbar">'
+        '<div class="cf-tmhead"><span class="cf-tmdot"></span>'
+        f"TIME MACHINE — reading as of {escape(day)} pre-open</div>"
+        f'<div class="cf-tmnote">Every panel below re-reads the store at '
+        f'<span class="cf-mono">{escape(decision_ts)}</span> WIB and shows only rows '
+        f"published before it. Newest visible trading day: "
+        f'<span class="cf-mono">{escape(last_visible_day)}</span>. '
+        "Read path only — no signal, gate, or RULE B behavior changes, and nothing is "
+        "written at this date.</div>"
+        + (f"<ul>{items}</ul>" if items else "")
+        + "</div>"
     )
 
 

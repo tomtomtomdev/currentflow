@@ -105,6 +105,16 @@ Report net-of-full-fee-stack returns benchmarked to **LQ45 / sector**, never IHS
 - **Never hand-edit SMS weights live.** Weights (§4) tune only via walk-forward Sharpe
   optimizer. They are the only tunable surface.
 - **Missing data is never zero flow.** Distinguish "no trades" / "not yet published" / "gap".
+- **A view never calls `datetime.now()`.** The terminal's read moment comes from
+  `app._decision_ts()` (pure logic in [`currentflow/ui/timemachine.py`](currentflow/ui/timemachine.py)),
+  so the operator's **Time Machine** rewind reaches every panel at once. A rewind sets
+  `decision_ts = combine(day, REPLAY_DECISION_TIME)` — the day's pre-open, the same "acting
+  on D" convention as `validation/runner.py` and `universe/pit.py`. Any raw
+  `SELECT max("date")` / `DISTINCT symbol` in a view must carry the `as_of` filter too, or
+  the future leaks in as chrome. **Writes keep real wall-clock `now()`** (ingest, the
+  Fast-Mode book, the catalog seed, the session) — the Time Machine is read-path only, so
+  RULE A/B are untouched. What cannot rewind is named on screen (`timemachine.caveats`),
+  never faked; a pre-regime or future day is refused, never clamped.
 - **No silent caps.** If coverage is bounded (top-N, sampling, no-retry), `log` what was dropped.
 - **Regime-clamped history.** Historical computations are regime-clamped per [`REGIME.md`](REGIME.md);
   a backtest reaching before `config.regime_start(track)` is a bug, not a bigger sample (it fails

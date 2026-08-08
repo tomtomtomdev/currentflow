@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import sys
 import time
+from datetime import date as Date
 from datetime import datetime
 
 import pandas as pd
@@ -79,7 +80,7 @@ from currentflow.ui.risk_view import (
 from currentflow.ui import shell
 from currentflow.ui.sector_view import scatter_points, sector_rows
 from currentflow.ui.sms_view import GATE_BANNER, WATCHLIST_FRAMING, component_rows, score_display, state_label
-from currentflow.ui import catalog_view, daily_top_view, fast_mode_view, ml_view, pipeline_view, ranking_view, watchlist_view
+from currentflow.ui import catalog_view, daily_top_view, fast_mode_view, ml_view, pipeline_view, ranking_view, timemachine, watchlist_view
 from currentflow.validation import fast_mode as fast_mode_mod
 from currentflow.validation.promotion import ValidationLedger
 
@@ -117,7 +118,58 @@ def _ledger() -> ValidationLedger:
     return ValidationLedger()
 
 
-def _all_results(store: Store, track: str | None, decision_ts: datetime) -> list:
+# --- Time Machine session layer (ui/timemachine.py holds the pure logic) -----------
+# `_asof_day()` is the ONE piece of state the read path adds: None = live, a date =
+# rewound. It is threaded explicitly into the cached//pure helpers below rather than read
+# from session state inside them (a `st.cache_data` body must not depend on hidden state).
+
+_ASOF_KEY = "cf_asof_day"
+
+
+def _asof_day() -> Date | None:
+    """The Time Machine day, or None when the terminal is live."""
+    day = st.session_state.get(_ASOF_KEY)
+    return day if isinstance(day, Date) else None
+
+
+def _decision_ts() -> datetime:
+    """THE decision moment for every read on this rerun — real wall-clock now when live,
+    the rewound pre-open moment when the Time Machine is set. Views call this instead of
+    `datetime.now()` so a rewind reaches all of them at once. Writes (ingest, the paper
+    book, the catalog seed) deliberately keep their own `datetime.now()`."""
+    return timemachine.resolve(_asof_day(), now=datetime.now())
+
+
+def _set_asof(day: Date | None) -> None:
+    """Commit a Time Machine day (or None for live). Derived caches need no flushing —
+    `_watchlist_data` is keyed on the decision moment, so each moment gets its own entry."""
+    st.session_state[_ASOF_KEY] = day
+
+
+def _go_live() -> None:
+    """Back to real now. Also resets the picker — a LIVE terminal must not sit under a
+    date box still showing a past day (callbacks run before the widget, so this is legal)."""
+    _set_asof(None)
+    st.session_state["cf_asof_pick"] = datetime.now().date()
+
+
+def _resolve_track(
+    store: Store, symbol: str, decision_ts: datetime, bars: list, *,
+    asof_day: Date | None = None,
+) -> str:
+    """The name's §3 track. Live: the stored roster snapshot (`resolve_track`). Rewound:
+    the point-in-time roster effective that day (`resolve_track_pit`) when one is loaded —
+    the live snapshot's `as_of` is stamped at ingest, so it cannot rewind. No roster period
+    covering the day → fall back to the live path, and `timemachine.caveats` says so."""
+    if asof_day is not None and store.roster_covers(asof_day):
+        return track_mod.resolve_track_pit(store, symbol, asof_day, bars)
+    return track_mod.resolve_track(store, symbol, decision_ts, bars)
+
+
+def _all_results(
+    store: Store, track: str | None, decision_ts: datetime, *,
+    asof_day: Date | None = None,
+) -> list:
     """Evaluate every ingested name for the ranking / daily-top / watchlist modules.
 
     `track="A"|"B"` forces that track for every name (the manual sidebar override).
@@ -125,23 +177,30 @@ def _all_results(store: Store, track: str | None, decision_ts: datetime) -> list
     (`universe.track.resolve_track`) — the ARMED watchlist's spec-faithful A+B path.
     Missing roster membership resolves to Track B (never invents Track A)."""
     results = []
-    for s in _symbols(store, "daily_bar"):
+    for s in _symbols(store, "daily_bar", asof_day=asof_day):
         t = track
         if t is None:
-            t = track_mod.resolve_track(
-                store, s, decision_ts, store.read_daily_bars(s, decision_ts)
-            )
+            bars = store.read_daily_bars(s, decision_ts)
+            t = _resolve_track(store, s, decision_ts, bars, asof_day=asof_day)
         results.append(engine.evaluate(store, s, decision_ts, track=t))
     return results
 
 
-def _symbols(store: Store, table: str) -> list[str]:
-    return [
-        r[0]
-        for r in store._con.execute(
-            f'SELECT DISTINCT "symbol" FROM {table} ORDER BY "symbol"'
-        ).fetchall()
-    ]
+def _symbols(
+    store: Store, table: str, *, asof_day: Date | None = None
+) -> list[str]:
+    """Distinct symbols in `table`. Live (`asof_day=None`) every ingested name, unchanged.
+
+    Rewound: only names with a row already visible at that moment. Without this the rail
+    and the pipeline would list a name first ingested *after* the rewound day and then
+    render it empty — the future leaking in as the absence of data. Emptiness checks that
+    must see the real store (the first-run bootstrap) call this with no `asof_day`."""
+    if asof_day is None:
+        sql, params = f'SELECT DISTINCT "symbol" FROM {table} ORDER BY "symbol"', []
+    else:
+        sql = f'SELECT DISTINCT "symbol" FROM {table} WHERE "as_of" < ? ORDER BY "symbol"'
+        params = [timemachine.decision_ts_for(asof_day)]
+    return [r[0] for r in store._con.execute(sql, params).fetchall()]
 
 
 def _roster_version(store: Store) -> str:
@@ -152,21 +211,45 @@ def _roster_version(store: Store) -> str:
 
 
 @st.cache_data(ttl=600, show_spinner="Evaluating ARMED watchlist…")
-def _watchlist_data(db_path: str, day: str, n_symbols: int, roster_ver: str) -> dict:
+def _watchlist_data(
+    db_path: str, day: str, n_symbols: int, roster_ver: str,
+    asof_day: Date | None = None,
+) -> dict:
     """One engine pass over every ingested name for the sidebar rail, each scored on
     its spec §3 track (Track A large-caps + Track B lapis-2 — `_all_results(track=None)`).
     Keyed on the day + symbol count (a bootstrap / new ingest invalidates) and the roster
     version (a membership refresh re-tracks names); the TTL bounds intraday staleness.
-    Returns primitives only (RULE-B-safe rows)."""
-    return watchlist_view.rows(_all_results(_store(db_path), None, datetime.now()))
+    Returns primitives only (RULE-B-safe rows).
+
+    `asof_day` is part of the key AND the computation: a Time Machine day gets its own
+    cache entry evaluated at that day's pre-open, so live and rewound rails never mix."""
+    return watchlist_view.rows(
+        _all_results(
+            _store(db_path), None,
+            timemachine.resolve(asof_day, now=datetime.now()),
+            asof_day=asof_day,
+        )
+    )
+
+
+def _watchlist_rows(store: Store) -> dict:
+    """The rail payload for this rerun's decision moment (live or rewound)."""
+    asof = _asof_day()
+    return _watchlist_data(
+        _db_path(),
+        f"{_decision_ts():%Y-%m-%d}",
+        len(_symbols(store, "daily_bar", asof_day=asof)),
+        _roster_version(store),
+        asof,
+    )
 
 
 def _selected_symbol(store: Store, *, table: str = "daily_bar") -> str | None:
-    """The rail-selected symbol, validated against what `table` actually holds.
-    Selection lives in the right rail (design: click a watchlist card) — there is
-    no sidebar dropdown. Falls back to the first ingested name when nothing valid
-    is selected; None when the table is empty."""
-    symbols = _symbols(store, table)
+    """The rail-selected symbol, validated against what `table` actually holds *at this
+    rerun's decision moment*. Selection lives in the right rail (design: click a watchlist
+    card) — there is no sidebar dropdown. Falls back to the first visible name when nothing
+    valid is selected; None when the table holds nothing visible then."""
+    symbols = _symbols(store, table, asof_day=_asof_day())
     if not symbols:
         return None
     sel = st.session_state.get("cf_symbol")
@@ -180,17 +263,19 @@ def _render_watchlist_rail(store: Store) -> None:
     module). Each card is the terminal's symbol selector: a keyed container with an
     invisible full-card button (shell CSS overlay); the selected card carries the
     design's brightened border."""
-    syms = _symbols(store, "daily_bar")
+    syms = _symbols(store, "daily_bar", asof_day=_asof_day())
     if not syms:
         st.markdown(
             '<div class="cf-railhead">ARMED WATCHLIST</div>'
-            '<div class="cf-railnote">no data ingested yet</div>',
+            + (
+                '<div class="cf-railnote">nothing was ingested yet at this date</div>'
+                if _asof_day() is not None
+                else '<div class="cf-railnote">no data ingested yet</div>'
+            ),
             unsafe_allow_html=True,
         )
         return
-    data = _watchlist_data(
-        _db_path(), f"{datetime.now():%Y-%m-%d}", len(syms), _roster_version(store)
-    )
+    data = _watchlist_rows(store)
     if data["rows"] and st.session_state.get("cf_symbol") not in syms:
         # design default: the top rail name (ARMED first, strongest flow first)
         st.session_state["cf_symbol"] = data["rows"][0]["symbol"]
@@ -221,22 +306,55 @@ def _module_header(title: str, subtitle: str, kind: str, badge: str) -> None:
     st.markdown(shell.module_header_html(title, subtitle, kind, badge), unsafe_allow_html=True)
 
 
+def _no_data_note(what: str) -> str:
+    """The empty-panel message. Rewound, an empty panel means *not published yet at that
+    moment* — a different fact from "never ingested", and the two must never read alike
+    (CLAUDE.md: distinguish no-trades / not-yet-published / gap)."""
+    day = _asof_day()
+    if day is None:
+        return f"{what} ingested yet — run the ingest pipeline first."
+    return (
+        f"{what} had been published before {day} 09:15 WIB — the moment the Time Machine "
+        "is reading at. That is not a gap and not zero flow: nothing was knowable yet. "
+        "Pick a later date, or return to LIVE."
+    )
+
+
+def _max_visible_date(store: Store, asof_day: Date | None) -> object | None:
+    """Newest `daily_bar` trading day visible at this rerun's decision moment. Rewound,
+    the raw `max(date)` would leak the future straight into the top-bar stamp and the
+    sector-rotation window, so the `as_of` firewall applies here too."""
+    if asof_day is None:
+        row = store._con.execute('SELECT max("date") FROM daily_bar').fetchone()
+    else:
+        row = store._con.execute(
+            'SELECT max("date") FROM daily_bar WHERE "as_of" < ?',
+            [timemachine.decision_ts_for(asof_day)],
+        ).fetchone()
+    return row[0] if row and row[0] else None
+
+
 def _as_of(store: Store) -> str | None:
-    """Latest ingested trading day — the top bar's as-of stamp ('—' when empty;
+    """Latest visible trading day — the top bar's as-of stamp ('—' when empty;
     a missing stamp is shown as absent, never faked)."""
-    row = store._con.execute('SELECT max("date") FROM daily_bar').fetchone()
-    return str(row[0]) if row and row[0] else None
+    day = _max_visible_date(store, _asof_day())
+    return str(day) if day else None
 
 
 def _ihsg(store: Store) -> tuple[float | None, float | None]:
     """Latest IHSG level + day-over-day %-change for the top bar, read from a
     composite series if one is ingested (any of `_IHSG_SYMBOLS`). Not a benchmark
-    (§8) — display chrome only. Absent when not ingested (never faked, §10)."""
+    (§8) — display chrome only. Absent when not ingested (never faked, §10).
+    Rewound, the two closes are the two visible at that moment, not today's."""
+    asof = _asof_day()
+    clause = "" if asof is None else 'AND "as_of" < ? '
+    extra = [] if asof is None else [timemachine.decision_ts_for(asof)]
     for sym in _IHSG_SYMBOLS:
         rows = store._con.execute(
             'SELECT "close" FROM daily_bar WHERE "symbol" = ? '
+            f"{clause}"
             'ORDER BY "date" DESC LIMIT 2',
-            [sym],
+            [sym, *extra],
         ).fetchall()
         if not rows or rows[0][0] is None:
             continue
@@ -279,19 +397,19 @@ def _render_broker_flow(store: Store, *, show_header: bool = True) -> None:
             "observation", OBSERVATION_BADGE,
         )
 
-    symbols = _symbols(store, "broker_net")
+    decision_ts = _decision_ts()
+    symbols = _symbols(store, "broker_net", asof_day=_asof_day())
     if not symbols:
-        st.warning("No broker data ingested yet — run the ingest pipeline first.")
+        st.warning(_no_data_note("No broker data"))
         return
 
     symbol = _selected_symbol(store, table="broker_net")
     picked = st.session_state.get("cf_symbol")
     if picked and picked != symbol:
         st.caption(
-            f"{picked} has no broker rows ingested — showing {symbol}. "
+            f"{picked} has no broker rows visible at this moment — showing {symbol}. "
             "Pick another name from the ARMED rail."
         )
-    decision_ts = datetime.now()
     snap = analyze(store, symbol, decision_ts)
     _trap_ribbon(store, symbol, decision_ts)
 
@@ -328,10 +446,7 @@ def _render_broker_flow(store: Store, *, show_header: bool = True) -> None:
 
     # design matrix: columns = the (≤7) watchlist names, never the whole universe;
     # the cap is annotated, not silent. The selected symbol is always a column.
-    watch = _watchlist_data(
-        _db_path(), f"{decision_ts:%Y-%m-%d}",
-        len(_symbols(store, "daily_bar")), _roster_version(store),
-    )
+    watch = _watchlist_rows(store)
     cols = [symbol] + [r["symbol"] for r in watch["rows"]
                        if r["symbol"] != symbol and r["symbol"] in symbols]
     cols = cols[:7]
@@ -360,13 +475,13 @@ def _render_foreign_flow(store: Store, *, show_header: bool = True) -> None:
             "observation", "OBSERVATION · ships now",
         )
 
-    symbols = _symbols(store, "daily_bar")
+    decision_ts = _decision_ts()
+    symbols = _symbols(store, "daily_bar", asof_day=_asof_day())
     if not symbols:
-        st.warning("No OHLCV/foreign data ingested yet — run the ingest pipeline first.")
+        st.warning(_no_data_note("No OHLCV/foreign data"))
         return
 
     symbol = _selected_symbol(store)
-    decision_ts = datetime.now()
     snap = foreign_flow.analyze(store, symbol, decision_ts)
     _trap_ribbon(store, symbol, decision_ts)
     stats = stats_panel(snap)
@@ -522,13 +637,14 @@ def _render_replay(store: Store, *, show_header: bool = True) -> None:
             "observation", "OBSERVATION",
         )
 
-    symbols = _symbols(store, "daily_bar")
+    asof = _asof_day()
+    symbols = _symbols(store, "daily_bar", asof_day=asof)
     if not symbols:
-        st.warning("No data ingested yet — run the ingest pipeline first.")
+        st.warning(_no_data_note("No data"))
         return
 
     symbol = _selected_symbol(store)
-    _trap_ribbon(store, symbol, datetime.now())
+    _trap_ribbon(store, symbol, _decision_ts())
     dates = [
         r[0]
         for r in store._con.execute(
@@ -536,6 +652,15 @@ def _render_replay(store: Store, *, show_header: bool = True) -> None:
             [symbol],
         ).fetchall()
     ]
+    if asof is not None:
+        # Frame for day X is knowable at X+1 09:15 (replay.frame_decision_ts); the Time
+        # Machine reads at asof 09:15, so the scrub may only reach X < asof. Each frame
+        # still re-reads at its OWN historical decision_ts — rewinding bounds the range,
+        # it never relaxes the per-frame firewall.
+        dates = [d for d in dates if d < asof]
+    if not dates:
+        st.warning(_no_data_note(f"No bar for {symbol}"))
+        return
     series = replay.build_replay(store, symbol, dates[0], dates[-1])
     if not series.frames:
         st.warning("No frames in range.")
@@ -648,12 +773,12 @@ def _render_accumulation(store: Store, *, show_header: bool = True) -> None:
             "observation", "OBSERVATION · ships now",
         )
 
-    symbols = _symbols(store, "daily_bar")
+    decision_ts = _decision_ts()
+    symbols = _symbols(store, "daily_bar", asof_day=_asof_day())
     if not symbols:
-        st.warning("No data ingested yet — run the ingest pipeline first.")
+        st.warning(_no_data_note("No data"))
         return
     symbol = _selected_symbol(store)
-    decision_ts = datetime.now()
     _trap_ribbon(store, symbol, decision_ts)
     bars = store.read_daily_bars(symbol, decision_ts)
     broker_snap = analyze(store, symbol, decision_ts)
@@ -787,11 +912,11 @@ def _render_heatmap(store: Store) -> None:
         "derived", "DERIVED VIEW · rendering, no new claim",
     )
 
-    symbols = _symbols(store, "daily_bar")
+    decision_ts = _decision_ts()
+    symbols = _symbols(store, "daily_bar", asof_day=_asof_day())
     if not symbols:
-        st.warning("No data ingested yet — run the ingest pipeline first.")
+        st.warning(_no_data_note("No data"))
         return
-    decision_ts = datetime.now()
     cells = heatmap.heatmap(store, symbols, decision_ts)
 
     st.markdown(
@@ -834,13 +959,13 @@ def _render_sms(store: Store) -> None:
     )
     st.caption(GATE_BANNER)
 
-    symbols = _symbols(store, "daily_bar")
+    symbols = _symbols(store, "daily_bar", asof_day=_asof_day())
     if not symbols:
-        st.warning("No data ingested yet — run the ingest pipeline first.")
+        st.warning(_no_data_note("No data"))
         return
     symbol = _selected_symbol(store)
     track = st.sidebar.radio("Track", ["A", "B"], index=1)
-    decision_ts = datetime.now()
+    decision_ts = _decision_ts()
     res = engine.evaluate(store, symbol, decision_ts, track=track)
     registry = _ledger().states()   # server-authoritative RULE B state
     _trap_ribbon(store, symbol, decision_ts)
@@ -863,24 +988,26 @@ def _render_ranking(store: Store) -> None:
         "gated", "GATED · number withheld (RULE B)",
     )
 
-    symbols = _symbols(store, "daily_bar")
+    symbols = _symbols(store, "daily_bar", asof_day=_asof_day())
     if not symbols:
-        st.warning("No data ingested yet — run the ingest pipeline first.")
+        st.warning(_no_data_note("No data"))
         return
     track = st.sidebar.radio("Track", ["A", "B"], index=1)
-    results = _all_results(store, track, datetime.now())
+    results = _all_results(store, track, _decision_ts(), asof_day=_asof_day())
     st.dataframe(pd.DataFrame(ranking_view.ranking(results, registry=registry)), use_container_width=True)
 
 
 def _render_daily_top(store: Store) -> None:
     st.title("Daily Top Opportunities")
     registry = _ledger().states()
-    symbols = _symbols(store, "daily_bar")
+    symbols = _symbols(store, "daily_bar", asof_day=_asof_day())
     if not symbols:
-        st.warning("No data ingested yet — run the ingest pipeline first.")
+        st.warning(_no_data_note("No data"))
         return
     track = st.sidebar.radio("Track", ["A", "B"], index=1)
-    dig = daily_top_view.digest(_all_results(store, track, datetime.now()), registry=registry)
+    dig = daily_top_view.digest(
+        _all_results(store, track, _decision_ts(), asof_day=_asof_day()), registry=registry
+    )
     _module_header(
         "Daily Top Opportunities", f"{dig['framing']}.",
         "gated", "GATED · number withheld (RULE B)",
@@ -903,12 +1030,12 @@ def _render_sector(store: Store) -> None:
         "derived", "DERIVED VIEW · rendering, no new claim",
     )
 
-    symbols = _symbols(store, "daily_bar")
+    decision_ts = _decision_ts()
+    symbols = _symbols(store, "daily_bar", asof_day=_asof_day())
     if not symbols:
-        st.warning("No data ingested yet — run the ingest pipeline first.")
+        st.warning(_no_data_note("No data"))
         return
-    decision_ts = datetime.now()
-    max_date = store._con.execute('SELECT max("date") FROM daily_bar').fetchone()[0]
+    max_date = _max_visible_date(store, _asof_day())
     start = sector_rotation.window_start(max_date) if max_date else None
     rotations = sector_rotation.build_sector_rotation(
         store, symbols, decision_ts, sector_map=OPERATOR_SECTOR_MAP, start=start
@@ -952,11 +1079,11 @@ def _render_risk(store: Store) -> None:
         "observation", "OBSERVATION · ships now",
     )
 
-    symbols = _symbols(store, "daily_bar")
+    decision_ts = _decision_ts()
+    symbols = _symbols(store, "daily_bar", asof_day=_asof_day())
     if not symbols:
-        st.warning("No data ingested yet — run the ingest pipeline first.")
+        st.warning(_no_data_note("No data"))
         return
-    decision_ts = datetime.now()
 
     # No paper fills exist yet (the fill engine lands in slice 7). Preview the §6
     # exposure / crowding / β / VaR observations over an equal-lot book of the
@@ -1430,15 +1557,17 @@ def _fast_exits(store: Store) -> dict[str, dict]:
 
 
 def _candidate(
-    store: Store, symbol: str, decision_ts: datetime, *, exit: dict | None = None
+    store: Store, symbol: str, decision_ts: datetime, *, exit: dict | None = None,
+    asof_day: Date | None = None,
 ) -> dict:
     """One Signal-Pipeline candidate: the real engine result + display meta. Track is
     the spec §3 assignment; adv20 reconciles with the gate/track ADV (`engine._adv20`).
 
     `exit` (v1.4, LD-11) carries a closed Fast-Mode trade for this name → the row renders
-    the EXITED verdict + realized P&L (`_fast_exits` supplies it; None for a live candidate)."""
+    the EXITED verdict + realized P&L (`_fast_exits` supplies it; None for a live candidate).
+    `asof_day` (Time Machine) selects the point-in-time roster for the track assignment."""
     bars = store.read_daily_bars(symbol, decision_ts)
-    track = track_mod.resolve_track(store, symbol, decision_ts, bars)
+    track = _resolve_track(store, symbol, decision_ts, bars, asof_day=asof_day)
     result = engine.evaluate(store, symbol, decision_ts, track=track)
     price, chg = _last_close_and_change(bars)
     return {
@@ -1504,10 +1633,19 @@ def _render_fast_mode_panel(store: Store) -> None:
         expanded=open_default,
     ):
         st.caption(view["framing"])
+        # The book is a live record read at real now, and arming is a WRITE — neither
+        # rewinds. Disable the control rather than let a rewound screen change live state.
+        rewound = _asof_day() is not None
+        if rewound:
+            st.caption(
+                ":violet[Time Machine active — the Fast-Mode book below is live (as of now), "
+                "not as of the rewound date, and arming is disabled while rewound.]"
+            )
         st.toggle(
             "Arm Fast Mode — auto paper-buy every ARMED name at once; same §8 exit strategy",
             value=view["enabled"], key="cf_fast_toggle",
             on_change=_toggle_fast_mode, args=(store,),
+            disabled=rewound,
         )
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Open", view["n_open"])
@@ -1550,6 +1688,72 @@ def _render_fast_mode_panel(store: Store) -> None:
             )
 
 
+def _apply_asof() -> None:
+    """Commit the date picker, refusing an out-of-regime / future day out loud (REGIME.md §1).
+
+    A refused day leaves the previous moment in place and records the reason for the next
+    rerun to render — never a silently clamped substitute (CLAUDE.md: no silent caps)."""
+    day = st.session_state.get("cf_asof_pick")
+    if not isinstance(day, Date):
+        return
+    why = timemachine.rejection(day, today=datetime.now().date())
+    st.session_state["cf_asof_error"] = why
+    if why is None:
+        _set_asof(day)
+
+
+def _render_timemachine(store: Store) -> None:
+    """The Time Machine control + rewound banner, directly under the top bar so it governs
+    every view below it (pipeline, evidence tabs, catalog).
+
+    Read path only: it sets the `decision_ts` every store read already takes, so RULE A's
+    phase gate and RULE B's withheld numbers are untouched, and nothing is written at the
+    rewound date."""
+    asof = _asof_day()
+    # Seed the picker through session state (not `value=`) so `_go_live` may reset it
+    # without tripping Streamlit's default-vs-session-state warning.
+    if "cf_asof_pick" not in st.session_state:
+        st.session_state["cf_asof_pick"] = datetime.now().date()
+    pick_col, live_col, note_col = st.columns([0.22, 0.13, 0.65], gap="small")
+    with pick_col:
+        st.date_input(
+            "Read as of",
+            min_value=timemachine.EARLIEST_DAY, max_value=datetime.now().date(),
+            key="cf_asof_pick", on_change=_apply_asof,
+            help="Rewind the whole terminal to this day's pre-open (09:15 WIB). Every panel "
+                 "re-reads the store at that moment; anything published later stays hidden.",
+        )
+    with live_col:
+        st.button(
+            "↺ LIVE", key="cf_asof_live", on_click=_go_live, disabled=asof is None,
+            help="Return every view to real wall-clock now.",
+        )
+    with note_col:
+        st.caption(
+            f"Mode: **{timemachine.label(asof)}** · regime floor "
+            f"{timemachine.EARLIEST_DAY} (REGIME.md §1)"
+        )
+
+    err = st.session_state.get("cf_asof_error")
+    if err:
+        st.error(f"Refused — {err}")
+        st.session_state["cf_asof_error"] = None
+
+    if asof is None:
+        return
+    st.markdown(
+        shell.timemachine_banner_html(
+            day=str(asof),
+            decision_ts=f"{timemachine.decision_ts_for(asof):%Y-%m-%d %H:%M}",
+            last_visible_day=str(
+                _max_visible_date(store, asof) or timemachine.last_visible_day(asof)
+            ),
+            caveats=timemachine.caveats(asof, roster_covers=store.roster_covers(asof)),
+        ),
+        unsafe_allow_html=True,
+    )
+
+
 def _render_pipeline(store: Store) -> None:
     """The Signal Pipeline — the sole top-level view (design v2). Every ingested name
     flows through the four locked stages; rows are grouped into Track A / Track B lanes.
@@ -1561,16 +1765,22 @@ def _render_pipeline(store: Store) -> None:
         "cell explains why a name passed or failed; tap a row for the full evidence.",
         "observation", "OBSERVATION · ships now",
     )
-    symbols = _symbols(store, "daily_bar")
+    asof = _asof_day()
+    symbols = _symbols(store, "daily_bar", asof_day=asof)
     if not symbols:
-        st.warning("No data ingested yet — run the ingest pipeline first.")
+        st.warning(_no_data_note("No data"))
         return
 
     _render_fast_mode_panel(store)  # v1.4 (LD-11): the auto paper-trade book + arm state
 
-    decision_ts = datetime.now()
-    exits = _fast_exits(store)  # closed Fast-Mode positions → EXITED verdict
-    candidates = [_candidate(store, s, decision_ts, exit=exits.get(s)) for s in symbols]
+    decision_ts = _decision_ts()
+    # The Fast-Mode book is a live record and does not rewind (named in the banner
+    # caveats), so a rewound pipeline shows no EXITED verdict rather than a future one.
+    exits = {} if asof is not None else _fast_exits(store)
+    candidates = [
+        _candidate(store, s, decision_ts, exit=exits.get(s), asof_day=asof)
+        for s in symbols
+    ]
     lanes = pipeline_view.build_lanes(candidates)
 
     st.markdown(shell.pipeline_stage_header_html(), unsafe_allow_html=True)
@@ -1597,9 +1807,11 @@ def _render_detail(store: Store, ticker: str) -> None:
     """Per-stock evidence: contextual header ('Why {TICKER} …') + a back button, the
     EVIDENCE tab bar, and the active evidence view (reusing the four module renderers,
     each keyed off the rail-selected symbol)."""
-    decision_ts = datetime.now()
+    asof = _asof_day()
+    decision_ts = _decision_ts()
+    exit_row = None if asof is not None else _fast_exits(store).get(ticker)
     row = pipeline_view.build_row(
-        _candidate(store, ticker, decision_ts, exit=_fast_exits(store).get(ticker))
+        _candidate(store, ticker, decision_ts, exit=exit_row, asof_day=asof)
     )
     hd = pipeline_view.detail_header(row)
 
@@ -1689,12 +1901,18 @@ def main() -> None:
         return
 
     store = _store(_db_path())
+    asof = _asof_day()
     ihsg, ihsg_chg = _ihsg(store)
     st.markdown(
-        shell.top_bar_html(as_of=_as_of(store), ihsg=ihsg, ihsg_change_pct=ihsg_chg),
+        shell.top_bar_html(
+            as_of=_as_of(store), ihsg=ihsg, ihsg_change_pct=ihsg_chg,
+            rewound_to=None if asof is None else str(asof),
+        ),
         unsafe_allow_html=True,
     )
     _maybe_bootstrap(store)  # slice 13: first-run auto-ingest into an empty store
+    # The Time Machine governs every view below it — including the catalog branch.
+    _render_timemachine(store)
 
     # design v2: the left module nav rail is removed — Signal Pipeline is the sole
     # top-level view. Clicking a pipeline candidate opens that name's evidence tabs
