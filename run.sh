@@ -24,6 +24,14 @@
 #                         data/rosters/ point-in-time index rosters. e.g.
 #                           ./run.sh backfill --rosters
 #                           ./run.sh backfill BBCA BBRI
+#   ./run.sh premise ...  ONE STEP: sign in (if needed) -> strided backfill -> univariate
+#                         premise tests. Falsifies individual SMS components before they
+#                         are assembled, at ~1/10th the broker calls of a dense pull.
+#                         Writes to a throwaway store (research.duckdb), never the live
+#                         one. --dry-run prints the call budget and stops. e.g.
+#                           ./run.sh premise BBCA BBRI BMRI TLKM --dry-run
+#                           ./run.sh premise BBCA BBRI BMRI TLKM --stride 10
+#                           ./run.sh premise                      (seeds from currentflow.duckdb)
 #   ./run.sh schedule     run the automated per-feed ingestion daemon (slice 12) —
 #                         fires each feed on its cadence during Mon–Fri trading hours;
 #                         --once runs a single tick and exits. Usually launchd-driven
@@ -250,6 +258,58 @@ case "$cmd" in
     fi
     shift || true
     exec "$PY" -m currentflow.ingest.backfill "$@"
+    ;;
+  premise)
+    ensure_venv; ensure_deps
+    # One-step falsification pass: sign in if needed -> strided backfill (full bars,
+    # broker only on sampled days) -> univariate premise tests. Writes to a THROWAWAY
+    # store, never currentflow.duckdb — a sparse-broker store would poison the live
+    # pipeline's ingest-once marker (currentflow/research/backfill.py).
+    shift || true
+    syms=""; stride=10; horizon=""; db="research.duckdb"; dry=0
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --stride)  stride="${2:?--stride needs a value}";  shift 2 ;;
+        --horizon) horizon="${2:?--horizon needs a value}"; shift 2 ;;
+        --db)      db="${2:?--db needs a value}";           shift 2 ;;
+        --dry-run) dry=1; shift ;;
+        -*) die "unknown flag $1 — usage: ./run.sh premise [SYM ...] [--stride N] [--horizon N] [--db PATH] [--dry-run]" ;;
+        *)  syms="${syms:+$syms,}$1"; shift ;;
+      esac
+    done
+    # Default the horizon to the stride: a horizon shorter than the backfill stride
+    # samples days with no broker rows and silently shrinks the sample.
+    [[ -n "$horizon" ]] || horizon="$stride"
+
+    if [[ -n "$syms" ]]; then
+      seed_args=(--symbols "$syms")
+    elif [[ -f "$REPO_ROOT/currentflow.duckdb" ]]; then
+      log "no symbols given — seeding the list from currentflow.duckdb"
+      seed_args=(--seed-from "$REPO_ROOT/currentflow.duckdb")
+    else
+      die "no symbols and no currentflow.duckdb to seed from — try: ./run.sh premise BBCA BBRI BMRI TLKM"
+    fi
+
+    if [[ "$dry" -eq 1 ]]; then
+      log "dry run — printing the call budget only, nothing spent"
+      "$PY" -m currentflow.research backfill --db "$db" --stride "$stride" "${seed_args[@]}" \
+        | grep -v -e '--yes' -e '^$' || true
+      log "to spend it, re-run the same command without --dry-run"
+      exit 0
+    fi
+
+    # Needs the operator's own session; sign in inline so this stays one step.
+    if ! "$PY" -m currentflow.dal.login status >/dev/null 2>&1; then
+      log "no session — signing in first (OTP may be required)"
+      "$PY" -m currentflow.dal.login login
+    fi
+
+    log "step 1/2 — strided backfill (stride $stride) into $db"
+    "$PY" -m currentflow.research backfill \
+      --db "$db" --stride "$stride" "${seed_args[@]}" --yes
+
+    log "step 2/2 — premise tests (horizon $horizon)"
+    exec "$PY" -m currentflow.research test --db "$db" --horizon "$horizon"
     ;;
   schedule)
     ensure_venv; ensure_deps
