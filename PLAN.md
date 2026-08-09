@@ -683,29 +683,44 @@ candidate component **pinned at weight 0** and ships first as a RULE-B-clean obs
       (with vs without the reading, and through `engine.evaluate` before vs after KSEI ingest);
       corroborator never creates a veto; panel copy carries **no digit**, no %, no verb. **642 total, green.**
 
-## Slice 18 — VPA bar-character (No-Demand / No-Supply / Absorption)  ⬜  (spec v1.6, LD-13)
+## Slice 18 — VPA bar-character (No-Demand / No-Supply / Absorption)  ✅  (spec v1.6, LD-13)
 
 **Detection-enrichment vertical.** Adds the close-position-within-the-spread read that Coulling's VPA
 turns on — **absent today**: the divergence spine (`sms.py:_divergence`) sees only volume vs `|Δclose|`,
 never *where* the bar closed in its high–low range. Pure stored-OHLCV analytics; backtestable,
 look-ahead-safe. **Inert until earned (LD-13):** candidate refinement at weight 0, observation-first.
 
-- [ ] `signals/vpa.py`: per-bar character from spread + close position + relative volume —
-      **No-Demand** (narrow up bar, low vol, after a rally), **No-Supply** (narrow down bar, low vol,
-      after a decline), **Absorption / Stopping / Churn** (wide/narrow spread with high vol, close
-      position), effort-vs-result flag. Volume calibrated vs the recent 10–20 bar average (Coulling),
-      not an absolute threshold. Categorical, no number.
-- [ ] **Phase-detector corroboration (RULE A unchanged):** feed the Spring / UTAD / SOS detectors an
-      effort-vs-result confirmation *input* — the C/D gate **decision rule is not altered** (corroboration,
-      not a new gate).
-- [ ] **§4 candidate refinement (weight 0):** a bar-character term for the divergence spine, added inert;
-      optimizer-only raise, RULE-B-gated.
-- [ ] **View:** VPA bar-character ribbon/lane on the Money Flow Replay + Accumulation Detector tabs.
-- [ ] **Tests:** each bar-character classification fires on its labeled bar (No-Demand/No-Supply/
-      Absorption/effort-vs-result); volume calibration is *relative* (same shape at different absolute
-      volumes); clean trend stays clean (no false No-Demand); look-ahead-safe; candidate term contributes
-      0 to SMS until raised; RULE A C/D decisions **byte-identical** with the corroborator wired (gate
-      unchanged); observation renders no number.
+- [x] `signals/vpa.py`: per-bar character from spread + close position + relative volume —
+      **NO_DEMAND** (narrow up bar, low vol, after a rally), **NO_SUPPLY** (narrow down bar, low vol,
+      after a decline), **ABSORPTION** (high vol, lower close, closes near its high, inside the range),
+      **STOPPING_VOLUME** (the same on a *new low*), **SUPPLY_PRESENT** (high vol up bar closing in its
+      lower third), **CHURN** (high vol, narrow spread), **DEMAND_CONFIRMED** (high vol, wide, closes on
+      the high), plus the two effort-vs-result flags (`effort_without_result` / `result_without_effort`).
+      Everything calibrated vs the recent `VPA_CONTEXT_BARS` (Coulling's 10–20), never an absolute
+      volume/spread. `missing ≠ zero`: a no-spread (locked) print and a too-short base are
+      **UNREADABLE**, never "closed mid-range". Categorical + INFO/WATCH/WARN severity, no number.
+- [x] **Phase-detector corroboration (RULE A unchanged):** `PhaseEvent.corroborators` + `phase._corroborate`
+      attach the event bar's effort-vs-result note (`vpa.corroboration`) to SPRING / SOS / LPS / UTAD /
+      SELLING_CLIMAX. It runs **inside `verdict()`**, i.e. after the phase is chosen and `tradeable` is
+      derived from the phase alone — so a corroborator can annotate a decision but provably never make
+      one. `None in → None out`.
+- [x] **§4 candidate refinement (weight 0):** `bar_character` added to `COMPONENT_KEYS` and to both tracks'
+      `config.SMS_WEIGHTS` at **0** (simplex still sums to 100) + `SMS_CANDIDATE_COMPONENTS`; graded on the
+      accumulation side (absorption / stopping / no-supply prints) only. Not in `ML_LOCKED_ZEROS` — the 0
+      is unearned, not structural, so the optimizer may fund it (RULE-B-gated).
+- [x] **View:** `ui/vpa_view.py` + `shell.vpa_ribbon_html` — a glyph-per-bar VPA BAR CHARACTER lane plus the
+      latest bar's reading, rendered on the **Accumulation Detector** and **Money Flow Replay** evidence tabs
+      (`app._vpa_panel`); on Replay it is rebuilt at *each frame's* historical `decision_ts`, so the ribbon
+      rewinds with the playhead. Digit-free copy; the close-position/spread/volume ratios stay on the signal.
+- [x] **Tests** (`tests/test_vpa.py`, 31): each character fires on its labeled bar; the two effort-vs-result
+      flags; calibration is *relative* (identical characters at 1k and 50m lots, and the same absolute volume
+      reads "heavy" or not depending on context); a clean uptrend prints no No-Demand and a quiet base prints
+      nothing at all; no-spread / short-base / gap bars are UNREADABLE or dropped, never zeroed; look-ahead-safe
+      at the store boundary **and bar-by-bar** (truncating history never changes an earlier bar's character);
+      candidate weight 0 in both tracks + running-score-unchanged (`compute_sms` and through `engine.evaluate`);
+      **every labeled phase archetype's C/D decision identical with the corroborator wired**, with a Phase C
+      spring-on-stopping-volume confirmed and a Phase D SOS explicitly *not* confirmed while staying tradeable;
+      ribbon/panel copy carries no digit, no %, no verb. **673 total, green.**
 
 ## Slice 19 — Approximate Volume Profile (POC / VAH / VAL / HVN / LVN)  ⬜  (spec v1.6, LD-13)
 

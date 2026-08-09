@@ -63,14 +63,15 @@ def test_components_still_ship_as_observation(store):
     assert keys == {
         "divergence", "broker_concentration", "foreign_flow", "rvol", "block_trade",
         "phase_bonus",
-        # §4.1 candidate (LD-13) — observed alongside the funded components, but pinned
-        # at weight 0, so it is an observation that moves no score.
-        "ownership_delta",
+        # §4.1 candidates (LD-13) — observed alongside the funded components, but pinned
+        # at weight 0, so each is an observation that moves no score.
+        "ownership_delta", "bar_character",
     }
     # components carry raw observations, not a composite score
     assert all("observation" in c for c in view["components"])
-    candidate = next(c for c in view["components"] if c["component"] == "ownership_delta")
-    assert candidate["weight"] == 0
+    for key in ("ownership_delta", "bar_character"):
+        candidate = next(c for c in view["components"] if c["component"] == key)
+        assert candidate["weight"] == 0
 
 
 def test_no_buy_sell_verb_in_any_state_label(store):

@@ -1041,6 +1041,33 @@ def callout_html(label: str, text: str, *, color: str | None = None) -> str:
     )
 
 
+def vpa_ribbon_html(cells: list[dict], *, empty_label: str) -> str:
+    """The VPA bar-character lane (LD-13, slice 18): one glyph per bar, colored by the
+    character's semantic key, chronological left→right. A word and a glyph per bar — the
+    close-position / spread / volume ratios behind them never reach the screen (RULE B).
+    An unreadable bar is a hairline slot, never a "neutral" one (missing ≠ zero)."""
+    if not cells:
+        return f'<div class="cf-railnote">{escape(empty_label)}</div>'
+    slots = []
+    for c in cells:
+        color = TOKENS.get(c["color_key"], TOKENS["text_faint"])
+        tip = f'{c["date"]:%d %b} · {c["label"]} · {c["note"]}'
+        if not c["available"]:
+            slots.append(
+                f'<span title="{escape(tip)}" style="color:{TOKENS["text_faint"]}; '
+                'opacity:0.45">×</span>'
+            )
+            continue
+        slots.append(
+            f'<span title="{escape(tip)}" style="color:{color}">{escape(c["glyph"])}</span>'
+        )
+    return (
+        '<div class="cf-vparibbon" style="display:flex; gap:5px; align-items:center; '
+        'flex-wrap:wrap; font-size:15px; line-height:1.1; padding:2px 0">'
+        f'{"".join(slots)}</div>'
+    )
+
+
 def phase_box_html(title: str, note: str, color_key: str) -> str:
     """WYCKOFF PHASE box (design 06 replay): caps label + colored phase title + note,
     on a tint of the phase's semantic color. A label, never a number (RULE A/B)."""

@@ -28,6 +28,8 @@ from enum import Enum
 
 from currentflow import config
 from currentflow.dal.models import DailyBar, RowStatus
+from currentflow.signals import vpa as vpa_mod
+from currentflow.signals.vpa import VpaReading
 from currentflow.store.db import Store
 
 log = logging.getLogger(__name__)
@@ -73,6 +75,10 @@ class PhaseEvent:
     kind: str        # SELLING_CLIMAX | SPRING | SOS | LPS | UTAD
     date: Date
     detail: str
+    # LD-13 (slice 18): effort-vs-result notes from the VPA bar character printed on this
+    # event's own bar. Evidence hung on a verdict that is already decided — never an input
+    # to it (see `_corroborate`). Categorical text, no number (RULE B).
+    corroborators: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -262,17 +268,41 @@ def _detect_distribution(window: list[DailyBar], rng: TradingRange) -> bool:
 # --- classifier --------------------------------------------------------------------
 
 
+def _corroborate(events, vpa: VpaReading | None) -> tuple[PhaseEvent, ...]:
+    """Hang the VPA effort-vs-result note (LD-13, slice 18) on each event's own bar.
+
+    **RULE A is untouched by construction:** this runs inside `verdict()`, i.e. after the
+    classifier has already chosen the phase and after `tradeable` is derived from that
+    phase alone. A corroborator can therefore only annotate a decision, never make one —
+    `None in → None out`, so the C/D verdict is identical with and without a reading."""
+    if vpa is None:
+        return tuple(events)
+    out = []
+    for e in events:
+        note = vpa_mod.corroboration(vpa, e.kind, e.date)
+        out.append(e if note is None else PhaseEvent(e.kind, e.date, e.detail, (note,)))
+    return tuple(out)
+
+
 def classify(
-    symbol: str, bars: list[DailyBar], decision_ts: datetime
+    symbol: str,
+    bars: list[DailyBar],
+    decision_ts: datetime,
+    *,
+    vpa: VpaReading | None = None,
 ) -> PhaseClassification:
-    """Assign the Wyckoff phase and the RULE A tradeable verdict for `symbol`."""
+    """Assign the Wyckoff phase and the RULE A tradeable verdict for `symbol`.
+
+    `vpa` is an optional LD-13 bar-character reading used **only** to annotate the emitted
+    events with their effort-vs-result character (`_corroborate`); it can never change the
+    phase or the tradeable verdict."""
     usable = _complete(bars)
 
     def verdict(phase: WyckoffPhase, reason: str, rng=None, events=()) -> PhaseClassification:
         return PhaseClassification(
             symbol=symbol, decision_ts=decision_ts, phase=phase,
             tradeable=phase in TRADEABLE_PHASES, trading_range=rng,
-            events=tuple(events), reason=reason, bars_used=len(usable),
+            events=_corroborate(events, vpa), reason=reason, bars_used=len(usable),
         )
 
     if len(usable) < config.PHASE_MIN_BARS:
@@ -333,8 +363,13 @@ def analyze(
     *,
     start: Date | None = None,
     end: Date | None = None,
+    with_vpa: bool = True,
 ) -> PhaseClassification:
     """Read look-ahead-safe bars (`as_of < decision_ts` enforced by the store) and
-    classify the Wyckoff phase — the RULE A gate for `symbol`."""
+    classify the Wyckoff phase — the RULE A gate for `symbol`.
+
+    `with_vpa` only decides whether the emitted events carry their bar-character note
+    (slice 18); the gate verdict is the same either way."""
     bars = store.read_daily_bars(symbol, decision_ts, start=start, end=end)
-    return classify(symbol, bars, decision_ts)
+    reading = vpa_mod.build_reading(symbol, bars, decision_ts=decision_ts) if with_vpa else None
+    return classify(symbol, bars, decision_ts, vpa=reading)

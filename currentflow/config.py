@@ -230,11 +230,13 @@ SMS_WEIGHTS: dict[str, dict[str, int]] = {
         "divergence": 30, "broker_concentration": 20, "foreign_flow": 25,
         "rvol": 10, "block_trade": 5, "phase_bonus": 10,
         "ownership_delta": 0,   # LD-13 candidate — inert until the optimizer earns it
+        "bar_character": 0,     # LD-13 candidate — inert until the optimizer earns it
     },
     "B": {  # lapis-2: broker concentration leads, foreign flow excluded (LD-1)
         "divergence": 30, "broker_concentration": 35, "foreign_flow": 0,
         "rvol": 15, "block_trade": 10, "phase_bonus": 10,
         "ownership_delta": 0,   # LD-13 candidate — inert until the optimizer earns it
+        "bar_character": 0,     # LD-13 candidate — inert until the optimizer earns it
     },
 }
 SMS_ARMED_THRESHOLD = 70.0            # SMS ≥ 70 AND phase∈{C,D} AND no veto → ARMED (LOCKED)
@@ -245,7 +247,7 @@ SMS_ARMED_THRESHOLD = 70.0            # SMS ≥ 70 AND phase∈{C,D} AND no veto
 # Only the walk-forward optimizer may ever fund one (never hand-edited — §4), and only
 # after RULE B forward paper earns it. NOT a `ML_LOCKED_ZEROS` entry: LD-1's Track-B
 # `foreign_flow` lock is structural/permanent, a candidate's 0 is merely unearned.
-SMS_CANDIDATE_COMPONENTS = frozenset({"ownership_delta"})
+SMS_CANDIDATE_COMPONENTS = frozenset({"ownership_delta", "bar_character"})
 
 # RULE B (LD-9): a module may show a number only after this many months of
 # fill-realistic forward paper trading. Slice 8 wires the paper-trade engine to
@@ -299,6 +301,25 @@ OWNERSHIP_MATERIAL_PP = 0.5          # |Δ| below this many percentage points = 
 OWNERSHIP_STALE_DAYS = 75
 OWNERSHIP_MARKUP_PCT = -0.02         # "marked flat/up" = price change ≥ −2% across the window
 OWNERSHIP_FULL_CREDIT_PP = 2.0       # candidate sub-score reaches 1.0 at +2pp of accumulation
+
+# --- VPA bar-character (LD-13, v1.6; slice 18) — OBSERVATION --------------------------
+# Coulling's Volume Price Analysis reads WHERE the bar closed inside its own spread
+# against the effort (volume) behind it — the read the §4 divergence spine is blind to
+# (it sees only volume vs |Δclose|). Everything here is calibrated RELATIVE to the recent
+# bars, never to an absolute volume: the same shape on a 1k-lot name and a 100m-lot name
+# must read identically. Categorical, no number (RULE B).
+VPA_CONTEXT_BARS = 20                # Coulling's "recent 10–20 bars" — the calibration base
+VPA_MIN_CONTEXT_BARS = 5             # below this there is no base: UNREADABLE (missing ≠ zero)
+VPA_HIGH_VOL_MULT = 1.5              # "high volume" = ≥ this × the context average
+VPA_LOW_VOL_MULT = 0.7               # "low volume"  = ≤ this × the context average
+VPA_NARROW_SPREAD_MULT = 0.7         # "narrow spread" = ≤ this × the context average spread
+VPA_WIDE_SPREAD_MULT = 1.3           # "wide spread"   = ≥ this × the context average spread
+VPA_CLOSE_HIGH = 0.66                # close in the upper third of the spread (demand won the bar)
+VPA_CLOSE_LOW = 0.34                 # close in the lower third of the spread (supply won the bar)
+VPA_TREND_BARS = 5                   # "after a rally / after a decline" context span …
+VPA_TREND_PCT = 0.02                 # … a ≥2% move over that span counts as one
+VPA_RIBBON_BARS = 20                 # bars classified for the view ribbon / the reading window
+VPA_FULL_CREDIT_BARS = 3             # candidate sub-score reaches 1.0 at 3 confirming bars
 
 # --- Sector Rotation Map (spec §9; slice 6) — DERIVED VIEW ---------------------------
 # Flow-by-sector + RS-vs-flow quadrant. The quadrant is a categorical observation of a
