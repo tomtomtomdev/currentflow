@@ -231,12 +231,14 @@ SMS_WEIGHTS: dict[str, dict[str, int]] = {
         "rvol": 10, "block_trade": 5, "phase_bonus": 10,
         "ownership_delta": 0,   # LD-13 candidate — inert until the optimizer earns it
         "bar_character": 0,     # LD-13 candidate — inert until the optimizer earns it
+        "vp_confluence": 0,     # LD-13 candidate — inert until the optimizer earns it
     },
     "B": {  # lapis-2: broker concentration leads, foreign flow excluded (LD-1)
         "divergence": 30, "broker_concentration": 35, "foreign_flow": 0,
         "rvol": 15, "block_trade": 10, "phase_bonus": 10,
         "ownership_delta": 0,   # LD-13 candidate — inert until the optimizer earns it
         "bar_character": 0,     # LD-13 candidate — inert until the optimizer earns it
+        "vp_confluence": 0,     # LD-13 candidate — inert until the optimizer earns it
     },
 }
 SMS_ARMED_THRESHOLD = 70.0            # SMS ≥ 70 AND phase∈{C,D} AND no veto → ARMED (LOCKED)
@@ -247,7 +249,7 @@ SMS_ARMED_THRESHOLD = 70.0            # SMS ≥ 70 AND phase∈{C,D} AND no veto
 # Only the walk-forward optimizer may ever fund one (never hand-edited — §4), and only
 # after RULE B forward paper earns it. NOT a `ML_LOCKED_ZEROS` entry: LD-1's Track-B
 # `foreign_flow` lock is structural/permanent, a candidate's 0 is merely unearned.
-SMS_CANDIDATE_COMPONENTS = frozenset({"ownership_delta", "bar_character"})
+SMS_CANDIDATE_COMPONENTS = frozenset({"ownership_delta", "bar_character", "vp_confluence"})
 
 # RULE B (LD-9): a module may show a number only after this many months of
 # fill-realistic forward paper trading. Slice 8 wires the paper-trade engine to
@@ -320,6 +322,24 @@ VPA_TREND_BARS = 5                   # "after a rally / after a decline" context
 VPA_TREND_PCT = 0.02                 # … a ≥2% move over that span counts as one
 VPA_RIBBON_BARS = 20                 # bars classified for the view ribbon / the reading window
 VPA_FULL_CREDIT_BARS = 3             # candidate sub-score reaches 1.0 at 3 confirming bars
+
+# --- Approximate volume profile (LD-13, v1.6; slice 19) — OBSERVATION -----------------
+# Volume-at-price built from DAILY BARS ONLY: each bar's volume is spread uniformly across
+# its own high–low range. **This is an approximation and every view must say so** — a true
+# POC / value area needs intraday depth this system does not ingest or backtest (§4.1
+# fidelity honesty). Everything below is expressed in BUCKETS of the window's own range,
+# never in rupiah, so the same structure reads identically on a Rp 50 and a Rp 50,000 name.
+VP_WINDOW_BARS = 60                  # rolling span the profile is built over (~a quarter)
+VP_MIN_BARS = 10                     # below this there is no profile at all (missing ≠ zero)
+VP_BUCKETS = 24                      # price buckets across the window's low→high range
+VP_VALUE_AREA_PCT = 0.70             # the value area — the 70% of volume around the POC
+VP_HVN_MULT = 1.5                    # high-volume node = bucket ≥ this × the mean bucket
+VP_LVN_MULT = 0.4                    # low-volume node  = bucket ≤ this × the mean bucket
+# "At" a level (Spring@VAL / UTAD@VAH / LPS@POC) means within this many bucket widths of
+# it. Bucket-relative because the bucket IS the resolution daily bars can honestly claim —
+# a tighter tolerance would imply precision the approximation does not have.
+VP_CONFLUENCE_BUCKETS = 1.0
+VP_FULL_CREDIT_CONFLUENCES = 2       # candidate sub-score reaches 1.0 at 2 confluent events
 
 # --- Sector Rotation Map (spec §9; slice 6) — DERIVED VIEW ---------------------------
 # Flow-by-sector + RS-vs-flow quadrant. The quadrant is a categorical observation of a

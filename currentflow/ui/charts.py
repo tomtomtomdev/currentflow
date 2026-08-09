@@ -91,11 +91,15 @@ def accumulation_combined(
     *,
     vwap: float | None,
     stealth_zone: tuple | None = None,
+    vp_levels: list[dict] | None = None,
     height: int = 330,
 ) -> alt.LayerChart:
     """The Accum-Detect canvas: cyan price lane + amber cumulative-accumulation lane
     (independent y scales), dashed accumulator-VWAP reference with right label, and
-    the shaded STEALTH ZONE band over the divergence window (when detected)."""
+    the shaded STEALTH ZONE band over the divergence window (when detected).
+
+    `vp_levels` (slice 19) overlays the approximate volume profile's POC / VAH / VAL on
+    the price lane — labeled `~` because they are estimated from daily bars (§4.1)."""
     df = pd.DataFrame(rows)
     price_layers = []
 
@@ -143,14 +147,65 @@ def accumulation_combined(
         tooltip=[alt.Tooltip("date:T"),
                  alt.Tooltip("cum_accumulation_bn:Q", title="cum IDR bn")],
     )
+    price_layers.extend(volume_profile_layers(vp_levels or []))
     combined = alt.layer(alt.layer(*price_layers), accum).resolve_scale(y="independent")
     return combined.properties(height=height)
 
 
-def replay_price_flow(rows: list[dict]) -> alt.VConcatChart:
+def volume_profile_layers(levels: list[dict], *, label: bool = True) -> list[alt.Chart]:
+    """POC / VAH / VAL as horizontal reference rules for any price lane (LD-13, slice 19).
+
+    The value area is a faint band, the POC an amber rule; each rule carries its own
+    label so nothing on the chart is an unnamed line. **Every label is suffixed `~`** and
+    the lane's caption says why — these levels are estimated from daily bars, and §4.1's
+    fidelity rule forbids drawing them as if they came from intraday depth.
+
+    Returns [] when there is nothing to draw, so callers can splat it unconditionally.
+    """
+    if not levels:
+        return []
+    by_level = {lv["level"]: lv["price"] for lv in levels}
+    layers: list[alt.Chart] = []
+
+    val, vah = by_level.get("VAL"), by_level.get("VAH")
+    if val is not None and vah is not None:
+        band = pd.DataFrame([{"val": val, "vah": vah}])
+        layers.append(
+            alt.Chart(band).mark_rect(color=TOKENS["text_muted"], opacity=0.06)
+            .encode(y="val:Q", y2="vah:Q")
+        )
+
+    for lv in levels:
+        is_poc = lv["level"] == "POC"
+        ref = pd.DataFrame([{"price": lv["price"], "label": f'{lv["label"]}~'}])
+        layers.append(
+            alt.Chart(ref).mark_rule(
+                color=TOKENS["armed"] if is_poc else "rgba(139,152,169,0.45)",
+                strokeDash=[] if is_poc else [3, 4],
+                strokeWidth=1.5 if is_poc else 1,
+            ).encode(y="price:Q")
+        )
+        if label:
+            layers.append(
+                alt.Chart(ref).mark_text(
+                    color=TOKENS["armed_text"] if is_poc else TOKENS["text_faint"],
+                    font=_MONO, fontSize=10, align="left", baseline="bottom",
+                    dx=4, dy=-3,
+                ).encode(y="price:Q", text="label:N", x=alt.value(0))
+            )
+    return layers
+
+
+def replay_price_flow(
+    rows: list[dict], *, vp_levels: list[dict] | None = None,
+) -> alt.VConcatChart:
     """Money-Flow-Replay canvas (design 06): three x-aligned lanes reconstructed up
     to the playhead — cyan price area, net-buy/sell volume bars, and the foreign
-    (blue) / smart-money (amber) flow lines. Future frames are simply absent."""
+    (blue) / smart-money (amber) flow lines. Future frames are simply absent.
+
+    `vp_levels` (slice 19) overlays the approximate volume profile rebuilt at THIS
+    frame's decision moment, so the structure rewinds with the playhead like every
+    other lane."""
     df = pd.DataFrame(rows)
     x = _date_x()
 
@@ -200,7 +255,9 @@ def replay_price_flow(rows: list[dict]) -> alt.VConcatChart:
                      alt.Tooltip("bn:Q", title="IDR bn")],
         )
     )
-    return alt.vconcat(price, volume, flow, spacing=6)
+    vp = volume_profile_layers(vp_levels or [])
+    price_lane = alt.layer(price, *vp).properties(height=150, title="PRICE") if vp else price
+    return alt.vconcat(price_lane, volume, flow, spacing=6)
 
 
 def sector_quadrant(points: list[dict], *, height: int = 420) -> alt.LayerChart:

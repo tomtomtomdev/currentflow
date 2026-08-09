@@ -1068,6 +1068,54 @@ def vpa_ribbon_html(cells: list[dict], *, empty_label: str) -> str:
     )
 
 
+def volume_profile_html(
+    rows: list[dict], levels: list[dict], *, empty_label: str, annotation: str,
+) -> str:
+    """The approximate volume-at-price lane (LD-13, slice 19): one horizontal bar per
+    price bucket, price-descending, with the value-area band lit and the POC picked out.
+
+    The bar LENGTH carries the shape (that is what a profile is for); the underlying
+    volumes are never printed. The price levels ARE rendered in rupiah — the operator is
+    already reading price on the chart beside this — but each is labeled POC / VAH / VAL,
+    never a target or a verb (RULE B). The `annotation` caveat is rendered unconditionally:
+    a level estimated from daily bars must never look like an intraday one (§4.1)."""
+    if not rows:
+        return f'<div class="cf-railnote">{escape(empty_label)}</div>'
+    lanes = []
+    for r in rows:
+        if r["is_poc"]:
+            color, opacity = TOKENS["armed"], 1.0
+        elif r["kind"] == "HVN":
+            color, opacity = TOKENS["smart"], 0.9
+        elif r["kind"] == "LVN":
+            color, opacity = TOKENS["text_faint"], 0.55
+        else:
+            color, opacity = TOKENS["accent"], 0.7
+        band = "rgba(255,255,255,0.035)" if r["in_value_area"] else "transparent"
+        tip = f'{r["low"]:,.0f}–{r["high"]:,.0f} · {r["kind"].lower()}'
+        lanes.append(
+            f'<div title="{escape(tip)}" style="display:flex; align-items:center; '
+            f'height:7px; background:{band}">'
+            f'<span style="display:block; height:3px; border-radius:2px; '
+            f'width:{max(1.0, r["extent"] * 100):.1f}%; background:{color}; '
+            f'opacity:{opacity}"></span></div>'
+        )
+    chips = []
+    for lv in levels:
+        color = TOKENS.get(lv["color_key"], TOKENS["text_muted"])
+        chips.append(
+            f'<span class="cf-chip" title="{escape(lv["note"])}" '
+            f'style="border:1px solid rgba(255,255,255,0.10); color:{color}">'
+            f'{escape(lv["label"])} {lv["price"]:,.0f}</span>'
+        )
+    return (
+        '<div class="cf-vplane" style="display:flex; flex-direction:column; gap:1px; '
+        f'padding:2px 0">{"".join(lanes)}</div>'
+        f'<div class="cf-legend" style="margin-top:8px">{"".join(chips)}</div>'
+        f'<div class="cf-railnote" style="margin-top:4px">{escape(annotation)}</div>'
+    )
+
+
 def phase_box_html(title: str, note: str, color_key: str) -> str:
     """WYCKOFF PHASE box (design 06 replay): caps label + colored phase title + note,
     on a tint of the phase's semantic color. A label, never a number (RULE A/B)."""

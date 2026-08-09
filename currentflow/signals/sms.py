@@ -23,11 +23,13 @@ from datetime import datetime
 from currentflow import config
 from currentflow.dal.models import DailyBar, RowStatus, Side
 from currentflow.signals import ownership as ownership_mod
+from currentflow.signals import volume_profile as vp_mod
 from currentflow.signals import vpa as vpa_mod
 from currentflow.signals.broker_flow import BrokerFlowSnapshot
 from currentflow.signals.foreign_flow import ForeignFlowSnapshot
 from currentflow.signals.ownership import OwnershipDelta
 from currentflow.signals.phase import PhaseClassification
+from currentflow.signals.volume_profile import VolumeProfile
 from currentflow.signals.vpa import VpaReading
 
 log = logging.getLogger(__name__)
@@ -37,7 +39,7 @@ COMPONENT_KEYS = (
     # §4.1 candidate components (LD-13) — computed and observed, but PINNED AT WEIGHT 0
     # in `config.SMS_WEIGHTS`, so they contribute exactly nothing to the running score
     # until the walk-forward optimizer funds one under RULE B.
-    "ownership_delta", "bar_character",
+    "ownership_delta", "bar_character", "vp_confluence",
 )
 
 
@@ -251,6 +253,35 @@ def _bar_character(reading: VpaReading | None) -> SmsComponent:
     return SmsComponent("bar_character", 0, strength, obs, available=available)
 
 
+def _vp_confluence(
+    profile: VolumeProfile | None, phase_cls: PhaseClassification,
+) -> SmsComponent:
+    """§4.1 CANDIDATE (LD-13, slice 19) — the phase-bonus refinement: not *whether* a
+    spring or an LPS printed (that is `_phase_bonus`, already funded) but *where in the
+    approximate volume profile* it printed. A spring that shook out at the low edge of the
+    value area and an LPS that came to rest on the point of control are the structurally
+    better versions of the events the bonus already counts.
+
+    **Weight 0 until earned**: observed and carried here, pinned at 0 in
+    `config.SMS_WEIGHTS`, so its contribution is 0 and the running score is unchanged.
+    Only the walk-forward optimizer may fund it (never hand-edited — §4), and only after
+    RULE B forward paper earns it."""
+    strength, available = vp_mod.subscore(profile, phase_cls.events)
+    obs = {
+        "candidate": "LD-13 §4.1 — weight 0 until validated",
+        "fidelity": vp_mod.ANNOTATION,
+    }
+    if profile is not None:
+        obs |= {
+            "confluences": [
+                {"event": c.kind, "level": c.level, "date": c.date.isoformat()}
+                for c in vp_mod.confluences(profile, phase_cls.events)
+            ],
+            "bars_profiled": len(profile.bars),
+        }
+    return SmsComponent("vp_confluence", 0, strength, obs, available=available)
+
+
 def _phase_bonus(phase_cls: PhaseClassification) -> SmsComponent:
     """Wyckoff phase-alignment bonus: spring (C) or LPS (D) proximity (§4)."""
     kinds = {e.kind for e in phase_cls.events}
@@ -281,6 +312,7 @@ def compute_sms(
     weights: dict[str, int] | None = None,
     ownership: OwnershipDelta | None = None,
     vpa: VpaReading | None = None,
+    vp: VolumeProfile | None = None,
 ) -> SmsResult:
     """Assemble the track-weighted SMS. `internal_score` is GATED by RULE B.
 
@@ -301,6 +333,7 @@ def compute_sms(
         "phase_bonus": _phase_bonus(phase_cls),
         "ownership_delta": _ownership_delta(ownership),
         "bar_character": _bar_character(vpa),
+        "vp_confluence": _vp_confluence(vp, phase_cls),
     }
     components = tuple(
         SmsComponent(c.key, weights[c.key], c.subscore, c.observation, c.available)

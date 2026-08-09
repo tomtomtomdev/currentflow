@@ -65,11 +65,11 @@ def test_components_still_ship_as_observation(store):
         "phase_bonus",
         # §4.1 candidates (LD-13) — observed alongside the funded components, but pinned
         # at weight 0, so each is an observation that moves no score.
-        "ownership_delta", "bar_character",
+        "ownership_delta", "bar_character", "vp_confluence",
     }
     # components carry raw observations, not a composite score
     assert all("observation" in c for c in view["components"])
-    for key in ("ownership_delta", "bar_character"):
+    for key in ("ownership_delta", "bar_character", "vp_confluence"):
         candidate = next(c for c in view["components"] if c["component"] == key)
         assert candidate["weight"] == 0
 
