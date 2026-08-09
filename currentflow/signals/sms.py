@@ -22,14 +22,20 @@ from datetime import datetime
 
 from currentflow import config
 from currentflow.dal.models import DailyBar, RowStatus, Side
+from currentflow.signals import ownership as ownership_mod
 from currentflow.signals.broker_flow import BrokerFlowSnapshot
 from currentflow.signals.foreign_flow import ForeignFlowSnapshot
+from currentflow.signals.ownership import OwnershipDelta
 from currentflow.signals.phase import PhaseClassification
 
 log = logging.getLogger(__name__)
 
 COMPONENT_KEYS = (
     "divergence", "broker_concentration", "foreign_flow", "rvol", "block_trade", "phase_bonus",
+    # §4.1 candidate components (LD-13) — computed and observed, but PINNED AT WEIGHT 0
+    # in `config.SMS_WEIGHTS`, so they contribute exactly nothing to the running score
+    # until the walk-forward optimizer funds one under RULE B.
+    "ownership_delta",
 )
 
 
@@ -209,6 +215,20 @@ def _block_trade(broker: BrokerFlowSnapshot, adv20: float | None) -> SmsComponen
     return SmsComponent("block_trade", 0, _clamp01(subscore), obs, available=True)
 
 
+def _ownership_delta(own: OwnershipDelta | None) -> SmsComponent:
+    """§4.1 CANDIDATE (LD-13, slice 17) — KSEI institutional-ownership delta across the
+    accumulation window as slow-money confirmation. **Weight 0 until earned**: it is
+    observed and carried here, but `config.SMS_WEIGHTS` pins it at 0, so its contribution
+    is 0 and the running score is unchanged. Only the walk-forward optimizer may fund it
+    (never hand-edited — §4), and only after RULE B forward paper earns it."""
+    strength, available = ownership_mod.subscore(own)
+    obs = {"candidate": "LD-13 §4.1 — weight 0 until validated"}
+    if own is not None:
+        obs |= {"kind": own.kind.value, "delta_pp": own.delta_pp,
+                "slices_used": own.slices_used, "stale": own.stale}
+    return SmsComponent("ownership_delta", 0, strength, obs, available=available)
+
+
 def _phase_bonus(phase_cls: PhaseClassification) -> SmsComponent:
     """Wyckoff phase-alignment bonus: spring (C) or LPS (D) proximity (§4)."""
     kinds = {e.kind for e in phase_cls.events}
@@ -237,6 +257,7 @@ def compute_sms(
     adv20: float | None = None,
     rebalance_multiplier: float = 1.0,
     weights: dict[str, int] | None = None,
+    ownership: OwnershipDelta | None = None,
 ) -> SmsResult:
     """Assemble the track-weighted SMS. `internal_score` is GATED by RULE B.
 
@@ -255,6 +276,7 @@ def compute_sms(
         "rvol": _rvol(bars),
         "block_trade": _block_trade(broker, adv20),
         "phase_bonus": _phase_bonus(phase_cls),
+        "ownership_delta": _ownership_delta(ownership),
     }
     components = tuple(
         SmsComponent(c.key, weights[c.key], c.subscore, c.observation, c.available)

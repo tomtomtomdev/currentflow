@@ -229,13 +229,23 @@ SMS_WEIGHTS: dict[str, dict[str, int]] = {
     "A": {  # large-cap: NBSA foreign flow co-leads
         "divergence": 30, "broker_concentration": 20, "foreign_flow": 25,
         "rvol": 10, "block_trade": 5, "phase_bonus": 10,
+        "ownership_delta": 0,   # LD-13 candidate — inert until the optimizer earns it
     },
     "B": {  # lapis-2: broker concentration leads, foreign flow excluded (LD-1)
         "divergence": 30, "broker_concentration": 35, "foreign_flow": 0,
         "rvol": 15, "block_trade": 10, "phase_bonus": 10,
+        "ownership_delta": 0,   # LD-13 candidate — inert until the optimizer earns it
     },
 }
 SMS_ARMED_THRESHOLD = 70.0            # SMS ≥ 70 AND phase∈{C,D} AND no veto → ARMED (LOCKED)
+
+# --- §4.1 candidate components (LD-13, v1.6) — validation-pending, PINNED AT 0 ------
+# A candidate enters the §4 simplex inert: it is computed, observed, and carried in the
+# component list, but its weight is 0, so the running score is unchanged on landing.
+# Only the walk-forward optimizer may ever fund one (never hand-edited — §4), and only
+# after RULE B forward paper earns it. NOT a `ML_LOCKED_ZEROS` entry: LD-1's Track-B
+# `foreign_flow` lock is structural/permanent, a candidate's 0 is merely unearned.
+SMS_CANDIDATE_COMPONENTS = frozenset({"ownership_delta"})
 
 # RULE B (LD-9): a module may show a number only after this many months of
 # fill-realistic forward paper trading. Slice 8 wires the paper-trade engine to
@@ -274,6 +284,21 @@ DECAY_WINDOW_DAYS = 10                # window over which price-rise / divergenc
 DECAY_DIVERGENCE_MIN_PRICE_RISE = 0.03  # price up ≥ 3% over the window while flow falls
 DECAY_FOREIGN_SELL_STREAK_DAYS = 3   # ≥ this many trailing days of net foreign sell = outflow
 DECAY_NO_DEMAND_SPREAD_MULT = 1.0    # "narrow" = spread ≤ this × recent avg spread (no-demand)
+
+# --- Institutional-ownership delta (LD-13, v1.6; slice 17) — OBSERVATION -------------
+# KSEI shareholder composition (monthly, publish lag undisclosed → `as_of` = fetch time)
+# read as SLOW-money confirmation across a Wyckoff range: rising foreign/institutional
+# share ↔ Composite-Man accumulation; share falling while price is marked flat/up ↔
+# distribution. Coarse monthly data — never a daily driver, never a hard reject on its
+# own (it corroborates the §5 distribution veto, §4.1). Categorical, no number (RULE B).
+OWNERSHIP_WINDOW_SLICES = 4          # monthly slices spanning the accumulation window (~3 mo of change)
+OWNERSHIP_MATERIAL_PP = 0.5          # |Δ| below this many percentage points = flat (feed noise)
+# A composition older than this many days is STALE: at a monthly cadence plus an
+# undisclosed publish lag, ~2 missed publications means the picture no longer describes
+# the current range. Stale degrades to neutral — it never flags distribution (missing ≠ zero).
+OWNERSHIP_STALE_DAYS = 75
+OWNERSHIP_MARKUP_PCT = -0.02         # "marked flat/up" = price change ≥ −2% across the window
+OWNERSHIP_FULL_CREDIT_PP = 2.0       # candidate sub-score reaches 1.0 at +2pp of accumulation
 
 # --- Sector Rotation Map (spec §9; slice 6) — DERIVED VIEW ---------------------------
 # Flow-by-sector + RS-vs-flow quadrant. The quadrant is a categorical observation of a
