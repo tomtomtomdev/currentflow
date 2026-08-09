@@ -28,7 +28,7 @@ from enum import Enum
 
 from currentflow import config
 from currentflow.dal.models import DailyBar, RowStatus
-from currentflow.signals import broker_flow, phase as phase_mod
+from currentflow.signals import broker_flow, ownership as ownership_mod, phase as phase_mod
 from currentflow.signals.broker_flow import BrokerDNA, BrokerFlowSnapshot
 from currentflow.signals.phase import PhaseClassification, WyckoffPhase
 from currentflow.signals.veto import VetoResult, evaluate_vetoes
@@ -243,9 +243,15 @@ def monitor(
     bars = store.read_daily_bars(symbol, decision_ts, start=start, end=end)
     broker = broker_flow.analyze(store, symbol, decision_ts, start=start, end=end, registry=registry)
     phase_cls = phase_mod.classify(symbol, bars, decision_ts)
+    # LD-13 corroborator — a distribution veto that fires here carries the same KSEI
+    # evidence the engine attaches, so the trap ribbon and the pipeline never disagree.
+    own = ownership_mod.build_delta(
+        symbol, tuple(store.read_ksei_ownership(symbol, decision_ts)),
+        decision_ts=decision_ts, bars=bars,
+    )
     veto = evaluate_vetoes(
         symbol, broker=broker, bars=bars, phase_cls=phase_cls,
-        decision_ts=decision_ts, has_material_news=has_material_news,
+        decision_ts=decision_ts, has_material_news=has_material_news, ownership=own,
     )
     decay = build_decay(symbol, bars=bars, broker=broker, phase_cls=phase_cls, decision_ts=decision_ts)
     return TrapMonitor(symbol=symbol, decision_ts=decision_ts, veto=veto, decay=decay)

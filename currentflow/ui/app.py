@@ -28,6 +28,7 @@ from currentflow.signals import (
     engine,
     foreign_flow,
     heatmap,
+    ownership,
     replay,
     risk_monitor,
     sector_rotation,
@@ -55,6 +56,7 @@ from currentflow.ui.foreign_flow_view import (
     cumulative_series,
     daily_series,
     ksei_panel,
+    ownership_panel,
     reversal_callout,
     split_bar,
     stats_panel,
@@ -597,6 +599,28 @@ def _render_foreign_flow(store: Store, *, show_header: bool = True) -> None:
                 ),
                 unsafe_allow_html=True,
             )
+        # LD-13 (slice 17): the KSEI overlay promoted from a display sparkline to a
+        # categorical READING — slow-money confirmation across the range. Categorical
+        # severity + digit-free copy; the sparkline below stays as the raw series.
+        own_read = ownership_panel(ownership.analyze(store, symbol, decision_ts))
+        sev_color = {
+            "WARN": shell.TOKENS["sell"],
+            "WATCH": shell.TOKENS["accent"],
+            "INFO": shell.TOKENS["text_faint"],
+        }[own_read["severity"]]
+        st.markdown(
+            shell.panel_html(
+                "INSTITUTIONAL OWNERSHIP",
+                shell.callout_html(
+                    own_read["severity"], own_read["headline"], color=sev_color
+                )
+                + f'<div class="cf-statlabel" style="color:{shell.TOKENS["text_muted"]}; '
+                f'margin-top:6px">{own_read["detail"]}</div>',
+                note="monthly KSEI composition · observation",
+            ),
+            unsafe_allow_html=True,
+        )
+
         if len(ksei["series"]) >= 2:
             trend = ksei["trend"]
             tag = (

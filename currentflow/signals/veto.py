@@ -19,6 +19,7 @@ from enum import Enum
 from currentflow import config
 from currentflow.dal.models import DailyBar, RowStatus
 from currentflow.signals.broker_flow import BrokerDNA, BrokerFlowSnapshot, top_n_share
+from currentflow.signals.ownership import OwnershipDelta
 from currentflow.signals.phase import TRADEABLE_PHASES, PhaseClassification
 
 
@@ -37,6 +38,10 @@ class VetoReason(str, Enum):
 class Veto:
     reason: VetoReason
     detail: str
+    # Secondary evidence that points the same way (LD-13): it STRENGTHENS a veto that
+    # already fired on its own evidence and can never fire one by itself. Coarse, slow
+    # inputs (e.g. monthly KSEI composition) belong here, never in the trigger condition.
+    corroborators: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,10 +75,30 @@ def _monopoly(broker: BrokerFlowSnapshot) -> Veto | None:
     return None
 
 
-def _distribution(broker: BrokerFlowSnapshot, phase_cls: PhaseClassification) -> Veto | None:
+def _corroborate(veto: Veto | None, ownership: OwnershipDelta | None) -> Veto | None:
+    """Attach the LD-13 ownership corroborator to a distribution veto that ALREADY fired.
+
+    `None in → None out`: a falling KSEI composition can never create the veto. The feed
+    is monthly with an undisclosed lag — far too coarse to hard-reject a name on its own
+    (§4.1) — so it only adds weight to evidence the daily-cadence detectors found first.
+    A stale composition corroborates nothing (`corroborates_distribution` is False)."""
+    if veto is None or ownership is None or not ownership.corroborates_distribution:
+        return veto
+    note = f"KSEI composition corroborates: {ownership.detail}"
+    return Veto(veto.reason, f"{veto.detail} · {note}", corroborators=(*veto.corroborators, note))
+
+
+def _distribution(
+    broker: BrokerFlowSnapshot,
+    phase_cls: PhaseClassification,
+    ownership: OwnershipDelta | None = None,
+) -> Veto | None:
     if phase_cls.phase.value == "DISTRIBUTION":
-        return Veto(VetoReason.DISTRIBUTION_DRESSED,
-                    f"phase classifier flags distribution ({phase_cls.reason})")
+        return _corroborate(
+            Veto(VetoReason.DISTRIBUTION_DRESSED,
+                 f"phase classifier flags distribution ({phase_cls.reason})"),
+            ownership,
+        )
     # dominant window buyer flipping to net sell — must be *sustained*, not a one-day
     # blip. A single red day is noise (profit-taking, rebalancing); only a run of
     # consecutive net-sell days across the latest window is real distribution.
@@ -85,8 +110,11 @@ def _distribution(broker: BrokerFlowSnapshot, phase_cls: PhaseClassification) ->
             broker.daily_nets[d].get(dominant, 0.0) < 0 for d in recent
         ):
             span = f"{recent[0]}→{recent[-1]}"
-            return Veto(VetoReason.DISTRIBUTION_DRESSED,
-                        f"dominant accumulator {dominant} net-selling {len(recent)} days running ({span})")
+            return _corroborate(
+                Veto(VetoReason.DISTRIBUTION_DRESSED,
+                     f"dominant accumulator {dominant} net-selling {len(recent)} days running ({span})"),
+                ownership,
+            )
     return None
 
 
@@ -161,12 +189,17 @@ def evaluate_vetoes(
     phase_cls: PhaseClassification,
     decision_ts: datetime,
     has_material_news: bool = False,
+    ownership: OwnershipDelta | None = None,
 ) -> VetoResult:
     """Run every §5 filter. Returns all reasons that fired (no silent short-circuit —
-    the operator sees the full picture of why a name was rejected)."""
+    the operator sees the full picture of why a name was rejected).
+
+    `ownership` (LD-13, slice 17) is a CORROBORATOR for the distribution-dressed filter
+    only: it can strengthen that veto's evidence but never fires one on its own, so the
+    set of rejected names is identical with and without it."""
     candidates = [
         _monopoly(broker),
-        _distribution(broker, phase_cls),
+        _distribution(broker, phase_cls, ownership),
         _markup_thin(bars),
         _wash_churn(broker),
         _broker_rotation(broker),

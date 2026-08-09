@@ -20,8 +20,9 @@ from enum import Enum
 
 from currentflow import config
 from currentflow.dal.models import RowStatus
-from currentflow.signals import broker_flow, foreign_flow, phase as phase_mod
+from currentflow.signals import broker_flow, foreign_flow, ownership as ownership_mod, phase as phase_mod
 from currentflow.signals.broker_flow import BrokerDNA
+from currentflow.signals.ownership import OwnershipDelta
 from currentflow.signals.phase import PhaseClassification
 from currentflow.signals.sms import SmsResult, compute_sms
 from currentflow.signals.veto import VetoResult, evaluate_vetoes
@@ -44,6 +45,9 @@ class EngineResult:
     sms: SmsResult                    # components = observation; internal_score = GATED (RULE B)
     veto: VetoResult
     state: EngineState
+    # LD-13 slow-money reading (slice 17): a §4.1 candidate at weight 0 and a §5
+    # corroborator — it changes no state, it is carried so views can observe it.
+    ownership: OwnershipDelta | None = None
 
     @property
     def armed(self) -> bool:
@@ -73,21 +77,27 @@ def evaluate(
     broker = broker_flow.analyze(store, symbol, decision_ts, start=start, end=end, registry=registry)
     foreign = foreign_flow.analyze(store, symbol, decision_ts, start=start, end=end) if track == "A" else None
     phase_cls = phase_mod.classify(symbol, bars, decision_ts)
+    # LD-13 (slice 17): read from the already-visible bars + KSEI slices — no extra
+    # look-ahead surface. Inert by construction (weight 0 + corroborator-only).
+    own = ownership_mod.build_delta(
+        symbol, tuple(store.read_ksei_ownership(symbol, decision_ts)),
+        decision_ts=decision_ts, bars=bars,
+    )
 
     sms = compute_sms(
         symbol, track=track, bars=bars, broker=broker, foreign=foreign,
         phase_cls=phase_cls, decision_ts=decision_ts, adv20=_adv20(bars),
-        rebalance_multiplier=rebalance_multiplier,
+        rebalance_multiplier=rebalance_multiplier, ownership=own,
     )
     veto = evaluate_vetoes(
         symbol, broker=broker, bars=bars, phase_cls=phase_cls,
-        decision_ts=decision_ts, has_material_news=has_material_news,
+        decision_ts=decision_ts, has_material_news=has_material_news, ownership=own,
     )
 
     state = _decide(phase_cls, sms, veto)
     return EngineResult(
         symbol=symbol, decision_ts=decision_ts, track=track, phase=phase_cls,
-        sms=sms, veto=veto, state=state,
+        sms=sms, veto=veto, state=state, ownership=own,
     )
 
 

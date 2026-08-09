@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from currentflow.dal.models import Side
 from currentflow.signals.foreign_flow import ForeignFlowSnapshot, TideRow
+from currentflow.signals.ownership import OwnershipDelta, OwnershipKind
 
 _IDR_BN = 1e9
 
@@ -94,6 +95,64 @@ def ksei_panel(snapshot: ForeignFlowSnapshot, *, points: int = 6) -> dict:
             if snapshot.nbsa_pct_of_float is None
             else round(snapshot.nbsa_pct_of_float, 2)
         ),
+    }
+
+
+# --- institutional ownership (LD-13, slice 17) — CATEGORICAL observation --------------
+#
+# The KSEI overlay was a display sparkline; this promotes it to a reading. Every string
+# below is digit-free on purpose (RULE B / §4.1): the composition speaks as a *category*
+# and a severity word, never as a magnitude the operator could mistake for a score. The
+# raw pp measurement stays on the signal's `detail` for audit, not in this panel's copy.
+_OWNERSHIP_COPY = {
+    OwnershipKind.ACCUMULATION_CONFIRMED: (
+        "institutional share rising across the range",
+        "Slow money is still coming in — the composition confirms accumulation over the "
+        "range. Monthly cadence: a confirmation, never a daily driver.",
+    ),
+    OwnershipKind.DISTRIBUTION_TELL: (
+        "institutional share falling while price is marked up",
+        "Shares are leaving the institutional book while the price is held flat or marked "
+        "higher — the classic distribution dressing. Corroborates the distribution veto "
+        "filter; it never rejects a name on its own.",
+    ),
+    OwnershipKind.OWNERSHIP_EASING: (
+        "institutional share easing with the price",
+        "Holders are stepping back while the price falls too — an exit, not a markup being "
+        "dressed. Read it as context.",
+    ),
+    OwnershipKind.OWNERSHIP_FLAT: (
+        "institutional share unchanged",
+        "The composition has not moved beyond feed noise across the observed slices.",
+    ),
+    OwnershipKind.STALE_COMPOSITION: (
+        "composition too old to read",
+        "The latest KSEI slice predates this range, so it says nothing about the current "
+        "markup. Reads neutral — a stale series never flags distribution.",
+    ),
+    OwnershipKind.NO_COMPOSITION: (
+        "no composition on file",
+        "Fewer than two KSEI slices are visible at this moment. Not yet published is not "
+        "no change — nothing is inferred.",
+    ),
+}
+
+
+def ownership_panel(delta: OwnershipDelta) -> dict:
+    """KSEI composition as a categorical observation (LD-13 §4.1).
+
+    Categorical only: `kind` + `severity` + digit-free copy. No score, no probability,
+    no buy/sell verb — and no magnitude, so nothing here can read as a claim."""
+    headline, detail = _OWNERSHIP_COPY[delta.kind]
+    return {
+        "kind": delta.kind.value,
+        "severity": delta.severity.value,
+        "headline": headline,
+        "detail": detail,
+        "available": delta.available,
+        "stale": delta.stale,
+        "slices_used": delta.slices_used,       # data-availability count, not a measurement
+        "corroborates_distribution": delta.corroborates_distribution,
     }
 
 

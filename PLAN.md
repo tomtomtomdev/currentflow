@@ -643,7 +643,7 @@ RULE A (phase gate) and RULE B (presentation gate) unchanged.**
 - [x] ledger: `haste_mode` promotes OBS→VALIDATING→VALIDATED; `fast_mode`/`sms`/`ai_ranking`/`daily_top`
       NOT promoted; aggregate withheld until validated; pipeline EXITED cell shows P&L, no score leak.
 
-## Slice 17 — KSEI Institutional-Ownership Delta  ⬜  (spec v1.6, LD-13)
+## Slice 17 — KSEI Institutional-Ownership Delta  ✅  (spec v1.6, LD-13)
 
 **Detection-enrichment vertical (data → signal → view → test).** Wires the KSEI shareholder-composition
 feed — **already fetched + stored** (`ksei_ownership`, slice 3) but today consumed **only by the UI**
@@ -656,20 +656,32 @@ candidate component **pinned at weight 0** and ships first as a RULE-B-clean obs
 > conservative by construction — slice 3). This is a **slow confirmation across the range**, never a
 > daily driver; the signal must degrade gracefully when the composition is stale (`missing ≠ zero`).
 
-- [ ] `signals/ownership.py`: look-ahead-safe ownership-delta observation over the accumulation window —
-      institutional/foreign holding change (rising ↔ CM accumulation; falling-while-price-flat/up ↔
-      distribution). Categorical severities (INFO/WATCH/WARN), **no number** (RULE B). `missing ≠ zero`.
-- [ ] **Veto refinement:** feed the §5 distribution-dressed veto a "ownership falling while marked up"
-      corroborator (strengthens, never a new hard reject on its own — coarse monthly data).
-- [ ] **§4 candidate component (weight 0):** ownership-delta sub-signal added to the SMS simplex pinned
-      at 0 (the LD-1 Track-B `foreign_flow=0` pattern); optimizer-only raise, RULE-B-gated. Running score
-      unchanged on landing.
-- [ ] **View:** promote the Foreign Flow dashboard's KSEI overlay from a display sparkline into a
-      categorical observation panel; surface in the pipeline row's Foreign Flow evidence tab.
-- [ ] **Tests:** ownership-delta fires on labeled accumulation/distribution composition series; stale
-      composition degrades to neutral (never a false distribution flag); look-ahead-safe read; candidate
-      component contributes **0** to SMS until the optimizer raises it (running-score-unchanged assertion);
-      observation renders no number (RULE B).
+- [x] `signals/ownership.py`: look-ahead-safe ownership-delta observation over the accumulation window
+      (last `OWNERSHIP_WINDOW_SLICES` monthly slices) — `ACCUMULATION_CONFIRMED` (rising ↔ CM
+      accumulation) / `DISTRIBUTION_TELL` (falling while price marked flat/up) / `OWNERSHIP_EASING`
+      (falling with the price — an exit, not dressing) / `OWNERSHIP_FLAT` / `STALE_COMPOSITION` /
+      `NO_COMPOSITION`. Categorical severities (INFO/WATCH/WARN — *salience*, the kind carries
+      direction), **no number** (RULE B). `missing ≠ zero`: an unpublished `foreign_pct`, a lone slice,
+      or an absent price window is `available=False`, never a flat/zero reading.
+- [x] **Veto refinement:** `veto._corroborate` attaches the "ownership falling while marked up" note to a
+      DISTRIBUTION_DRESSED veto that **already fired** (`Veto.corroborators`); `None in → None out`, so
+      the set of rejected names is identical with and without it (coarse monthly data never hard-rejects).
+      A stale composition corroborates nothing. `distribution.monitor` passes the same reading, so the
+      trap ribbon and the pipeline never show divergent evidence for one veto.
+- [x] **§4 candidate component (weight 0):** `ownership_delta` added to `COMPONENT_KEYS` and to both
+      tracks' `config.SMS_WEIGHTS` at **0** (simplex still sums to 100). Deliberately **not** in
+      `ML_LOCKED_ZEROS` — LD-1's Track-B `foreign_flow` lock is structural, a candidate's 0 is merely
+      unearned, so the optimizer may fund it (RULE-B-gated). Running score unchanged on landing.
+- [x] **View:** `foreign_flow_view.ownership_panel` — the KSEI overlay promoted from a display sparkline
+      to an INSTITUTIONAL OWNERSHIP reading (categorical + severity-colored, digit-free copy); rendered in
+      `app._render_foreign_flow`, i.e. the pipeline row's Foreign Flow evidence tab. Sparkline retained
+      below it as the raw series.
+- [x] **Tests** (`tests/test_ownership.py`, 19): fires on labeled accumulation/distribution/easing/flat
+      composition series; stale degrades to neutral (never a false distribution flag) and cannot
+      corroborate; unpublished slice dropped, not read as 0; window bounded to the accumulation span;
+      look-ahead-safe `analyze`; candidate weight 0 in both tracks + **running-score-unchanged** assertion
+      (with vs without the reading, and through `engine.evaluate` before vs after KSEI ingest);
+      corroborator never creates a veto; panel copy carries **no digit**, no %, no verb. **642 total, green.**
 
 ## Slice 18 — VPA bar-character (No-Demand / No-Supply / Absorption)  ⬜  (spec v1.6, LD-13)
 
