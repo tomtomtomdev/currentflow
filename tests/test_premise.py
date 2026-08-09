@@ -79,6 +79,14 @@ class FakeStore:
                 and (start is None or r.date >= start)
                 and (end is None or r.date <= end)]
 
+    # No LISTED board roster here — the survivorship measurement (slice 22) reads it and
+    # correctly reports UNMEASURED, which is this fixture's whole point.
+    def read_roster_members(self, index_name, day):
+        return ()
+
+    def read_listing_caps(self, day):
+        return {}
+
 
 # --- forward return -------------------------------------------------------------------
 

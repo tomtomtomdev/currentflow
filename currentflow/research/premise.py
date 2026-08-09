@@ -41,6 +41,7 @@ from typing import Callable, Sequence
 from currentflow import config
 from currentflow.dal.models import BrokerNet, DailyBar, RowStatus
 from currentflow.signals.broker_flow import daily_broker_net, top_n_share
+from currentflow.universe.survivorship import SurvivorshipBias, measure_bias_span
 
 # (bars strictly before the decision day, broker rows likewise, decision day) -> score
 FeatureFn = Callable[[list[DailyBar], list[BrokerNet], Date], float | None]
@@ -61,6 +62,23 @@ CAVEATS: tuple[str, ...] = (
     "Regime-scoped: reads are clamped per REGIME.md. Results carry no cross-regime "
     "stability claim.",
 )
+
+# The first caveat is the *unmeasured* survivorship statement. Once the operator's LISTED
+# board roster is loaded (slice 22), the measurement replaces the assumption — a report
+# should say how big the bias is, not merely that it exists.
+_SURVIVORSHIP_CAVEAT_INDEX = 0
+
+
+def _caveats(bias: SurvivorshipBias) -> tuple[str, ...]:
+    if not bias.measured:
+        return CAVEATS
+    line = bias.line()
+    if bias.caveat:
+        line = f"{line} [{bias.caveat}]"
+    rest = tuple(
+        c for i, c in enumerate(CAVEATS) if i != _SURVIVORSHIP_CAVEAT_INDEX
+    )
+    return (line, *rest)
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,6 +110,7 @@ class PremiseReport:
     dropped_missing_return: int          # ... with no complete forward window
     symbols_used: tuple[str, ...]
     caveats: tuple[str, ...] = CAVEATS
+    survivorship: SurvivorshipBias | None = None   # measured when a LISTED roster exists
 
     def verdict_line(self) -> str:
         """One-line human summary. Deliberately hedged — this layer never says 'buy'."""
@@ -236,6 +255,11 @@ def run_premise(
             pooled_sums[b] += sums[b]
             pooled_counts[b] += counts[b]
 
+    # What the store could not have served over this window (slice 22). UNMEASURED with
+    # no LISTED roster loaded — which is the strided research store's normal state, so
+    # the generic caveat stands rather than a fabricated 0%.
+    bias = measure_bias_span(store, start, end)
+
     spreads = [s.spread for s in sections]
     mean_spread = sum(spreads) / len(spreads) if spreads else None
     t_stat = _t_stat(spreads, min_days)
@@ -257,6 +281,8 @@ def run_premise(
         dropped_missing_feature=dropped_feat,
         dropped_missing_return=dropped_ret,
         symbols_used=tuple(sorted(used_symbols)),
+        caveats=_caveats(bias),
+        survivorship=bias,
     )
 
 

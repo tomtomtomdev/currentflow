@@ -20,7 +20,7 @@ Phase 1 (pre-registration).
 | Auth | ✅ Pure-Python login verified (`dal/login.py`, `token_store.py`); device-trust `player_id` persisted. |
 | Backfill orchestration | ⚠️ `ingest/backfill.py` exists, unexercised at scale. |
 | PIT fundamentals | ❌ Not built. This is `DATA_SOURCES.md` §3.1 — the real gap. |
-| Survivorship / delisting source | ❌ **No source identified.** Not solvable from Stockbit. |
+| Survivorship / delisting source | ⚠️ **E1 shipped 2026-08-09** (PLAN.md slice 22): `LISTED` pseudo-index + `listing_snapshot` + measured bias (`universe/listing.py`, `universe/survivorship.py`, `./run.sh listings`). **Awaiting the operator's transcribed IDX Statistics books** — `data/listings/` is empty, so every measurement reports `UNMEASURED`. |
 
 **Net:** Phase 0 is ~40% done — the hard architectural decisions (as_of stamping, PIT roster
 table, regime clamping) are made and correct. What remains is ingestion plus three genuine
@@ -123,6 +123,15 @@ events with dates. Cross-check against IDX *Pengumuman* → Delisting/Relisting 
 **Populate:** `index_roster_pit(index_name, symbol, effective_from, effective_to, source, as_of)`
 — the table already exists and is exactly the right shape. Add `LISTED` as a pseudo-index
 covering the full board.
+
+> **Shipped 2026-08-09 (PLAN.md slice 22).** `universe/listing.py` takes the transcribed
+> books as `data/listings/*.csv` (`snapshot_date,symbol,source[,listing_date,market_cap_idr]`),
+> diffs consecutive snapshots into `LISTED` periods, and keeps the raw books in
+> `listing_snapshot` for the cap-weighted bias share. A delisting closes at the last
+> observation with its uncertainty window in the period's `source` (`ANNUAL_SNAPSHOT
+> precision`) — exact dates from the *Pengumuman* archive can replace it later without a
+> code change. `universe/survivorship.py` reports the bias per day or span;
+> `./run.sh listings` loads and prints it. **Remaining: the transcription itself.**
 
 **Honest fallback:** if a delisted name's price history is unretrievable from Stockbit,
 you still know it existed. Report the **bias magnitude** (how many names, what fraction of
@@ -249,8 +258,9 @@ budget of Study 1**. It is by far the cheaper study to run and covers 3.6× the 
 Strictly sequential — each step's output is the next step's input, and steps 1–2 are
 where a wrong answer silently poisons everything downstream.
 
-1. **E1 — roster & survivorship.** Build the PIT universe *first*. Everything else is
-   fetched per-symbol; fetching the wrong symbol set makes all later work wasted.
+1. **E1 — roster & survivorship.** ✅ *code shipped 2026-08-09 (slice 22); the operator's
+   book transcription is the remaining input.* Build the PIT universe *first*. Everything
+   else is fetched per-symbol; fetching the wrong symbol set makes all later work wasted.
 2. **E4 — backfill hardening.** Before pulling 100k calls, make the puller resumable.
 3. **Cheap backfill** — OHLCV, corp actions, KSEI. Under an hour. Gives an immediately
    testable store.
@@ -275,12 +285,16 @@ Per `LOCKED_SPEC.md` §13 conventions, as failing tests first:
   fundamentals (reporting lag), roster (effective_from), and float (KSEI publication lag).
 - **Survivorship:** the universe on any historical date includes names later delisted.
   Test: a known delisted name appears in the 2019 roster and vanishes at its actual date.
+  ✅ encoded in `tests/test_survivorship.py` (slice 22) — a name in the 2024 book and
+  absent from the 2025 one is in the 2024 universe and gone in 2026.
 - **Corp actions:** adjusted series reproduces hand-checked split/reverse-split cases.
 - **Empty ≠ zero:** a no-trade day, an unpublished day, and a gap are three distinct states.
 - **Regime clamp:** Study 1 fails loud below `REGIME_START`. Study 2 carries its exemption
   label and is blocked from touching band-dependent fill logic.
 - **Bias disclosure:** the backtest report states the unrecoverable-name count and its
-  share of starting market cap. No silent caps.
+  share of starting market cap. No silent caps. ✅ `SurvivorshipBias.line()` (slice 22),
+  carried on `PitUniverse.survivorship` and `PremiseReport.survivorship`; with no book
+  loaded it reports `UNMEASURED`, never 0%.
 
 ---
 

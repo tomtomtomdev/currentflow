@@ -188,6 +188,17 @@ def regime_start(track: str) -> date:
 BACKFILL_UNIVERSE_SCOPE = "SCR0"           # candidate list source for the backfill seed
 BACKFILL_BATCH_PAUSE_S = 1.0               # paywall pacing between backfilled names
 
+# --- Survivorship / board listing (slice 22; BACKTEST_PHASE0 §3.1) ----------------
+# Every Stockbit endpoint is symbol-addressed, so the store can only ever hold names
+# the vendor still serves — backfilling today's roster and walking back silently
+# deletes every delisted name. The board's point-in-time membership comes instead from
+# the operator's IDX Statistics annual books, loaded as a `LISTED` pseudo-index in
+# `index_roster_pit` (a listing fact, NEVER a Track A/B index — see roster_covers).
+LISTED_INDEX = "LISTED"                    # pseudo-index name for board listing
+SURVIVORSHIP_RECOVERY_WINDOW_DAYS = 10     # a listed name with no bar in the trailing
+                                           # window on D is unrecoverable ON D (counted,
+                                           # never silently dropped from the denominator)
+
 # --- ARA/ARB bands (spec §12; derivation DATA_SOURCES §3.2) ------------------------
 # Spec pins: main ±7% / dev board ±10–25% / first 15 trading days post-IPO ±35%.
 # The dev-board 10–25% range is resolved by price tier (higher-priced names get the

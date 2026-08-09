@@ -166,6 +166,20 @@ INDEX_ROSTER_PIT_COLUMNS: tuple[str, ...] = (
     "as_of",
 )
 
+# Board-listing snapshots (slice 22, BACKTEST_PHASE0 §3.1). One row per (annual IDX
+# Statistics book, company): the raw evidence the LISTED pseudo-index periods in
+# `index_roster_pit` are derived from, kept so the size proxy behind the survivorship
+# bias share survives the derivation. `market_cap_idr` NULL = the book gave no cap
+# (unknown, never 0 — missing ≠ zero). Ingest-once on (snapshot_date, symbol).
+LISTING_SNAPSHOT_COLUMNS: tuple[str, ...] = (
+    "snapshot_date",
+    "symbol",
+    "listing_date",
+    "market_cap_idr",
+    "source",
+    "as_of",
+)
+
 # KSEI monthly ownership slices (foreign-ownership-trend overlay, spec §9).
 KSEI_COLUMNS: tuple[str, ...] = (
     "symbol",
@@ -223,6 +237,22 @@ class IndexRosterRow:
     symbol: str
     effective_from: Date
     effective_to: Date | None
+    source: str
+    as_of: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class ListingSnapshotRow:
+    """One company as it appeared in one annual IDX Statistics book (slice 22).
+    `listing_date=None` = the book's listing date was not transcribed (the derived
+    period then starts at 'first observed', not 'listed on'); `market_cap_idr=None` =
+    the book carried no cap for it (unknown, never 0). `source` is the book/page
+    reference (no silent provenance)."""
+
+    snapshot_date: Date
+    symbol: str
+    listing_date: Date | None
+    market_cap_idr: float | None
     source: str
     as_of: datetime
 
@@ -504,6 +534,16 @@ CREATE TABLE IF NOT EXISTS index_roster_pit (
     "source"         VARCHAR   NOT NULL,          -- IDX announcement ref (no silent provenance)
     "as_of"          TIMESTAMP NOT NULL,          -- when loaded
     PRIMARY KEY ("index_name", "symbol", "effective_from")
+);
+
+CREATE TABLE IF NOT EXISTS listing_snapshot (
+    "snapshot_date"  DATE      NOT NULL,          -- the annual book's as-of date
+    "symbol"         VARCHAR   NOT NULL,
+    "listing_date"   DATE,                        -- NULL = not transcribed (first-observed start)
+    "market_cap_idr" DOUBLE,                      -- NULL = book gave none (unknown ≠ 0)
+    "source"         VARCHAR   NOT NULL,          -- IDX Statistics book ref
+    "as_of"          TIMESTAMP NOT NULL,          -- when loaded
+    PRIMARY KEY ("snapshot_date", "symbol")
 );
 
 CREATE TABLE IF NOT EXISTS ksei_ownership (
