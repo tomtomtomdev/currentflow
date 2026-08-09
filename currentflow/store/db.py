@@ -52,6 +52,7 @@ from currentflow.store.schema import (
     FAST_MODE_STATE_COLUMNS,
     FAST_POSITION_COLUMNS,
     FAST_TRADE_COLUMNS,
+    MODE_FAST,
     INDEX_ROSTER_PIT_COLUMNS,
     KSEI_COLUMNS,
     PATTERN_CATALOG_COLUMNS,
@@ -149,11 +150,50 @@ def _coerce_enum(cls: type[_E], raw: object, *, table: str, symbol: str) -> _E |
 
 
 class Store:
-    _FAST_STATE_KEY = "singleton"   # fast_mode_state is a single-row table (LD-11, slice 15)
+    # The slice-15 `fast_mode_state` key, before the row became per-mode (slice 16, LD-12).
+    _LEGACY_FAST_STATE_KEY = "singleton"
 
     def __init__(self, path: str = ":memory:") -> None:
         self._con = duckdb.connect(path)
         self._con.execute(DDL)
+        self._migrate_paper_mode()
+
+    def _migrate_paper_mode(self) -> None:
+        """Add the slice-16 `mode` discriminator to a slice-15 database (LD-12).
+
+        `CREATE TABLE IF NOT EXISTS` is a no-op on an existing table, so a store written by
+        slice 15 keeps the old mode-less `paper_position`/`paper_trade` shape and every write
+        below would fail on the new column. Rebuild those two tables in place (the `mode`
+        column leads the primary key, so ALTER can't do it), tagging existing rows `FAST` —
+        they ARE Fast-Mode trades — and re-key `fast_mode_state`'s singleton row to `FAST`.
+
+        Idempotent: each step is skipped once its target shape is present, so this runs on
+        every open and does work only once. Rows are preserved, never dropped."""
+        for table, columns in (
+            ("paper_position", FAST_POSITION_COLUMNS),
+            ("paper_trade", FAST_TRADE_COLUMNS),
+        ):
+            existing = {
+                r[1] for r in self._con.execute(f'PRAGMA table_info("{table}")').fetchall()
+            }
+            if "mode" in existing:
+                continue
+            old = ", ".join(f'"{c}"' for c in columns if c != "mode")
+            self._con.execute(f'ALTER TABLE "{table}" RENAME TO "{table}_pre16"')
+            self._con.execute(DDL)                      # recreates `table` with the new shape
+            self._con.execute(
+                f'INSERT INTO "{table}" ({_cols(columns)}) '
+                f'SELECT \'{MODE_FAST}\', {old} FROM "{table}_pre16"'
+            )
+            self._con.execute(f'DROP TABLE "{table}_pre16"')
+            log.info("store: migrated %s to the slice-16 per-mode shape", table)
+
+        moved = self._con.execute(
+            'UPDATE fast_mode_state SET "key" = ? WHERE "key" = ?',
+            [MODE_FAST, self._LEGACY_FAST_STATE_KEY],
+        ).fetchall()
+        if moved and moved[0][0]:
+            log.info("store: re-keyed the fast_mode_state singleton to mode=%s", MODE_FAST)
 
     def close(self) -> None:
         self._con.close()
@@ -396,17 +436,20 @@ class Store:
 
     # --- Fast Mode paper book (slice 15, LD-11) -----------------------------------
 
-    def replace_fast_positions(self, rows_in: Iterable[FastPositionRow]) -> int:
-        """Replace the entire open Fast-Mode book with `rows_in`. The book is small and fully
+    def replace_fast_positions(
+        self, rows_in: Iterable[FastPositionRow], mode: str = MODE_FAST
+    ) -> int:
+        """Replace `mode`'s open auto-trade book with `rows_in`. The book is small and fully
         rewritten each day-step (closed names drop, new entries appear), so a wholesale
-        replace is simpler and safer than per-row upsert/delete. Returns the new row count."""
+        replace is simpler and safer than per-row upsert/delete. Scoped to ONE mode — a Fast
+        step must never clear the Haste book. Returns the new row count."""
         rows = [
-            (r.symbol, r.as_of, r.track, r.sector, r.board, r.tier, r.tilt_kind,
+            (mode, r.symbol, r.as_of, r.track, r.sector, r.board, r.tier, r.tilt_kind,
              r.entry_date, r.entry_price, r.stop, r.target, r.trail_pct, r.qty,
              r.risk_idr, r.entry_fee)
             for r in rows_in
         ]
-        self._con.execute("DELETE FROM paper_position")
+        self._con.execute('DELETE FROM paper_position WHERE "mode" = ?', [mode])
         if rows:
             placeholders = ", ".join("?" for _ in FAST_POSITION_COLUMNS)
             self._con.executemany(
@@ -416,50 +459,64 @@ class Store:
             )
         return len(rows)
 
-    def read_fast_positions(self) -> list[FastPositionRow]:
-        """The current open Fast-Mode book (the daemon reloads it each day-step)."""
-        sql = f'SELECT {_cols(FAST_POSITION_COLUMNS)} FROM paper_position ORDER BY "symbol"'
+    def read_fast_positions(self, mode: str | None = MODE_FAST) -> list[FastPositionRow]:
+        """The current open auto-trade book for `mode` (the daemon reloads it each day-step).
+        `mode=None` reads every mode's book — for display/lookup surfaces only, never for a
+        day-step (stepping a merged book would exit one mode's position under another's)."""
+        sql = f'SELECT {_cols(FAST_POSITION_COLUMNS)} FROM paper_position'
+        params: list = []
+        if mode is not None:
+            sql += ' WHERE "mode" = ?'
+            params.append(mode)
+        sql += ' ORDER BY "symbol"'
         return [
             FastPositionRow(
-                symbol=r[0], as_of=r[1], track=r[2], sector=r[3], board=r[4], tier=r[5],
-                tilt_kind=r[6], entry_date=r[7], entry_price=r[8], stop=r[9], target=r[10],
-                trail_pct=r[11], qty=r[12], risk_idr=r[13], entry_fee=r[14],
+                symbol=r[1], as_of=r[2], track=r[3], sector=r[4], board=r[5], tier=r[6],
+                tilt_kind=r[7], entry_date=r[8], entry_price=r[9], stop=r[10], target=r[11],
+                trail_pct=r[12], qty=r[13], risk_idr=r[14], entry_fee=r[15],
             )
-            for r in self._con.execute(sql).fetchall()
+            for r in self._con.execute(sql, params).fetchall()
         ]
 
-    def append_fast_trades(self, rows_in: Iterable[FastTradeRow]) -> int:
-        """Append closed Fast-Mode trades — ingest-once (a re-recorded (symbol, entry, exit)
-        is an exact-key no-op). The durable forward-paper record that feeds the ledger."""
+    def append_fast_trades(
+        self, rows_in: Iterable[FastTradeRow], mode: str = MODE_FAST
+    ) -> int:
+        """Append `mode`'s closed auto-trade trades — ingest-once (a re-recorded
+        (mode, symbol, entry, exit) is an exact-key no-op). The durable forward-paper record
+        that feeds that mode's RULE B lane."""
         rows = [
-            (r.symbol, r.entry_date, r.exit_date, r.as_of, r.track, r.tilt_kind, r.qty,
+            (mode, r.symbol, r.entry_date, r.exit_date, r.as_of, r.track, r.tilt_kind, r.qty,
              r.entry_price, r.exit_price, r.entry_fee, r.exit_fee, r.exit_reason,
              r.stop, r.risk_idr)
             for r in rows_in
         ]
         return self._insert("paper_trade", FAST_TRADE_COLUMNS, rows)
 
-    def read_fast_trades(self) -> list[FastTradeRow]:
-        """All closed Fast-Mode trades, oldest exit first (ledger accrual + EXITED verdict)."""
-        sql = (
-            f'SELECT {_cols(FAST_TRADE_COLUMNS)} FROM paper_trade '
-            'ORDER BY "exit_date", "symbol"'
-        )
+    def read_fast_trades(self, mode: str | None = MODE_FAST) -> list[FastTradeRow]:
+        """`mode`'s closed trades, oldest exit first (ledger accrual + EXITED verdict).
+        `mode=None` unions every mode — used by the pipeline's EXITED lookup, which must see
+        a Haste exit too; never by lane accrual, where mixing would cross-promote (RULE B)."""
+        sql = f'SELECT {_cols(FAST_TRADE_COLUMNS)} FROM paper_trade'
+        params: list = []
+        if mode is not None:
+            sql += ' WHERE "mode" = ?'
+            params.append(mode)
+        sql += ' ORDER BY "exit_date", "symbol"'
         return [
             FastTradeRow(
-                symbol=r[0], entry_date=r[1], exit_date=r[2], as_of=r[3], track=r[4],
-                tilt_kind=r[5], qty=r[6], entry_price=r[7], exit_price=r[8], entry_fee=r[9],
-                exit_fee=r[10], exit_reason=r[11], stop=r[12], risk_idr=r[13],
+                symbol=r[1], entry_date=r[2], exit_date=r[3], as_of=r[4], track=r[5],
+                tilt_kind=r[6], qty=r[7], entry_price=r[8], exit_price=r[9], entry_fee=r[10],
+                exit_fee=r[11], exit_reason=r[12], stop=r[13], risk_idr=r[14],
             )
-            for r in self._con.execute(sql).fetchall()
+            for r in self._con.execute(sql, params).fetchall()
         ]
 
-    def read_fast_mode_state(self) -> FastModeStateRow | None:
-        """The Fast-Mode run singleton (arm flag + carried §6 circuit state). None until set."""
+    def read_fast_mode_state(self, mode: str = MODE_FAST) -> FastModeStateRow | None:
+        """`mode`'s run state (arm flag + carried §6 circuit state). None until first armed."""
         sql = (
             f'SELECT {_cols(FAST_MODE_STATE_COLUMNS)} FROM fast_mode_state WHERE "key" = ?'
         )
-        r = self._con.execute(sql, [self._FAST_STATE_KEY]).fetchone()
+        r = self._con.execute(sql, [mode]).fetchone()
         if r is None:
             return None
         return FastModeStateRow(
@@ -467,8 +524,10 @@ class Store:
             realized_pnl=r[4], prev_equity=r[5], peak_equity=r[6],
         )
 
-    def write_fast_mode_state(self, state: FastModeStateRow) -> None:
-        """Upsert the Fast-Mode run singleton (the one mutable-in-place store row)."""
+    def write_fast_mode_state(
+        self, state: FastModeStateRow, mode: str = MODE_FAST
+    ) -> None:
+        """Upsert `mode`'s run state (the mutable-in-place row, one per auto-trader)."""
         sql = (
             f'INSERT INTO fast_mode_state ({_cols(FAST_MODE_STATE_COLUMNS)}) '
             "VALUES (?, ?, ?, ?, ?, ?, ?) "
@@ -478,7 +537,7 @@ class Store:
             '"prev_equity"=excluded."prev_equity", "peak_equity"=excluded."peak_equity"'
         )
         self._con.execute(sql, [
-            self._FAST_STATE_KEY, state.enabled, state.since_date, state.last_run_day,
+            mode, state.enabled, state.since_date, state.last_run_day,
             state.realized_pnl, state.prev_equity, state.peak_equity,
         ])
 

@@ -76,6 +76,7 @@ FEED_UNIVERSE_SCREENER = "universe_screener"  # run_scr0 → scr0_eligible
 FEED_INDEX_MEMBERSHIP = "index_membership"    # symbol_info.indexes → refresh_membership
 FEED_KSEI_OWNERSHIP = "ksei_ownership"        # ksei_ownership → store.write_ksei_ownership
 FEED_FAST_MODE = "fast_mode_autotrade"        # LD-11 auto paper-trade step (validation.fast_mode)
+FEED_HASTE_MODE = "haste_mode_autotrade"      # LD-12 same step, WATCH ∪ ARMED cohort
 FEED_PATTERN_OOS_ACCRUAL = "pattern_oos_accrual"  # LD-14 catalog OOS accrual (cache-only)
 
 MON = 0
@@ -105,6 +106,14 @@ FEED_SCHEDULES: tuple[FeedSchedule, ...] = (
     FeedSchedule(
         FEED_FAST_MODE,
         DailyAt(config.SCHEDULER_FAST_MODE_TIME, prior_trading_day=True),
+        Scope.UNIVERSE,
+    ),
+    # Haste Mode (LD-12) — the same auto-trade step over the WIDER `WATCH ∪ ARMED` cohort,
+    # a beat after Fast at 09:12. Only one of the two can be armed (`set_enabled` refuses the
+    # second), so at most one of these fires does work; the other is a durable no-op.
+    FeedSchedule(
+        FEED_HASTE_MODE,
+        DailyAt(config.SCHEDULER_HASTE_MODE_TIME, prior_trading_day=True),
         Scope.UNIVERSE,
     ),
     # Pattern-catalog OOS accrual (LD-14, slice 21) — MONTHLY, cache-only. Appends new

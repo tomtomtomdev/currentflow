@@ -58,6 +58,7 @@ from currentflow.validation.runner import (
     _prev_close,
     _traded_bars,
     assert_regime_clamped,
+    in_entry_cohort,
 )
 from currentflow.validation.trade import PaperTrade
 
@@ -69,11 +70,14 @@ class PortfolioConfig:
     `equity` is the fixed sizing base (§6 `equity × 1%`). `max_concurrent` caps the number
     of simultaneously-open names; `None` = emergent (the spec-faithful default, no cap).
     `fast_mode` (LD-11) flips every entry to buy-on-ARMED-at-once (no trigger / no R:R gate)
-    — applied portfolio-wide to the specs at the start of a run."""
+    — applied portfolio-wide to the specs at the start of a run. `include_watch` (LD-12
+    Haste Mode) additionally drops the arming cut, widening the cohort to WATCH ∪ ARMED;
+    RULE A + §5 still bind (see `runner.in_entry_cohort`)."""
 
     equity: float = 1_000_000_000.0
     max_concurrent: int | None = None
     fast_mode: bool = False
+    include_watch: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,19 +133,22 @@ def _symbol_cfg(spec: RunConfig, equity: float, portfolio: Portfolio, circuit: C
 def _rank_candidates(
     store, specs: dict[str, RunConfig], book: dict[str, _Held], day: Date
 ) -> list[str]:
-    """ARMED names with an entry signal, NOT already held, ordered by INTERNAL SMS desc.
+    """In-cohort names with an entry signal, NOT already held, ordered by INTERNAL SMS desc.
 
     RULE B: `internal_score` is used only to order entries — it is never returned or shown.
-    A name always needs `engine.armed` (phase C/D + SMS≥70 + no veto). The standard path
-    additionally needs a valid R:R≥2:1 Spring/LPS trigger; **Fast Mode (LD-11, per spec)
-    drops the trigger + R:R gate** so every coherent ARMED name is a candidate."""
+    Ordering by it is legitimate even for the Haste cohort, where the score is *below* the
+    arming cut: it ranks who gets a scarce §6 slot first, and is never displayed.
+
+    Cohort (`runner.in_entry_cohort`): `ARMED` by default; `WATCH ∪ ARMED` under LD-12 Haste.
+    Entry signal: the standard path needs a valid R:R≥2:1 Spring/LPS trigger; **Fast/Haste
+    Mode (LD-11/12) drop the trigger + R:R gate** so every coherent in-cohort name qualifies."""
     dts = _decision_ts(day)
     scored: list[tuple[float, str]] = []
     for sym, spec in specs.items():
         if sym in book:
             continue
         res = engine_evaluate(store, sym, dts, track=spec.track, registry=spec.registry)
-        if not res.armed:
+        if not in_entry_cohort(res, spec.include_watch):
             continue
         analyze = trigger_fast_analyze if spec.fast_mode else trigger_analyze
         sig = analyze(store, sym, dts, res.phase)
@@ -254,15 +261,23 @@ def run_portfolio_forward(
 
     `specs` maps each candidate symbol → its `RunConfig` (track, tilt, sector, board,
     adv20, registry); the per-run equity comes from `cfg` and overrides each spec's.
-    `cfg.fast_mode` (LD-11) applies the buy-on-ARMED-at-once entry to every spec."""
+    `cfg.fast_mode` (LD-11) applies the buy-on-ARMED-at-once entry to every spec;
+    `cfg.include_watch` (LD-12) widens every spec's cohort to WATCH ∪ ARMED."""
     days = sorted(trading_days)
     # A portfolio spanning both tracks clamps at the Track B boundary — the later/stricter
     # of the two (REGIME.md §1). With only Track A specs it clamps at the Track A boundary.
     if specs:
         clamp_track = "B" if any(s.track == "B" for s in specs.values()) else "A"
         assert_regime_clamped(days, clamp_track)
-    if cfg.fast_mode:
-        specs = {sym: replace(spec, fast_mode=True) for sym, spec in specs.items()}
+    if cfg.fast_mode or cfg.include_watch:
+        specs = {
+            sym: replace(
+                spec,
+                fast_mode=spec.fast_mode or cfg.fast_mode,
+                include_watch=spec.include_watch or cfg.include_watch,
+            )
+            for sym, spec in specs.items()
+        }
     bars_idx = {sym: _traded_bars(store, sym) for sym in specs}
 
     book: dict[str, _Held] = {}

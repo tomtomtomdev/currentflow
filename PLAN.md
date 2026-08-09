@@ -576,7 +576,7 @@ only; RULE A (phase gate) and RULE B (presentation gate) unchanged.**
 - [x] ledger: `fast_mode` promotes OBS→VALIDATING→VALIDATED; `sms`/`ai_ranking`/`daily_top` NOT
       promoted; aggregate number withheld until validated; pipeline EXITED cell shows P&L, no score leak.
 
-## Slice 16 — Haste Mode auto paper-trader  ⬜  (spec v1.5, LD-12)
+## Slice 16 — Haste Mode auto paper-trader  ✅  (spec v1.5, LD-12)
 
 **Operational slice (bootstraps off the Fast Mode auto-trader; not a new engine phase).** Haste Mode
 is **Fast Mode with a wider candidate cohort**: it drops the `SMS ≥ 70` (`ARMED@70`) arming cut and
@@ -600,16 +600,16 @@ RULE A (phase gate) and RULE B (presentation gate) unchanged.**
 
 **Cohort — the one behavioral change (2 sites, reusing the proven `{ARMED, WATCH}` predicate from
 `scheduler/runner.py:81`):**
-- [ ] `validation/portfolio_runner.py` `_rank_candidates` (line ~143): `if not res.armed:` →, when a new
+- [x] `validation/portfolio_runner.py` `_rank_candidates` (line ~143): `if not res.armed:` →, when a new
       `PortfolioConfig.include_watch` is set, `if res.state not in (EngineState.ARMED, EngineState.WATCH): continue`.
       Ranking by internal SMS desc unchanged (RULE B: ordering only). Entry geometry (`fast_analyze`) unchanged.
-- [ ] `validation/runner.py` `_attempt_entry` (line ~108): same widening behind `RunConfig.include_watch`.
-- [ ] `config.py`: `HASTE_MODE_ENABLED=False` (symmetry; durable state row is the effective flag),
+- [x] `validation/runner.py` `_attempt_entry` (line ~108): same widening behind `RunConfig.include_watch`.
+- [x] `config.py`: `HASTE_MODE_ENABLED=False` (symmetry; durable state row is the effective flag),
       `SCHEDULER_HASTE_MODE_TIME=time(9,12)` (a beat after Fast's 9:10); reuse `FAST_MODE_LIMIT_PREMIUM`/
       `STOP_BUFFER`/`TARGET_MEASURED_MOVE_MULT`/`LIMIT_UNDERCUT` (identical geometry).
 
 **Persistence — add a `mode` discriminator (the one place Fast Mode isn't parameterized):**
-- [ ] `store/`: add `mode` (default `"FAST"`) to `paper_trade` (required — lane accrual filters by mode)
+- [x] `store/`: add `mode` (default `"FAST"`) to `paper_trade` (required — lane accrual filters by mode)
       and `fast_mode_state` key (required — per-lane RULE B `since_date` clock; replace the single
       `"singleton"` key with a per-mode key), + `paper_position` (per-mode open book). Thread a
       `mode="FAST"` arg through the `read/replace_fast_positions`/`read/append_fast_trades`/
@@ -617,30 +617,30 @@ RULE A (phase gate) and RULE B (presentation gate) unchanged.**
       tables is undesirable: parallel `haste_*` tables — more duplication, zero Fast risk.)*
 
 **Driver + lane + scheduler:**
-- [ ] `validation/fast_mode.py`: parametrize `run_fast_mode_step`/`set_enabled`/`accrue_*` by `mode`;
+- [x] `validation/fast_mode.py`: parametrize `run_fast_mode_step`/`set_enabled`/`accrue_*` by `mode`;
       `HASTE_MODE_MODULE="haste_mode"` sibling to `FAST_MODE_MODULE`; `mode="HASTE"` selects
       `include_watch=True` + the `haste_mode` lane + the per-mode state key; entry via `fast_detect`
       unchanged; `set_enabled` refuses arming Haste while Fast is armed (and vice-versa).
-- [ ] `validation/state.py`: add `"haste_mode"` to `GATED_MODULES` (promotion.py unchanged — lane is the key).
-- [ ] `scheduler/schedule.py`: `FEED_HASTE_MODE` + `FeedSchedule(DailyAt(SCHEDULER_HASTE_MODE_TIME,
+- [x] `validation/state.py`: add `"haste_mode"` to `GATED_MODULES` (promotion.py unchanged — lane is the key).
+- [x] `scheduler/schedule.py`: `FEED_HASTE_MODE` + `FeedSchedule(DailyAt(SCHEDULER_HASTE_MODE_TIME,
       prior_trading_day=True), Scope.UNIVERSE)` after the Fast entry; `scheduler/runner.py` `_act_haste_mode`
       mirroring `_act_fast_mode` + an `_ACTIONS` entry (fail-loud-401 + durable state come free).
 
 **UI + CLI:**
-- [ ] `ui/fast_mode_view.py` parametrized by mode (or a thin `haste_mode_view`); `ui/app.py` Haste
+- [x] `ui/fast_mode_view.py` parametrized by mode (or a thin `haste_mode_view`); `ui/app.py` Haste
       arm/disarm toggle + book panel mirroring `_toggle_fast_mode`/`_render_fast_mode_panel`; extend
       `_fast_exits` to union both modes' closed trades so Haste exits also surface as `EXITED`.
-- [ ] `run.sh haste` (clone the `fast` block) → `python -m currentflow.haste` (`enable`/`disable`/
+- [x] `run.sh haste` (clone the `fast` block) → `python -m currentflow.haste` (`enable`/`disable`/
       `status`/`run [--day] [--db]`, mirroring `currentflow/fast/__main__.py`).
 
 **Tests (TDD):**
-- [ ] **firewall (the crux):** a `WATCH` name (C/D, no veto, SMS<70) enters under Haste, is skipped by
+- [x] **firewall (the crux):** a `WATCH` name (C/D, no veto, SMS<70) enters under Haste, is skipped by
       Fast and by the standard [6] path; a `GATE_REJECTED` and a `VETOED` name are **never** entered
       under Haste (RULE A + §5 hold).
-- [ ] exit reconciles with the shared fill engine on a one-name run; §6 caps/breakers still bind;
+- [x] exit reconciles with the shared fill engine on a one-name run; §6 caps/breakers still bind;
       persistence survives restart (no double-entry) + reconciles net P&L; scheduler fires after EOD /
       fails loud on 401 / no-ops when disarmed; arming is mutually exclusive with Fast.
-- [ ] ledger: `haste_mode` promotes OBS→VALIDATING→VALIDATED; `fast_mode`/`sms`/`ai_ranking`/`daily_top`
+- [x] ledger: `haste_mode` promotes OBS→VALIDATING→VALIDATED; `fast_mode`/`sms`/`ai_ranking`/`daily_top`
       NOT promoted; aggregate withheld until validated; pipeline EXITED cell shows P&L, no score leak.
 
 ## Slice 17 — KSEI Institutional-Ownership Delta  ⬜  (spec v1.6, LD-13)

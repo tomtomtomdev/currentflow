@@ -1,4 +1,9 @@
-"""Fast Mode book view-model (spec §9, LD-11) — pure data shaping, no Streamlit.
+"""Auto-trader book view-model (spec §9, LD-11 + LD-12) — pure data shaping, no Streamlit.
+
+One model serves both auto-traders; `mode` selects which book it reads and which RULE B lane
+gates its aggregate (`MODE_FAST` → `fast_mode`, `MODE_HASTE` → `haste_mode`). The two books are
+disjoint by construction (the store's mode discriminator), so a Haste trade can never inflate
+the Fast record — or promote its lane.
 
 Surfaces the auto paper-trader's state for the operator:
   * the **open book** — positions with entry / stop / target and a mark-to-latest-close
@@ -6,9 +11,9 @@ Surfaces the auto paper-trader's state for the operator:
     Risk-Monitor precedent);
   * **closed trades** — each with net-of-fee realized P&L (a fact — what the paper engine
     actually did);
-  * **RULE B accrual** — months / `PAPER_VALIDATION_MONTHS` and trade count toward the
-    `fast_mode` lane's validation. The strategy's **aggregate** hit-rate / expectancy is the
-    promotable claim and is **withheld** (`•••`) until the lane is VALIDATED (via `gated_display`,
+  * **RULE B accrual** — months / `PAPER_VALIDATION_MONTHS` and trade count toward THAT MODE's
+    lane validation. The strategy's **aggregate** hit-rate / expectancy is the promotable claim
+    and is **withheld** (`•••`) until the lane is VALIDATED (via `gated_display`,
     server-authoritative — never a client toggle).
 
 Every number here is either a stored fact (realized/marked P&L) or a gated claim (aggregate
@@ -20,7 +25,8 @@ from __future__ import annotations
 from datetime import datetime
 
 from currentflow import config
-from currentflow.validation.fast_mode import FAST_MODE_MODULE, _months_since
+from currentflow.store.schema import MODE_FAST, MODE_HASTE
+from currentflow.validation.fast_mode import _months_since, module_for
 from currentflow.validation.state import ModuleState, gated_display
 
 _FAR_FUTURE = datetime(2100, 1, 1)
@@ -32,11 +38,11 @@ def _latest_close(store, symbol: str) -> float | None:
     return bars[-1].close if bars else None
 
 
-def open_rows(store) -> list[dict]:
-    """The open Fast-Mode book with a mark-to-latest-close unrealized P&L (fact, not forecast).
+def open_rows(store, mode: str = MODE_FAST) -> list[dict]:
+    """`mode`'s open book with a mark-to-latest-close unrealized P&L (fact, not forecast).
     `unrealized_pnl` is None when no mark is available (missing ≠ zero)."""
     out: list[dict] = []
-    for p in store.read_fast_positions():
+    for p in store.read_fast_positions(mode=mode):
         mark = _latest_close(store, p.symbol)
         unreal = (mark - p.entry_price) * p.qty if mark is not None else None
         out.append({
@@ -47,9 +53,9 @@ def open_rows(store) -> list[dict]:
     return out
 
 
-def closed_rows(store) -> list[dict]:
-    """Closed Fast-Mode trades, newest exit first — each with net-of-fee realized P&L (fact)."""
-    rows = store.read_fast_trades()
+def closed_rows(store, mode: str = MODE_FAST) -> list[dict]:
+    """`mode`'s closed trades, newest exit first — each with net-of-fee realized P&L (fact)."""
+    rows = store.read_fast_trades(mode=mode)
     out = [
         {
             "symbol": t.symbol, "track": t.track, "entry_date": t.entry_date,
@@ -64,19 +70,21 @@ def closed_rows(store) -> list[dict]:
     return out
 
 
-def build_view(store, ledger, *, now: datetime) -> dict:
-    """The whole Fast-Mode panel model: arm state, open book, closed trades, RULE B accrual.
+def build_view(store, ledger, *, now: datetime, mode: str = MODE_FAST) -> dict:
+    """The whole panel model for one auto-trader: arm state, open book, closed trades, accrual.
 
-    The aggregate hit-rate / expectancy is a *claim* — routed through `gated_display` on the
-    `fast_mode` lane, so it reads `•••` until the ledger promotes the module."""
-    state = store.read_fast_mode_state()
-    opens = open_rows(store)
-    closes = closed_rows(store)
+    The aggregate hit-rate / expectancy is a *claim* — routed through `gated_display` on THAT
+    MODE's lane, so it reads `•••` until the ledger promotes that module. Fast and Haste gate
+    independently: validating one reveals nothing about the other."""
+    module = module_for(mode)
+    state = store.read_fast_mode_state(mode=mode)
+    opens = open_rows(store, mode)
+    closes = closed_rows(store, mode)
 
     realized = sum(c["net_pnl"] for c in closes)          # fact — sum of what happened
     unreal = sum(c["unrealized_pnl"] or 0.0 for c in opens)
     months = _months_since(state.since_date if state else None, now)
-    module_state = ledger.state(FAST_MODE_MODULE) if ledger is not None else ModuleState.OBSERVATION_ONLY
+    module_state = ledger.state(module) if ledger is not None else ModuleState.OBSERVATION_ONLY
     registry = ledger.states() if ledger is not None else None
 
     n = len(closes)
@@ -84,7 +92,11 @@ def build_view(store, ledger, *, now: datetime) -> dict:
     hit_rate = (wins / n) if n else None                  # claim — gated until validated
     expectancy = (realized / n) if n else None            # claim — gated until validated
 
+    cohort = "WATCH + ARMED" if mode == MODE_HASTE else "ARMED"
     return {
+        "mode": mode,
+        "module": module,
+        "cohort": cohort,
         "enabled": bool(state.enabled) if state else False,
         "since_date": state.since_date if state else None,
         "last_run_day": state.last_run_day if state else None,
@@ -102,13 +114,14 @@ def build_view(store, ledger, *, now: datetime) -> dict:
         "validated": module_state is ModuleState.VALIDATED,
         # claims — withheld (`•••`) until the fast_mode lane is VALIDATED:
         "hit_rate_display": gated_display(
-            FAST_MODE_MODULE, hit_rate, registry=registry, fmt="{:.0%}"
+            module, hit_rate, registry=registry, fmt="{:.0%}"
         ),
         "expectancy_display": gated_display(
-            FAST_MODE_MODULE, expectancy, registry=registry, fmt="IDR {:,.0f}"
+            module, expectancy, registry=registry, fmt="IDR {:,.0f}"
         ),
         "framing": (
-            "Auto paper-trade record — observations only. Aggregate hit-rate / expectancy is "
-            "withheld until this lane clears forward-paper validation (RULE B)."
+            f"Auto paper-trade record ({cohort} cohort) — observations only. Aggregate "
+            "hit-rate / expectancy is withheld until this lane clears forward-paper "
+            "validation (RULE B)."
         ),
     }

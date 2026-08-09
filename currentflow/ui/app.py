@@ -81,6 +81,7 @@ from currentflow.ui import shell
 from currentflow.ui.sector_view import scatter_points, sector_rows
 from currentflow.ui.sms_view import GATE_BANNER, WATCHLIST_FRAMING, component_rows, score_display, state_label
 from currentflow.ui import catalog_view, daily_top_view, fast_mode_view, ml_view, pipeline_view, ranking_view, timemachine, watchlist_view
+from currentflow.store.schema import MODE_FAST, MODE_HASTE
 from currentflow.validation import fast_mode as fast_mode_mod
 from currentflow.validation.promotion import ValidationLedger
 
@@ -1543,11 +1544,16 @@ def _last_close_and_change(bars) -> tuple[float | None, float | None]:
 
 
 def _fast_exits(store: Store) -> dict[str, dict]:
-    """Most-recent closed Fast-Mode trade per name that is NOT currently open — the source
-    of the pipeline's EXITED verdict (v1.4, LD-11). Realized net-of-fee P&L is a fact."""
-    open_syms = {p.symbol for p in store.read_fast_positions()}
+    """Most-recent closed auto-trade per name that is NOT currently open — the source of the
+    pipeline's EXITED verdict (v1.4/LD-11, v1.5/LD-12). Realized net-of-fee P&L is a fact.
+
+    Unions BOTH auto-traders (`mode=None`): only one is armed at a time, but a name exited
+    under Fast and a name exited under Haste are both genuinely EXITED, and a book left behind
+    by a since-disarmed mode still holds real closed trades. Scoping this to one mode would
+    silently drop the other's exits from the pipeline."""
+    open_syms = {p.symbol for p in store.read_fast_positions(mode=None)}
     latest: dict[str, dict] = {}
-    for t in store.read_fast_trades():  # oldest first → last per symbol = most recent exit
+    for t in store.read_fast_trades(mode=None):  # oldest first → last per symbol = latest exit
         latest[t.symbol] = {
             "pnl": (t.exit_price - t.entry_price) * t.qty - (t.entry_fee + t.exit_fee),
             "reason": t.exit_reason,
@@ -1614,39 +1620,70 @@ _EVIDENCE_TABS = (
 )
 
 
-def _toggle_fast_mode(store: Store) -> None:
-    """Arm/disarm callback for the Fast-Mode toggle (writes the server-authoritative state)."""
-    fast_mode_mod.set_enabled(store, bool(st.session_state.get("cf_fast_toggle", False)))
+_AUTO_TRADER_UI = {
+    MODE_FAST: {
+        "key": "cf_fast_toggle",
+        "title": "⚡ Fast Mode — auto paper-trade the ARMED watchlist (LD-11 · paper only)",
+        "toggle": "Arm Fast Mode — auto paper-buy every ARMED name at once; same §8 exit strategy",
+        "label": "Fast-Mode",
+    },
+    MODE_HASTE: {
+        "key": "cf_haste_toggle",
+        "title": "⚡⚡ Haste Mode — auto paper-trade WATCH + ARMED (LD-12 · paper only)",
+        "toggle": (
+            "Arm Haste Mode — auto paper-buy every WATCH *and* ARMED name (no arming cut); "
+            "same §8 exit strategy"
+        ),
+        "label": "Haste-Mode",
+    },
+}
 
 
-def _render_fast_mode_panel(store: Store) -> None:
-    """Fast Mode (LD-11) control + book: the arm/disarm toggle, open/closed positions with
-    realized/unrealized P&L (facts), and RULE B accrual toward the `fast_mode` lane. The
-    aggregate hit-rate / expectancy is withheld (`•••`) until the lane validates."""
+def _toggle_auto_trader(store: Store, mode: str) -> None:
+    """Arm/disarm callback for an auto-trader toggle (writes the server-authoritative state).
+
+    Fast xor Haste: `set_enabled` refuses arming one while the other is armed. Surface that
+    refusal and snap the toggle back — never leave the widget showing an arm that didn't happen."""
+    ui = _AUTO_TRADER_UI[mode]
+    want = bool(st.session_state.get(ui["key"], False))
+    try:
+        fast_mode_mod.set_enabled(store, want, mode=mode)
+        st.session_state.pop("cf_auto_trader_error", None)
+    except fast_mode_mod.ModeConflictError as e:
+        st.session_state[ui["key"]] = not want          # the write did not happen
+        st.session_state["cf_auto_trader_error"] = str(e)
+
+
+def _render_auto_trader_panel(store: Store, mode: str = MODE_FAST) -> None:
+    """One auto-trader's control + book (LD-11 Fast / LD-12 Haste): the arm/disarm toggle,
+    open/closed positions with realized/unrealized P&L (facts), and RULE B accrual toward
+    THAT MODE's lane. The aggregate hit-rate / expectancy is withheld (`•••`) until that lane
+    validates — the two gate independently."""
+    ui = _AUTO_TRADER_UI[mode]
     led = _ledger()
-    fast_mode_mod.accrue_fast_mode(store, led, now=datetime.now())  # derive state from facts
-    view = fast_mode_view.build_view(store, led, now=datetime.now())
+    now = datetime.now()
+    fast_mode_mod.accrue_mode(store, led, mode=mode, now=now)   # derive state from facts
+    view = fast_mode_view.build_view(store, led, now=now, mode=mode)
 
     open_default = bool(view["enabled"] or view["n_open"] or view["n_closed"])
-    with st.expander(
-        "⚡ Fast Mode — auto paper-trade the ARMED watchlist (LD-11 · paper only)",
-        expanded=open_default,
-    ):
+    with st.expander(ui["title"], expanded=open_default):
         st.caption(view["framing"])
         # The book is a live record read at real now, and arming is a WRITE — neither
         # rewinds. Disable the control rather than let a rewound screen change live state.
         rewound = _asof_day() is not None
         if rewound:
             st.caption(
-                ":violet[Time Machine active — the Fast-Mode book below is live (as of now), "
-                "not as of the rewound date, and arming is disabled while rewound.]"
+                f":violet[Time Machine active — the {ui['label']} book below is live (as of "
+                "now), not as of the rewound date, and arming is disabled while rewound.]"
             )
         st.toggle(
-            "Arm Fast Mode — auto paper-buy every ARMED name at once; same §8 exit strategy",
-            value=view["enabled"], key="cf_fast_toggle",
-            on_change=_toggle_fast_mode, args=(store,),
+            ui["toggle"],
+            value=view["enabled"], key=ui["key"],
+            on_change=_toggle_auto_trader, args=(store, mode),
             disabled=rewound,
         )
+        if err := st.session_state.get("cf_auto_trader_error"):
+            st.warning(err)
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Open", view["n_open"])
         c2.metric("Closed", view["n_closed"])
@@ -1771,10 +1808,13 @@ def _render_pipeline(store: Store) -> None:
         st.warning(_no_data_note("No data"))
         return
 
-    _render_fast_mode_panel(store)  # v1.4 (LD-11): the auto paper-trade book + arm state
+    # The two auto-traders (v1.4/LD-11 ARMED-only, v1.5/LD-12 WATCH+ARMED). Both panels
+    # always render — each shows its own book and lane — but only one can be armed.
+    _render_auto_trader_panel(store, MODE_FAST)
+    _render_auto_trader_panel(store, MODE_HASTE)
 
     decision_ts = _decision_ts()
-    # The Fast-Mode book is a live record and does not rewind (named in the banner
+    # The auto-trade books are a live record and do not rewind (named in the banner
     # caveats), so a rewound pipeline shows no EXITED verdict rather than a future one.
     exits = {} if asof is not None else _fast_exits(store)
     candidates = [

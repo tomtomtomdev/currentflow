@@ -320,6 +320,16 @@ FAST_MODE_ENABLED = False          # global default; the durable fast_mode_state
 # so the next-open fill lands at/under the limit (honest under ARA/ARB, §12). Small by design.
 FAST_MODE_LIMIT_PREMIUM = 0.005    # 0.5% above the reference close
 
+# --- Haste Mode (spec §6, LD-12; slice 16) -------------------------------------------
+# Fast Mode with a WIDER COHORT: it additionally drops the `ARMED@70` arming cut and enters
+# the `WATCH ∪ ARMED` set — every name that already cleared the RULE A phase gate (C/D) and
+# the §5 veto layer, at any internal SMS. RULE A + §5 still bind by construction (both
+# rejected states live upstream of the WATCH/ARMED split). Entry geometry, §6 sizing/caps/
+# breakers and the §8 exit are IDENTICAL to Fast Mode — it reuses FAST_MODE_LIMIT_PREMIUM,
+# STOP_BUFFER, TARGET_MEASURED_MOVE_MULT and LIMIT_UNDERCUT unchanged. Paper only (§15).
+# Off by default; one auto-trader (Fast xor Haste) is armed at a time over the shared book.
+HASTE_MODE_ENABLED = False         # global default; the durable per-mode state row overrides it
+
 # --- Execution: sizing / order gen (spec §6; slice 7) --------------------------------
 RISK_PCT = 0.01                    # position risk locked at 1% of equity (IDX manipulation tax)
 LOT_SIZE = 100                     # IDX board lot = 100 shares (§12)
@@ -430,6 +440,9 @@ SCHEDULER_SCREENER_TIME = time(9, 5)
 # Fast Mode (LD-11) auto-trade step fires a beat AFTER the EOD ingest + screener refresh so
 # it reads the day's freshly-cached bars/broker + universe. Prior completed trading day.
 SCHEDULER_FAST_MODE_TIME = time(9, 10)
+# Haste Mode (LD-12) fires a beat after Fast. Only one of the two can be armed, so at most
+# one of these steps ever does work — the other is a durable no-op.
+SCHEDULER_HASTE_MODE_TIME = time(9, 12)
 # The loop wakes this often to ask each feed "due?" against durable run-state. A tick
 # that finds nothing due (or is outside the window) is a cheap no-op.
 SCHEDULER_TICK_SECONDS = 60
