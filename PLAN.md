@@ -504,7 +504,7 @@ these before the pipeline is considered complete:
   assembly helper (SymbolInfo / corp_actions / board / coverage) and feed the real `GateDecision`
   into the gate cell so all §3 rejections surface, not just the floor.
 
-## Slice 15 — Fast Mode auto paper-trader  ⬜  (spec v1.4, LD-11)
+## Slice 15 — Fast Mode auto paper-trader  ✅  (spec v1.4, LD-11)
 
 **Operational slice (bootstraps off the paper-trade system; not a new engine phase).** An
 operator-armed, hands-off auto paper-trader that **buys every ARMED watchlist name at once** — no
@@ -519,36 +519,36 @@ only; RULE A (phase gate) and RULE B (presentation gate) unchanged.**
 > the trigger-based modules (RULE B honesty — a different entry policy earns its own validation).
 
 **Docs (first — spec bump before divergent code, per CLAUDE.md):**
-- [ ] `LOCKED_SPEC.md` → **v1.4**: LD-11 + §6 Fast Mode entry + §8 exit note + §2 pipeline branch +
+- [x] `LOCKED_SPEC.md` → **v1.4**: LD-11 + §6 Fast Mode entry + §8 exit note + §2 pipeline branch +
       §9 gated module + §11 operational slice + §13 acceptance + §15 disclaimer + title/footer. *(done)*
-- [ ] `PROGRESS.md`: decisions-log v1.4 row; `fast_mode` module → OBSERVATION_ONLY (0/3).
+- [x] `PROGRESS.md`: decisions-log v1.4 row; `fast_mode` module → OBSERVATION_ONLY (0/3).
 
 **Entry geometry — the crux (no trigger):** reuse `TriggerSignal` so downstream is untouched.
-- [ ] `execution/trigger.py` `fast_detect(...)` + `TriggerKind.FAST_ARMED`: entry = ARMED-day close ×
+- [x] `execution/trigger.py` `fast_detect(...)` + `TriggerKind.FAST_ARMED`: entry = ARMED-day close ×
       `(1 + FAST_MODE_LIMIT_PREMIUM)` (marketable limit); stop = `rng.support × (1 − STOP_BUFFER)`
       (invalidation); target = `rng.resistance` (C) / `+ measured move` (D); `rr` computed;
       **`valid = stop < entry` only — no R:R ≥ 2:1 gate.** No coherent range → skip (missing ≠ invented).
-- [ ] `config.py`: `FAST_MODE_LIMIT_PREMIUM`, `FAST_MODE_ENABLED=False` (opt-in), `SCHEDULER_FAST_MODE_TIME`.
+- [x] `config.py`: `FAST_MODE_LIMIT_PREMIUM`, `FAST_MODE_ENABLED=False` (opt-in), `SCHEDULER_FAST_MODE_TIME`.
 
 **Reuse the auto-trader + single-day stepper:**
-- [ ] `validation/runner.py`: `RunConfig.fast_mode` selects `fast_detect` vs `trigger.analyze`;
+- [x] `validation/runner.py`: `RunConfig.fast_mode` selects `fast_detect` vs `trigger.analyze`;
       `_attempt_exit` **unchanged** (same exit strategy).
-- [ ] `validation/portfolio_runner.py`: `PortfolioConfig.fast_mode`; `_rank_candidates` fast branch
+- [x] `validation/portfolio_runner.py`: `PortfolioConfig.fast_mode`; `_rank_candidates` fast branch
       (ranking still internal-SMS descending, RULE B ordering only; §6 caps + breakers still bind);
       extract the day-loop body into `step_day(...)` reused by the batch loop **and** the live daemon.
 
 **Persistence (new store tables — facts, keyed on dates + `as_of` for audit, no look-ahead firewall):**
-- [ ] `store/`: `paper_position` (durable open book: enough to run the §8 exit + build the closed
+- [x] `store/`: `paper_position` (durable open book: enough to run the §8 exit + build the closed
       `PaperTrade` incl. entry cash-flow/fee so net P&L reconciles), `paper_trade` (closed trades,
       idempotent insert), `fast_mode_state` (`enabled`, `since_date`) — follow the `scheduler_runs`
       columns/Row/DDL/write/read pattern.
 
 **Driver + scheduler + RULE B lane:**
-- [ ] `validation/fast_mode.py` `run_fast_mode_step(store, day, cfg)`: no-op if disabled; load book;
+- [x] `validation/fast_mode.py` `run_fast_mode_step(store, day, cfg)`: no-op if disabled; load book;
       build specs from ARMED scope; `step_day`; persist book + trades; feed
       `ValidationLedger.record_forward_paper("fast_mode", ...)`.
-- [ ] `validation/state.py`: add `"fast_mode"` to `GATED_MODULES`.
-- [ ] `scheduler/schedule.py`: `FEED_FAST_MODE` + `FeedSchedule(DailyAt(SCHEDULER_FAST_MODE_TIME,
+- [x] `validation/state.py`: add `"fast_mode"` to `GATED_MODULES`.
+- [x] `scheduler/schedule.py`: `FEED_FAST_MODE` + `FeedSchedule(DailyAt(SCHEDULER_FAST_MODE_TIME,
       prior_trading_day=True), Scope.UNIVERSE)` after `eod_ingest` (candidate pool = SCR-0 universe;
       the ARMED filter + fast entry run inside the step at the look-ahead-safe decision_ts, so the
       candidate set is resolved consistently — not at real-time `now`); `scheduler/runner.py` action
@@ -556,24 +556,24 @@ only; RULE A (phase gate) and RULE B (presentation gate) unchanged.**
       state come free from the tick loop).
 
 **UI + EXITED:**
-- [ ] `ui/fast_mode_view.py`: open book, closed trades (per-trade realized P&L = observation),
+- [x] `ui/fast_mode_view.py`: open book, closed trades (per-trade realized P&L = observation),
       accrual `n/3` months; aggregate expectancy/hit-rate **gated** via `state.gated_display`.
-- [ ] `ui/app.py`: arm/disarm toggle in the rail control zone; book panel in main col; resolve the
+- [x] `ui/app.py`: arm/disarm toggle in the rail control zone; book panel in main col; resolve the
       `_candidate` EXITED seam.
-- [ ] `ui/pipeline_view.py` `_row` EXITED branch (read closed `paper_trade`) → `REV` cell + realized
+- [x] `ui/pipeline_view.py` `_row` EXITED branch (read closed `paper_trade`) → `REV` cell + realized
       P&L; `ui/shell.py` `_RESULT_STYLE["EXITED"]` + P&L element in `pipeline_row_html`.
 
 **CLI:**
-- [ ] `run.sh fast` (clone `schedule`) → `python -m currentflow.fast` (`enable`/`disable`/`--once`,
+- [x] `run.sh fast` (clone `schedule`) → `python -m currentflow.fast` (`enable`/`disable`/`--once`,
       mirror `scheduler/__main__.py`).
 
 **Tests (TDD):**
-- [ ] fast entry: enters no-trigger; stop=support−buffer; R:R<2:1 still enters (vs standard skip);
+- [x] fast entry: enters no-trigger; stop=support−buffer; R:R<2:1 still enters (vs standard skip);
       incoherent range skips.
-- [ ] exit unchanged: reconciles with `runner.run_forward` exit on a one-name run (shared fill engine).
-- [ ] §6 caps/breakers still bind; persistence survives restart (no double-entry) + reconciles net P&L;
+- [x] exit unchanged: reconciles with `runner.run_forward` exit on a one-name run (shared fill engine).
+- [x] §6 caps/breakers still bind; persistence survives restart (no double-entry) + reconciles net P&L;
       scheduler fires after EOD / fails loud on 401 / no-ops when disabled.
-- [ ] ledger: `fast_mode` promotes OBS→VALIDATING→VALIDATED; `sms`/`ai_ranking`/`daily_top` NOT
+- [x] ledger: `fast_mode` promotes OBS→VALIDATING→VALIDATED; `sms`/`ai_ranking`/`daily_top` NOT
       promoted; aggregate number withheld until validated; pipeline EXITED cell shows P&L, no score leak.
 
 ## Slice 16 — Haste Mode auto paper-trader  ⬜  (spec v1.5, LD-12)
