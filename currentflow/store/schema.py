@@ -275,14 +275,24 @@ class SchedulerRunRow:
 # skip the `as_of < decision_ts` look-ahead firewall (a closed trade is a fact, not a
 # point-in-time signal read). `exit_reason` is a free VARCHAR (values from
 # execution.risk.ExitReason), mirroring scheduler_runs.outcome — no cross-package CHECK.
+#
+# The two auto-trader modes. Defined here (not in `validation`) so the store can key its rows
+# without importing upward: "FAST" = LD-11, ARMED-only; "HASTE" = LD-12, WATCH ∪ ARMED.
+MODE_FAST = "FAST"
+MODE_HASTE = "HASTE"
+
+# `mode` (slice 16, LD-12) is the auto-trader discriminator — "FAST" (LD-11, ARMED-only) or
+# "HASTE" (LD-12, WATCH ∪ ARMED). The two share these tables but never share a book: every
+# read/write filters by mode, so a Haste position can't be exited or accrued as a Fast one,
+# and each mode promotes its own RULE B lane. It leads the primary key for that reason.
 FAST_POSITION_COLUMNS: tuple[str, ...] = (
-    "symbol", "as_of", "track", "sector", "board", "tier", "tilt_kind",
+    "mode", "symbol", "as_of", "track", "sector", "board", "tier", "tilt_kind",
     "entry_date", "entry_price", "stop", "target", "trail_pct", "qty",
     "risk_idr", "entry_fee",
 )
 
 FAST_TRADE_COLUMNS: tuple[str, ...] = (
-    "symbol", "entry_date", "exit_date", "as_of", "track", "tilt_kind", "qty",
+    "mode", "symbol", "entry_date", "exit_date", "as_of", "track", "tilt_kind", "qty",
     "entry_price", "exit_price", "entry_fee", "exit_fee", "exit_reason",
     "stop", "risk_idr",
 )
@@ -339,9 +349,10 @@ class FastTradeRow:
 
 @dataclass(frozen=True, slots=True)
 class FastModeStateRow:
-    """The Fast-Mode run singleton (LD-11): the operator arm/disarm flag + the carried §6
-    circuit state (prev/peak equity) so the daemon's breakers bind across days. `key` is a
-    fixed constant added by the store — a single row."""
+    """One auto-trader's run state: the operator arm/disarm flag + the carried §6 circuit
+    state (prev/peak equity) so the daemon's breakers bind across days. `key` is the MODE
+    ("FAST" LD-11 / "HASTE" LD-12), added by the store — one row per mode, each with its own
+    `since_date` (the RULE B clock for that lane). Only one mode is armed at a time."""
 
     enabled: bool
     since_date: Date | None
@@ -537,6 +548,7 @@ CREATE TABLE IF NOT EXISTS scheduler_runs (
 );
 
 CREATE TABLE IF NOT EXISTS paper_position (
+    "mode"        VARCHAR   NOT NULL,
     "symbol"      VARCHAR   NOT NULL,
     "as_of"       TIMESTAMP NOT NULL,
     "track"       VARCHAR   NOT NULL,
@@ -552,10 +564,11 @@ CREATE TABLE IF NOT EXISTS paper_position (
     "qty"         BIGINT    NOT NULL,
     "risk_idr"    DOUBLE,
     "entry_fee"   DOUBLE    NOT NULL,
-    PRIMARY KEY ("symbol")
+    PRIMARY KEY ("mode", "symbol")
 );
 
 CREATE TABLE IF NOT EXISTS paper_trade (
+    "mode"        VARCHAR   NOT NULL,
     "symbol"      VARCHAR   NOT NULL,
     "entry_date"  DATE      NOT NULL,
     "exit_date"   DATE      NOT NULL,
@@ -570,7 +583,7 @@ CREATE TABLE IF NOT EXISTS paper_trade (
     "exit_reason" VARCHAR   NOT NULL,
     "stop"        DOUBLE    NOT NULL,
     "risk_idr"    DOUBLE,
-    PRIMARY KEY ("symbol", "entry_date", "exit_date")
+    PRIMARY KEY ("mode", "symbol", "entry_date", "exit_date")
 );
 
 CREATE TABLE IF NOT EXISTS fast_mode_state (

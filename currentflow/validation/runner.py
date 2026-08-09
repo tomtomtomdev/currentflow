@@ -77,6 +77,7 @@ class RunConfig:
     circuit: CircuitState = CircuitState.OK
     registry: dict[str, BrokerDNA] | None = None
     fast_mode: bool = False   # LD-11: enter on ARMED at once (no trigger / no R:R gate)
+    include_watch: bool = False  # LD-12 Haste: widen the cohort to WATCH ∪ ARMED (any SMS)
 
 
 def _decision_ts(day: Date) -> datetime:
@@ -100,12 +101,30 @@ def _prev_close(dates: list[Date], by_date: dict[Date, DailyBar], day: Date) -> 
     return by_date[dates[i - 1]].close
 
 
+def in_entry_cohort(res, include_watch: bool) -> bool:
+    """Is this engine result inside the auto-trader's entry cohort?
+
+    THE single definition of the LD-11 / LD-12 cohort split, shared by both entry sites
+    (`_attempt_entry` here and `portfolio_runner._rank_candidates`) so they cannot drift.
+
+      * default (standard path + LD-11 Fast Mode): `ARMED` only — phase C/D, no veto,
+        internal SMS ≥ the §4 arming cut;
+      * `include_watch` (LD-12 Haste Mode): `WATCH ∪ ARMED` — the arming cut is dropped.
+
+    **RULE A and §5 hold by construction, not by a check here:** `GATE_REJECTED` (non-C/D)
+    and `VETOED` are distinct engine states *upstream* of the WATCH/ARMED split, so neither
+    branch can reach them. Widening the cohort relaxes the SMS threshold and nothing else."""
+    if include_watch:
+        return res.state in (engine_mod.EngineState.ARMED, engine_mod.EngineState.WATCH)
+    return res.armed
+
+
 def _attempt_entry(store, symbol: str, day: Date, cfg: RunConfig,
                    dates: list[Date], by_date: dict[Date, DailyBar]) -> _Held | None:
     """Run [3]→[9] for one candidate day. Returns the open position or None (no trade)."""
     dts = _decision_ts(day)
     res = engine_mod.evaluate(store, symbol, dts, track=cfg.track, registry=cfg.registry)
-    if not res.armed:
+    if not in_entry_cohort(res, cfg.include_watch):
         return None
     # LD-11 Fast Mode buys ARMED at once (no Spring/LPS trigger, no R:R gate); the standard
     # path requires a valid Spring/LPS trigger with R:R ≥ 2:1. Both yield a TriggerSignal.

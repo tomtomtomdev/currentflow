@@ -40,6 +40,9 @@
 #   ./run.sh fast ...     Fast Mode auto paper-trader control (slice 15, LD-11; paper only):
 #                           ./run.sh fast enable | disable | status
 #                           ./run.sh fast run [--day YYYY-MM-DD]   (one manual step)
+#   ./run.sh haste ...    Haste Mode auto paper-trader control (slice 16, LD-12; paper only).
+#                         Same commands as 'fast', wider cohort (WATCH + ARMED — no arming
+#                         cut). Only one of fast/haste may be armed at a time.
 #   ./run.sh log          tail the network-error log (logs/net.log; -f to follow)
 #   ./run.sh test         run the test suite
 #   ./run.sh stop         stop the running terminal (kills the Streamlit on $PORT)
@@ -330,6 +333,15 @@ case "$cmd" in
     [[ $# -ge 1 ]] || die "usage: ./run.sh fast {enable|disable|status|run} [--day YYYY-MM-DD] [--db PATH]"
     exec "$PY" -m currentflow.fast "$@"
     ;;
+  haste)
+    ensure_venv; ensure_deps
+    # LD-12 Haste Mode control (slice 16): same commands as 'fast', wider cohort
+    # (WATCH + ARMED — the arming cut dropped). Only one of the two may be armed at a
+    # time; arming the second is refused. Local store only, paper only.
+    shift || true
+    [[ $# -ge 1 ]] || die "usage: ./run.sh haste {enable|disable|status|run} [--day YYYY-MM-DD] [--db PATH]"
+    exec "$PY" -m currentflow.haste "$@"
+    ;;
   log)
     # No venv/deps needed — just read the local net-error log (dal/netlog.py).
     [[ -f "$NET_LOG" ]] || die "no log yet — $NET_LOG (written once a net-error occurs)"
@@ -397,6 +409,6 @@ case "$cmd" in
       --server.headless true
     ;;
   *)
-    die "unknown command '$cmd' — use: serve | login | paste | check | ingest | backfill | schedule | fast | log | test | stop | python"
+    die "unknown command '$cmd' — use: serve | login | paste | check | ingest | backfill | schedule | fast | haste | log | test | stop | python"
     ;;
 esac
