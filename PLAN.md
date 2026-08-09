@@ -722,29 +722,56 @@ look-ahead-safe. **Inert until earned (LD-13):** candidate refinement at weight 
       spring-on-stopping-volume confirmed and a Phase D SOS explicitly *not* confirmed while staying tradeable;
       ribbon/panel copy carries no digit, no %, no verb. **673 total, green.**
 
-## Slice 19 — Approximate Volume Profile (POC / VAH / VAL / HVN / LVN)  ⬜  (spec v1.6, LD-13)
+## Slice 19 — Approximate Volume Profile (POC / VAH / VAL / HVN / LVN)  ✅  (spec v1.6, LD-13)
 
-**Detection-enrichment vertical.** Wyckoff 2.0's signature addition — **does not exist anywhere today**.
-Computed as a **daily-bar volume-at-price approximation** (each bar's volume distributed across its
-high–low range). **Inert until earned (LD-13):** candidate `phase_bonus` enrichment at weight 0,
-observation-first.
+**Detection-enrichment vertical.** Wyckoff 2.0's signature addition — **did not exist anywhere before
+this slice**: everything upstream reads volume *in time*, this reads it *in price*. Computed as a
+**daily-bar volume-at-price approximation** (each bar's volume distributed across its high–low range).
+**Inert until earned (LD-13):** candidate `phase_bonus` enrichment at weight 0, observation-first.
 
 > **Fidelity honesty (`missing ≠ zero` analogue, spec §4.1):** true POC / value-area precision needs
 > intraday depth the system does not backtest. The module must **never render or imply more precision
 > than daily bars support** — label it an approximation in every view.
 
-- [ ] `signals/volume_profile.py`: look-ahead-safe daily-bar VAP over a rolling range → POC, VAH, VAL
-      (70% value area), HVN / LVN nodes. Deterministic bucketing; `missing ≠ zero`.
-- [ ] **Phase-context corroboration (RULE A unchanged):** expose Spring@VAL / UTAD@VAH / LPS@POC
-      confluence as a phase-detector *input* — decision rule not altered.
-- [ ] **§4 candidate enrichment (weight 0):** a `phase_bonus` VP-confluence term added inert;
-      optimizer-only raise, RULE-B-gated.
-- [ ] **View:** VP overlay (POC/VAH/VAL/nodes) on the phase / replay chart, explicitly marked
-      "approximate — daily bars".
-- [ ] **Tests:** POC/VAH/VAL/HVN/LVN reproduce a hand-checked daily-bar profile; value area brackets 70%
-      of volume; look-ahead-safe (no future bar in the profile); candidate term contributes 0 to SMS
-      until raised; RULE A C/D decisions unchanged with the confluence wired; view labels the
-      approximation; no number.
+- [x] `signals/volume_profile.py`: look-ahead-safe daily-bar VAP over a rolling `VP_WINDOW_BARS` range →
+      **POC** (heaviest of `VP_BUCKETS` buckets, ties to the lower price), **VAH/VAL** (the 70% value
+      area grown outward from the POC, heavier neighbour first, ties upward), **HVN/LVN** (relative to
+      the window's mean live bucket, adjacent same-kind buckets merged into regions). Deterministic
+      bucketing — the same bars always reproduce the same levels, so a Replay frame reproduces the live
+      read. Bucket-relative throughout, never rupiah, so the structure is scale-free. `missing ≠ zero`:
+      non-TRADED/incomplete bars dropped loudly; too few bars / no price range / no volume →
+      `available=False` with **no POC at all**, never a midpoint stand-in; a locked (no-spread) print
+      lands whole in one bucket — exact, not estimated.
+- [x] **Phase-context corroboration (RULE A unchanged):** Spring@VAL / UTAD@VAH / LPS@POC confluence
+      (`volume_profile.confluence`, tolerance = one bucket width — the resolution daily bars can honestly
+      claim) attached by `phase._corroborate` **inside `verdict()`**, i.e. after the phase is chosen and
+      `tradeable` derived from it alone. A confluence can annotate a decision but provably never make
+      one; `None in → None out`; it stacks with slice 18's bar-character note without displacing it.
+- [x] **§4 candidate enrichment (weight 0):** `vp_confluence` — the phase-bonus refinement (not *whether*
+      a spring or LPS printed, which `_phase_bonus` already funds, but *where in the profile* it did) —
+      added to `COMPONENT_KEYS` and both tracks' `config.SMS_WEIGHTS` at **0** (simplex still sums to 100)
+      + `SMS_CANDIDATE_COMPONENTS`; graded on the accumulation side only (a UTAD at the value high is a
+      warning, never negative strength). Not in `ML_LOCKED_ZEROS` — the 0 is unearned, not structural, so
+      the optimizer may fund it (RULE-B-gated).
+- [x] **View:** `ui/volume_profile_view.py` + `shell.volume_profile_html` (horizontal VAP lane, value-area
+      band, POC picked out, level chips) + `charts.volume_profile_layers` overlaying POC/VAH/VAL on the
+      **Accumulation Detector** and **Money Flow Replay** price lanes (`app._vp_panel`); on Replay the
+      profile is rebuilt at *each frame's* historical `decision_ts`, so the structure rewinds with the
+      playhead. The approximation is labeled everywhere: `ANNOTATION` travels **on the dataclass**, renders
+      unconditionally in the lane, and every chart level is drawn `POC~` / `VAH~` / `VAL~`.
+- [x] **Tests** (`tests/test_volume_profile.py`, 32): POC/VAH/VAL/HVN/LVN reproduce a **hand-checked**
+      daily-bar profile (24 buckets of width 1.0; a spanning bar deposits exactly 1/24 in each); the value
+      area brackets ≥70% of window volume across seven shapes *and* stays a tight band, not the whole
+      range; scale-free at 1k vs 50m lots and at Rp 100 vs Rp 10,000; a locked print lands whole in one
+      bucket; GAP / NOT_PUBLISHED / NO_TRADES / partial bars dropped, never zeroed; too few bars, no range
+      and no volume each yield **no POC**; look-ahead-safe at the store boundary **and** bar-by-bar (a
+      future shelf is absent until knowable); window bounded to the last `VP_WINDOW_BARS`; Spring@VAL
+      fires on a bar reaching the level and **not** on one above it, LPS@POC fires on the shelf close and
+      **not** a bucket and a half away, UTAD@VAH fires at the value high; `None in → None out`; **every
+      labeled phase archetype's C/D decision identical with the confluence wired**, both corroborators
+      coexisting on one event; candidate weight 0 in both tracks + running-score-unchanged (`compute_sms`
+      and through `engine.evaluate`) while still *measured*; view/lane copy carries no digit, no %, no
+      verb, and every surface labels the approximation. **705 total, green.**
 
 ## Slice 20 — Regime-scoped historical backfill + point-in-time universe  ✅  (companion: `REGIME.md`)
 

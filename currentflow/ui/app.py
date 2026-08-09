@@ -32,6 +32,7 @@ from currentflow.signals import (
     replay,
     risk_monitor,
     sector_rotation,
+    volume_profile,
     vpa,
 )
 from currentflow.signals.broker_flow import analyze, buyer_seller_matrix
@@ -83,7 +84,7 @@ from currentflow.ui.risk_view import (
 from currentflow.ui import shell
 from currentflow.ui.sector_view import scatter_points, sector_rows
 from currentflow.ui.sms_view import GATE_BANNER, WATCHLIST_FRAMING, component_rows, score_display, state_label
-from currentflow.ui import catalog_view, daily_top_view, fast_mode_view, ml_view, pipeline_view, ranking_view, timemachine, vpa_view, watchlist_view
+from currentflow.ui import catalog_view, daily_top_view, fast_mode_view, ml_view, pipeline_view, ranking_view, timemachine, volume_profile_view, vpa_view, watchlist_view
 from currentflow.store.schema import MODE_FAST, MODE_HASTE
 from currentflow.validation import fast_mode as fast_mode_mod
 from currentflow.validation.promotion import ValidationLedger
@@ -678,6 +679,27 @@ def _vpa_panel(reading) -> None:
     )
 
 
+def _vp_panel(profile) -> None:
+    """VOLUME PROFILE (APPROX) panel (LD-13, slice 19) — the volume-at-price lane plus the
+    POC / VAH / VAL levels. The levels are shown in rupiah (the operator is reading price
+    on the chart beside this) but each is labeled as a structure level, never a target and
+    never a verb (RULE B); the approximation caveat renders unconditionally (§4.1)."""
+    panel = volume_profile_view.profile_panel(profile)
+    body = shell.volume_profile_html(
+        volume_profile_view.histogram_rows(profile), panel["levels"],
+        empty_label=volume_profile_view.EMPTY_LABEL, annotation=panel["annotation"],
+    )
+    if panel["window"]:
+        body += (
+            f'<div class="cf-statlabel" style="color:{shell.TOKENS["text_muted"]}; '
+            f'margin-top:6px">window {panel["window"]}</div>'
+        )
+    st.markdown(
+        shell.panel_html("VOLUME PROFILE (APPROX)", body, note=volume_profile_view.FRAMING),
+        unsafe_allow_html=True,
+    )
+
+
 def _render_replay(store: Store, *, show_header: bool = True) -> None:
     if show_header:
         _module_header(
@@ -744,11 +766,18 @@ def _render_replay(store: Store, *, show_header: bool = True) -> None:
         unsafe_allow_html=True,
     )
 
+    # LD-13 (slice 19): the profile is rebuilt at THIS frame's historical decision moment,
+    # so the structure it draws on the price lane rewinds with the playhead.
+    frame_profile = volume_profile.analyze(store, symbol, frame.decision_ts)
+
     left, right = st.columns([1.9, 1], gap="medium")
     with left:
         with st.container(key="cfpanel_replaychart"):
             st.altair_chart(
-                charts.themed(charts.replay_price_flow(visible_rows(series, playhead))),
+                charts.themed(charts.replay_price_flow(
+                    visible_rows(series, playhead),
+                    vp_levels=volume_profile_view.levels(frame_profile),
+                )),
                 use_container_width=True, theme=None,
             )
     with right:
@@ -787,6 +816,7 @@ def _render_replay(store: Store, *, show_header: bool = True) -> None:
         # LD-13 (slice 18): the bar-character lane, rebuilt at THIS frame's historical
         # decision moment — the ribbon rewinds with the playhead like every other lane.
         _vpa_panel(vpa.analyze(store, symbol, frame.decision_ts))
+        _vp_panel(frame_profile)
 
     # Transport bar: circular accent play button + scrubber + date scale (design 06).
     with st.container(key="cfpanel_replaytransport"):
@@ -853,6 +883,9 @@ def _render_accumulation(store: Store, *, show_header: bool = True) -> None:
         unsafe_allow_html=True,
     )
 
+    # LD-13 (slice 19): the approximate volume-at-price structure behind the same window.
+    profile = volume_profile.build_profile(symbol, bars, decision_ts=decision_ts)
+
     rows = accum_chart_rows(bars, broker_snap)
     left, right = st.columns([1.9, 1], gap="medium")
     with left:
@@ -867,6 +900,7 @@ def _render_accumulation(store: Store, *, show_header: bool = True) -> None:
                 st.altair_chart(
                     charts.themed(charts.accumulation_combined(
                         rows, vwap=snap.accumulator_vwap, stealth_zone=zone,
+                        vp_levels=volume_profile_view.levels(profile),
                     )),
                     use_container_width=True, theme=None,
                 )
@@ -958,6 +992,7 @@ def _render_accumulation(store: Store, *, show_header: bool = True) -> None:
         # LD-13 (slice 18): the L2-free absorption read — where each bar closed inside
         # its own spread against the effort behind it (Coulling VPA).
         _vpa_panel(vpa.build_reading(symbol, bars, decision_ts=decision_ts))
+        _vp_panel(profile)
 
 
 def _render_heatmap(store: Store) -> None:
