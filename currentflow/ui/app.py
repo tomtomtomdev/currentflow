@@ -32,6 +32,7 @@ from currentflow.signals import (
     replay,
     risk_monitor,
     sector_rotation,
+    vpa,
 )
 from currentflow.signals.broker_flow import analyze, buyer_seller_matrix
 from currentflow.signals.risk_monitor import Portfolio, Position
@@ -82,7 +83,7 @@ from currentflow.ui.risk_view import (
 from currentflow.ui import shell
 from currentflow.ui.sector_view import scatter_points, sector_rows
 from currentflow.ui.sms_view import GATE_BANNER, WATCHLIST_FRAMING, component_rows, score_display, state_label
-from currentflow.ui import catalog_view, daily_top_view, fast_mode_view, ml_view, pipeline_view, ranking_view, timemachine, watchlist_view
+from currentflow.ui import catalog_view, daily_top_view, fast_mode_view, ml_view, pipeline_view, ranking_view, timemachine, vpa_view, watchlist_view
 from currentflow.store.schema import MODE_FAST, MODE_HASTE
 from currentflow.validation import fast_mode as fast_mode_mod
 from currentflow.validation.promotion import ValidationLedger
@@ -653,6 +654,30 @@ def _render_foreign_flow(store: Store, *, show_header: bool = True) -> None:
             st.caption("No visible flow to aggregate for the latest day.")
 
 
+def _vpa_panel(reading) -> None:
+    """VPA BAR CHARACTER panel (LD-13, slice 18) — the ribbon lane + the latest bar's
+    character. Categorical words and glyphs only: the close-position / spread / volume
+    ratios stay on the signal for audit and never reach the screen (RULE B)."""
+    panel = vpa_view.character_panel(reading)
+    color = shell.TOKENS.get(panel["color_key"], shell.TOKENS["text_faint"])
+    body = shell.vpa_ribbon_html(
+        vpa_view.ribbon_cells(reading), empty_label=vpa_view.EMPTY_LABEL
+    )
+    body += shell.callout_html(
+        f'{panel["glyph"]} {panel["label"]}', panel["headline"], color=color
+    )
+    effort = vpa_view.effort_note(reading)
+    if effort:
+        body += (
+            f'<div class="cf-statlabel" style="color:{shell.TOKENS["text_muted"]}; '
+            f'margin-top:6px">{effort}</div>'
+        )
+    st.markdown(
+        shell.panel_html("VPA BAR CHARACTER", body, note=vpa_view.RIBBON_FRAMING),
+        unsafe_allow_html=True,
+    )
+
+
 def _render_replay(store: Store, *, show_header: bool = True) -> None:
     if show_header:
         _module_header(
@@ -759,6 +784,9 @@ def _render_replay(store: Store, *, show_header: bool = True) -> None:
             f"as knowable at {panel['as_knowable_at']:%Y-%m-%d %H:%M} WIB "
             "(next-session pre-open · LD-5 conservative)"
         )
+        # LD-13 (slice 18): the bar-character lane, rebuilt at THIS frame's historical
+        # decision moment — the ribbon rewinds with the playhead like every other lane.
+        _vpa_panel(vpa.analyze(store, symbol, frame.decision_ts))
 
     # Transport bar: circular accent play button + scrubber + date scale (design 06).
     with st.container(key="cfpanel_replaytransport"):
@@ -927,6 +955,9 @@ def _render_accumulation(store: Store, *, show_header: bool = True) -> None:
             ),
             unsafe_allow_html=True,
         )
+        # LD-13 (slice 18): the L2-free absorption read — where each bar closed inside
+        # its own spread against the effort behind it (Coulling VPA).
+        _vpa_panel(vpa.build_reading(symbol, bars, decision_ts=decision_ts))
 
 
 def _render_heatmap(store: Store) -> None:

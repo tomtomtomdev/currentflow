@@ -23,10 +23,12 @@ from datetime import datetime
 from currentflow import config
 from currentflow.dal.models import DailyBar, RowStatus, Side
 from currentflow.signals import ownership as ownership_mod
+from currentflow.signals import vpa as vpa_mod
 from currentflow.signals.broker_flow import BrokerFlowSnapshot
 from currentflow.signals.foreign_flow import ForeignFlowSnapshot
 from currentflow.signals.ownership import OwnershipDelta
 from currentflow.signals.phase import PhaseClassification
+from currentflow.signals.vpa import VpaReading
 
 log = logging.getLogger(__name__)
 
@@ -35,7 +37,7 @@ COMPONENT_KEYS = (
     # §4.1 candidate components (LD-13) — computed and observed, but PINNED AT WEIGHT 0
     # in `config.SMS_WEIGHTS`, so they contribute exactly nothing to the running score
     # until the walk-forward optimizer funds one under RULE B.
-    "ownership_delta",
+    "ownership_delta", "bar_character",
 )
 
 
@@ -229,6 +231,26 @@ def _ownership_delta(own: OwnershipDelta | None) -> SmsComponent:
     return SmsComponent("ownership_delta", 0, strength, obs, available=available)
 
 
+def _bar_character(reading: VpaReading | None) -> SmsComponent:
+    """§4.1 CANDIDATE (LD-13, slice 18) — the VPA close-position-in-spread read as a
+    refinement of the divergence spine, which sees effort (volume) against `|Δclose|` but
+    never *where* the bar closed. **Weight 0 until earned**: observed and carried here,
+    pinned at 0 in `config.SMS_WEIGHTS`, so its contribution is 0 and the running score is
+    unchanged. Only the walk-forward optimizer may fund it (never hand-edited — §4), and
+    only after RULE B forward paper earns it."""
+    strength, available = vpa_mod.subscore(reading)
+    obs = {"candidate": "LD-13 §4.1 — weight 0 until validated"}
+    if reading is not None:
+        latest = reading.latest
+        obs |= {
+            "latest_character": None if latest is None else latest.character.value,
+            "close_position": None if latest is None else latest.close_position,
+            "demand_side_bars": reading.demand_side_bars,
+            "bars_read": len(reading.bars),
+        }
+    return SmsComponent("bar_character", 0, strength, obs, available=available)
+
+
 def _phase_bonus(phase_cls: PhaseClassification) -> SmsComponent:
     """Wyckoff phase-alignment bonus: spring (C) or LPS (D) proximity (§4)."""
     kinds = {e.kind for e in phase_cls.events}
@@ -258,6 +280,7 @@ def compute_sms(
     rebalance_multiplier: float = 1.0,
     weights: dict[str, int] | None = None,
     ownership: OwnershipDelta | None = None,
+    vpa: VpaReading | None = None,
 ) -> SmsResult:
     """Assemble the track-weighted SMS. `internal_score` is GATED by RULE B.
 
@@ -277,6 +300,7 @@ def compute_sms(
         "block_trade": _block_trade(broker, adv20),
         "phase_bonus": _phase_bonus(phase_cls),
         "ownership_delta": _ownership_delta(ownership),
+        "bar_character": _bar_character(vpa),
     }
     components = tuple(
         SmsComponent(c.key, weights[c.key], c.subscore, c.observation, c.available)
