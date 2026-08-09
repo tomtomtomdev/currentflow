@@ -55,6 +55,7 @@ from currentflow.store.schema import (
     MODE_FAST,
     INDEX_ROSTER_PIT_COLUMNS,
     KSEI_COLUMNS,
+    LISTING_SNAPSHOT_COLUMNS,
     PATTERN_CATALOG_COLUMNS,
     PATTERN_INSTANCE_COLUMNS,
     SCHEDULER_RUNS_COLUMNS,
@@ -71,6 +72,7 @@ from currentflow.store.schema import (
     FastPositionRow,
     FastTradeRow,
     IndexRosterRow,
+    ListingSnapshotRow,
     PatternCatalogRow,
     PatternInstanceRow,
     SchedulerRunRow,
@@ -335,6 +337,16 @@ class Store:
             for r in rows_in
         ]
         return self._insert("index_roster_pit", INDEX_ROSTER_PIT_COLUMNS, rows)
+
+    def write_listing_snapshot(self, rows_in: Iterable[ListingSnapshotRow]) -> int:
+        """Annual board-listing snapshots (slice 22, BACKTEST_PHASE0 §3.1). Ingest-once
+        on `(snapshot_date, symbol)` — a book is published once and never revised, so a
+        re-load of the same book is an exact-key no-op."""
+        rows = [
+            (r.snapshot_date, r.symbol, r.listing_date, r.market_cap_idr, r.source, r.as_of)
+            for r in rows_in
+        ]
+        return self._insert("listing_snapshot", LISTING_SNAPSHOT_COLUMNS, rows)
 
     def upsert_pattern_catalog(self, row: PatternCatalogRow) -> None:
         """Write/refresh a catalog entry version (slice 21). A definition change bumps
@@ -801,16 +813,66 @@ class Store:
         rows = self._con.execute(sql, [symbol, day, day]).fetchall()
         return tuple(r[0] for r in rows)
 
-    def roster_covers(self, day: Date) -> bool:
-        """Does the reconstructed roster span `day` at all (any index, any name)? A day
-        no loaded period covers is a *roster gap* — track then falls back to the ADV leg
-        only (→ Track B) and the day is counted (`roster_gap_days`, no silent caps)."""
+    def read_roster_members(self, index_name: str, day: Date) -> tuple[str, ...]:
+        """Every symbol `index_name` records as a member on `day` (slice 22). The inverse
+        of `read_index_roster_pit`; with `index_name='LISTED'` it is the point-in-time
+        board — the survivorship denominator (BACKTEST_PHASE0 §3.1)."""
+        sql = (
+            'SELECT DISTINCT "symbol" FROM index_roster_pit '
+            'WHERE "index_name" = ? AND "effective_from" <= ? '
+            'AND ("effective_to" IS NULL OR "effective_to" >= ?) '
+            'ORDER BY "symbol"'
+        )
+        rows = self._con.execute(sql, [index_name.upper(), day, day]).fetchall()
+        return tuple(r[0] for r in rows)
+
+    def roster_covers(self, day: Date, indexes: Iterable[str] | None = None) -> bool:
+        """Does the reconstructed roster span `day` for the *track-deciding* indexes? A
+        day no loaded period covers is a *roster gap* — track then falls back to the ADV
+        leg only (→ Track B) and the day is counted (`roster_gap_days`, no silent caps).
+
+        Scoped to `config.TRACK_A_INDEXES` by default (slice 22): `index_roster_pit` also
+        carries the `LISTED` pseudo-index, which is a listing fact and says nothing about
+        LQ45/IDX80 membership — an unscoped 'any index' check would let a loaded LISTED
+        book silently mask a missing Track A/B roster."""
+        names = tuple(sorted(indexes if indexes is not None else config.TRACK_A_INDEXES))
+        placeholders = ", ".join("?" for _ in names)
         sql = (
             "SELECT 1 FROM index_roster_pit "
-            'WHERE "effective_from" <= ? '
+            f'WHERE "index_name" IN ({placeholders}) AND "effective_from" <= ? '
             'AND ("effective_to" IS NULL OR "effective_to" >= ?) LIMIT 1'
         )
-        return self._con.execute(sql, [day, day]).fetchone() is not None
+        return self._con.execute(sql, [*names, day, day]).fetchone() is not None
+
+    def read_listing_snapshot(self, day: Date) -> dict[str, float | None]:
+        """The newest annual listing snapshot dated on/before `day`: {symbol: market cap
+        or None}. `None` means the book carried no cap for that name — unknown, never 0
+        (the bias share must be able to say "cap unknown" rather than imply "worthless")."""
+        row = self._con.execute(
+            'SELECT max("snapshot_date") FROM listing_snapshot WHERE "snapshot_date" <= ?',
+            [day],
+        ).fetchone()
+        if row is None or row[0] is None:
+            return {}
+        rows = self._con.execute(
+            'SELECT "symbol", "market_cap_idr" FROM listing_snapshot '
+            'WHERE "snapshot_date" = ? ORDER BY "symbol"',
+            [row[0]],
+        ).fetchall()
+        return {r[0]: r[1] for r in rows}
+
+    def read_listing_caps(self, day: Date) -> dict[str, float | None]:
+        """Each symbol's market cap from the newest book on/before `day` that *lists it*
+        — so a name delisted mid-span still carries the size it had while listed (the
+        survivorship weight cannot come from a book published after it vanished)."""
+        sql = (
+            'SELECT t."symbol", t."market_cap_idr" FROM listing_snapshot t '
+            'WHERE t."snapshot_date" = ('
+            '    SELECT max(t2."snapshot_date") FROM listing_snapshot t2 '
+            '    WHERE t2."symbol" = t."symbol" AND t2."snapshot_date" <= ?'
+            ') AND t."snapshot_date" <= ? ORDER BY t."symbol"'
+        )
+        return {r[0]: r[1] for r in self._con.execute(sql, [day, day]).fetchall()}
 
     # --- scheduler run-state (slice 12) -------------------------------------------
 

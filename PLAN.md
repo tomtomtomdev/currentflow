@@ -842,6 +842,65 @@ presentation category (catalog-confined historical frequencies) → **documented
       determinism, P1 firewall (base rates absent from pipeline/rail source), P4 small-n,
       no-advice-verb, MonthlyAt due-math, cache-only accrual. **21 tests, all green.**
 
+## Slice 22 — Survivorship: `LISTED` board roster + measured bias  ✅  (companion: `BACKTEST_PHASE0.md` §3.1, task E1)
+
+> **Infra / cache-only** (slice-10/12/20 posture): loads operator reference data and
+> *measures* a data gap; never scores, gates, arms, or displays a number on a live name →
+> **no spec bump**. First task of the `BACKTEST_PHASE0.md` §5 build order — deliberately
+> before any further backfill, because fetching the wrong symbol set makes every later
+> pull wasted work.
+
+**Goal:** the universe on a past day stops being "whatever Stockbit still serves today".
+Every `exodus` endpoint is symbol-addressed, so a store-derived universe silently deletes
+every delisted/suspended name — on IDX exactly the names a value or high-float screen
+surfaces. The board's point-in-time membership therefore comes from outside the vendor,
+and what the store *cannot* serve is reported as a number instead of vanishing.
+
+- [x] **`LISTED` pseudo-index + snapshot store** (`store/schema.py` `listing_snapshot`,
+      `Store.write_listing_snapshot` / `read_listing_snapshot` / `read_listing_caps` /
+      `read_roster_members`): the operator's transcribed IDX Statistics annual books
+      (`data/listings/*.csv`, local-only — `data/` is gitignored), kept as evidence so the
+      market-cap size proxy survives the derivation. Cap `NULL` = unknown, never 0.
+- [x] **Diff → listing periods** (`universe/listing.py`): contiguous runs of annual
+      snapshots collapse into `LISTED` periods in `index_roster_pit`. A run reaching the
+      newest book stays **open**; one that stops closes at its **last observation**, with
+      the delisting uncertainty window (`ANNUAL_SNAPSHOT precision`) written into the
+      period's own `source` — an annual book cannot date a delisting to the day and the
+      provenance says so. Start is the transcribed `listing_date` when present, else
+      "first observed" (counted in the report, never silently equated). Relisting → two
+      periods, the later start **clamped** past the earlier end (books reprint the
+      *original* listing date, which would otherwise swallow the gap years).
+- [x] **`LISTED` is a listing fact, never index membership**: `assign_track` reads only
+      `config.TRACK_A_INDEXES`, and `Store.roster_covers` is now **scoped to those
+      indexes** — a loaded book can neither promote a name to Track A nor mask a missing
+      LQ45/IDX80 roster (that scoping was the one real interaction bug; slice 20's
+      `roster_gap_days` and the Time Machine caveat both read it).
+- [x] **Measured bias** (`universe/survivorship.py`): per day or span, listed vs
+      recoverable → unrecoverable names, count share, and cap-weighted share from the
+      books' own market caps. Look-ahead-safe (recoverability judged at the day's
+      `REPLAY_DECISION_TIME` frame). **No roster → `UNMEASURED`, every share `None`,
+      never 0%**; no caps in the books → count share only, with the limit named.
+- [x] **Surfaced downstream**: `PitUniverse.unrecoverable` (listed, never ingested) is
+      kept **distinct** from `known_missing` (had bars, then stopped) — different causes,
+      counted separately — plus `PitUniverse.survivorship`; `PremiseReport.survivorship`
+      replaces the premise harness's generic survivorship caveat with the measurement
+      when a roster exists (and keeps the caveat when it does not).
+- [x] **CLI** `./run.sh listings [--bias-on D | --bias-from D --bias-to D]` — offline,
+      no session, no network: the delisted names come from IDX's published books.
+- [x] **Tests** (`tests/test_survivorship.py`): open/closed/relisting derivation, clamped
+      relisting start, precision + provenance in `source`, missing-source/bad-date/
+      listing-date-after-book rejects, optional-column handling (blank cap ≠ 0), ingest-once
+      re-load, **the acceptance case (a name delisted in 2025 is in the 2024 universe and
+      gone in 2026)**, LISTED neither covering a roster gap nor granting Track A, bias
+      count/cap shares, UNMEASURED without a roster, look-ahead firewall, span union,
+      PIT + premise wiring. **23 new tests (728 total, full suite green).**
+
+**Still owed (operator actions, named not faked):** the books themselves —
+`data/listings/` is empty until the IDX Statistics annual PDFs are transcribed, so today
+every measurement honestly reports `UNMEASURED`. Cross-checking delisting dates against
+the IDX *Pengumuman* archive (§3.1) would replace `ANNUAL_SNAPSHOT` precision with exact
+dates; the loader takes them as-is via `effective_to` when that happens.
+
 ## Acceptance criteria (definition of done — `LOCKED_SPEC.md` §13)
 
 - [x] Look-ahead test passes (no `availability_ts >= decision_ts`).

@@ -14,6 +14,11 @@ Honesty (CLAUDE.md — missing ≠ zero, no silent caps, name what you can't che
   * **Delisted-name bias**: names Stockbit can no longer serve stop having bars. When a
     name present earlier in the store stops, it is recorded per day in `known_missing`,
     never just silently absent (an acknowledged, surfaced bias).
+  * **Never-ingested names** (slice 22): the store cannot know about a name it never
+    held. When the operator's `LISTED` board roster is loaded, the names it says were
+    listed on `day` but the store cannot serve are `unrecoverable`, and `survivorship`
+    carries the measured bias. With no roster loaded the bias is UNMEASURED — reported
+    as unknown, never as zero.
   * **Roster gaps**: a day no loaded roster period covers resolves every name via the
     ADV leg only (→ Track B) and is counted in `roster_gap_days`.
 """
@@ -27,6 +32,7 @@ from datetime import datetime
 from currentflow import config
 from currentflow.dal.models import BoardType, DailyBar, RowStatus
 from currentflow.universe.bands import check_pinned
+from currentflow.universe.survivorship import SurvivorshipBias, measure_bias
 from currentflow.universe.track import resolve_track_pit
 
 # The §3 gate legs with no historical store sink — reconstruction cannot check them, so
@@ -43,6 +49,8 @@ class PitUniverse:
     unchecked_legs: tuple[str, ...]          # §3 legs with no historical sink (named, not faked)
     known_missing: tuple[str, ...]           # had bars earlier, stopped (delist bias, surfaced)
     roster_gap_days: int                     # 1 if this day's roster is missing, else 0
+    unrecoverable: tuple[str, ...] = ()      # LISTED on `day`, never ingested (slice 22)
+    survivorship: SurvivorshipBias | None = None   # the measured bias (or UNMEASURED)
 
 
 def _adv20(bars: list[DailyBar]) -> float | None:
@@ -104,8 +112,16 @@ def pit_universe(store, day: Date) -> PitUniverse:
         bars = store.read_daily_bars(symbol, decision_ts)
         if bars:
             latest[symbol] = bars
+
+    # Names the board carried on `day` that the store never held (slice 22). Reuses the
+    # reads above; a listed name absent from `latest` reads as no bars at all.
+    bias = measure_bias(store, day, bars_by_symbol=latest)
+
     if not latest:
-        return PitUniverse(day, decision_ts, (), {}, UNCHECKED_GATE_LEGS, (), roster_gap_days)
+        return PitUniverse(
+            day, decision_ts, (), {}, UNCHECKED_GATE_LEGS, (), roster_gap_days,
+            unrecoverable=bias.unrecoverable, survivorship=bias,
+        )
 
     market_latest = max(bars[-1].date for bars in latest.values())
 
@@ -129,4 +145,8 @@ def pit_universe(store, day: Date) -> PitUniverse:
         unchecked_legs=UNCHECKED_GATE_LEGS,
         known_missing=tuple(sorted(known_missing)),
         roster_gap_days=roster_gap_days,
+        # A name the store holds but that stopped is `known_missing`, not unrecoverable —
+        # the two biases have different causes and are counted separately.
+        unrecoverable=tuple(s for s in bias.unrecoverable if s not in latest),
+        survivorship=bias,
     )

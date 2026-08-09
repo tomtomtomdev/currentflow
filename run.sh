@@ -24,6 +24,12 @@
 #                         data/rosters/ point-in-time index rosters. e.g.
 #                           ./run.sh backfill --rosters
 #                           ./run.sh backfill BBCA BBRI
+#   ./run.sh listings ... load the LISTED board roster from the operator's transcribed
+#                         IDX Statistics annual books (data/listings/*.csv) and report the
+#                         survivorship bias it exposes — how many listed names the store
+#                         cannot serve (slice 22). Offline, no session needed. e.g.
+#                           ./run.sh listings
+#                           ./run.sh listings --bias-from 2024-07-01 --bias-to 2026-08-01
 #   ./run.sh premise ...  ONE STEP: sign in (if needed) -> strided backfill -> univariate
 #                         premise tests. Falsifies individual SMS components before they
 #                         are assembled, at ~1/10th the broker calls of a dense pull.
@@ -262,6 +268,14 @@ case "$cmd" in
     shift || true
     exec "$PY" -m currentflow.ingest.backfill "$@"
     ;;
+  listings)
+    ensure_venv; ensure_deps
+    # Board-listing history (slice 22). Reads the operator's own CSVs off disk — no
+    # session, no network: the delisted names Stockbit cannot serve come from IDX's
+    # published annual books, not from the API.
+    shift || true
+    exec "$PY" -m currentflow.universe.listing "$@"
+    ;;
   premise)
     ensure_venv; ensure_deps
     # One-step falsification pass: sign in if needed -> strided backfill (full bars,
@@ -409,6 +423,6 @@ case "$cmd" in
       --server.headless true
     ;;
   *)
-    die "unknown command '$cmd' — use: serve | login | paste | check | ingest | backfill | schedule | fast | haste | log | test | stop | python"
+    die "unknown command '$cmd' — use: serve | login | paste | check | ingest | backfill | listings | premise | schedule | fast | haste | log | test | stop | python"
     ;;
 esac
