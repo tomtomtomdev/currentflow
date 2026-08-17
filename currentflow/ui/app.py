@@ -1693,6 +1693,21 @@ def _set_tab(tab: str) -> None:
     st.session_state["cf_tab"] = tab
 
 
+# The view the terminal opens on. Framework Lenses is the operator's chosen landing
+# surface: a full-width OBSERVATION read (five frameworks apart + confluence), no ARMED
+# rail beside it. RULE A/B are untouched — a lens is a pure read over an already-computed
+# `EngineResult`, so which view paints first cannot arm, un-reject or re-gate anything.
+DEFAULT_VIEW = "lenses"
+
+
+def _active_view(state) -> str | None:
+    """Which top-level view to paint: the session's `cf_view` once the operator has moved
+    (including an explicit None = Signal Pipeline, set by the `‹ Pipeline` back buttons),
+    else `DEFAULT_VIEW` on a first paint. Pure — takes the state mapping, so it is
+    testable without a Streamlit session."""
+    return state["cf_view"] if "cf_view" in state else DEFAULT_VIEW
+
+
 def _open_catalog() -> None:
     """Open the dedicated Pattern Catalog research view (LD-14, P1: a separate surface —
     never joined to the pipeline/rail)."""
@@ -2171,7 +2186,8 @@ def main() -> None:
     # logged in PROGRESS.md decisions).
     # The Pattern Catalog (LD-14) is a dedicated research surface (P1): full width, no
     # ARMED rail beside it — base rates never sit next to a live name.
-    if st.session_state.get("cf_view") == "catalog":
+    view = _active_view(st.session_state)
+    if view == "catalog":
         _render_catalog(store)
         st.markdown(shell.ticker_html(), unsafe_allow_html=True)
         return
@@ -2179,7 +2195,8 @@ def main() -> None:
     # Framework Lenses: the same five frameworks the pipeline fuses into the §2 gate chain,
     # read APART — one section each + their confluence. Full width like the catalog, so a
     # per-framework observation never sits beside the ARMED rail as if it were a candidate.
-    if st.session_state.get("cf_view") == "lenses":
+    # This is the landing view (`DEFAULT_VIEW`); `‹ Pipeline` leaves it for the §2 chain.
+    if view == "lenses":
         _render_lenses(store)
         st.markdown(shell.ticker_html(), unsafe_allow_html=True)
         return

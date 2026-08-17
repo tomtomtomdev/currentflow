@@ -1,10 +1,14 @@
-"""End-to-end render/routing smoke for the v2 restructure (Signal Pipeline home).
+"""End-to-end render/routing smoke for the v2 restructure.
 
 Drives the real Streamlit app headless via AppTest against the checked-in DuckDB.
 Auth is mocked (the session gate is orthogonal to the analytics — no signal or
 RULE A/B behavior depends on login). Asserts the app renders with no exception and
-that the pipeline ⇄ evidence routing works: row click opens the contextual evidence
-view with four tabs; the back button returns to the pipeline.
+that the routing works both ways: **Framework Lenses is the landing view**
+(`app.DEFAULT_VIEW`) with the Signal Pipeline one `‹ Pipeline` click away, and from the
+pipeline a row click opens the contextual evidence view with four tabs, back returns.
+
+The landing view is chrome, not gating: the pipeline still owns every verdict, so the
+pipeline-side tests navigate there explicitly (`_pipeline_app`) rather than skip.
 """
 
 from __future__ import annotations
@@ -22,7 +26,19 @@ _FAKE_SESSION = {"has_token": True, "username": "operator",
 
 
 def _authed_app(timeout: float = 90) -> AppTest:
+    """The app as it lands — Framework Lenses (`app.DEFAULT_VIEW`)."""
     at = AppTest.from_file(APP, default_timeout=timeout)
+    at.run()
+    assert not at.exception, at.exception
+    return at
+
+
+def _pipeline_app(timeout: float = 90) -> AppTest:
+    """The app on the Signal Pipeline: land on the lens view, then `‹ Pipeline`. The back
+    button renders before the lens view's data check, so this navigates on an empty store
+    too (no silent skip of the pipeline assertions)."""
+    at = _authed_app(timeout)
+    next(b for b in at.button if b.key == "cflensback").click()
     at.run()
     assert not at.exception, at.exception
     return at
@@ -35,12 +51,24 @@ def test_login_gate_renders_without_session():
 
 
 @patch("currentflow.dal.session.session_status", return_value=_FAKE_SESSION)
-def test_pipeline_is_the_home_view(_session):
+def test_framework_lenses_is_the_landing_view(_session):
+    """The terminal opens on the lens surface, not the pipeline grid. It is a full-width
+    OBSERVATION read — so the ARMED rail is absent and no stage header is on screen."""
     at = _authed_app()
+    md = " ".join(m.value for m in at.markdown)
+    assert "Framework Lenses" in md
+    assert "UNIVERSE GATE" not in md   # the pipeline's stage headers are not the landing
+    assert any(b.key == "cflensback" for b in at.button)   # pipeline is one click away
+    # no left module nav rail in v2 → no sidebar radio
+    assert not at.sidebar.radio
+
+
+@patch("currentflow.dal.session.session_status", return_value=_FAKE_SESSION)
+def test_pipeline_is_one_click_from_the_landing_view(_session):
+    at = _pipeline_app()
     md = " ".join(m.value for m in at.markdown)
     assert "Signal Pipeline" in md
     assert "UNIVERSE GATE" in md  # the four locked stage headers render
-    # no left module nav rail in v2 → no sidebar radio
     assert not at.sidebar.radio
 
 
@@ -48,7 +76,7 @@ def test_pipeline_is_the_home_view(_session):
 def test_fast_mode_panel_and_toggle_render(_session):
     """The LD-11 Fast Mode panel renders on the pipeline home with an arm/disarm toggle,
     defaulted OFF (opt-in), and the app raises no exception (wiring is sound)."""
-    at = _authed_app()
+    at = _pipeline_app()
     toggles = {t.key: t for t in at.toggle}
     if "cf_fast_toggle" not in toggles:
         pytest.skip("no data ingested in the checked-in store → panel not reached")
@@ -59,7 +87,7 @@ def test_fast_mode_panel_and_toggle_render(_session):
 
 @patch("currentflow.dal.session.session_status", return_value=_FAKE_SESSION)
 def test_row_click_opens_evidence_then_back_returns(_session):
-    at = _authed_app()
+    at = _pipeline_app()
     opens = [b for b in at.button if b.key and b.key.startswith("cfpipeopen-")]
     if not opens:
         pytest.skip("no candidates ingested in the checked-in store")
@@ -88,10 +116,11 @@ def test_row_click_opens_evidence_then_back_returns(_session):
 
 @patch("currentflow.dal.session.session_status", return_value=_FAKE_SESSION)
 def test_framework_lenses_open_switch_sections_and_return(_session):
-    """The five frameworks read apart: the lens view opens from the pipeline, every
-    section switches without exception, and `‹ Pipeline` returns home. The pipeline
-    itself is untouched by the trip — a lens surface decides nothing (RULE A)."""
-    at = _authed_app()
+    """The five frameworks read apart: the lens view still opens from the pipeline (the
+    `▸ Framework Lenses` button, not only the landing default), every section switches
+    without exception, and `‹ Pipeline` returns. The pipeline itself is untouched by the
+    trip — a lens surface decides nothing (RULE A)."""
+    at = _pipeline_app()
     opener = [b for b in at.button if b.key == "cfopenlens"]
     if not opener:
         pytest.skip("no candidates ingested in the checked-in store")

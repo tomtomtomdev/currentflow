@@ -24,6 +24,19 @@ def test_empty_membership_round_trips_to_empty_tuple(store):
     assert got is not None and got.indexes == ()   # "" never becomes ("",)
 
 
+def test_null_membership_reads_as_no_membership_known(store):
+    """A roster row with a NULL `indexes` (a store written before the NOT NULL landed, or
+    any torn row) must degrade to () — "no membership known" — not raise. The read feeds
+    `track.assign_track`, where () means Track B, so absent data still never invents
+    Track A. Emulated by relaxing the constraint on a scratch store."""
+    store._con.execute('CREATE OR REPLACE TABLE symbol_index ('
+                       '"symbol" VARCHAR, "as_of" TIMESTAMP, "indexes" VARCHAR)')
+    store._con.execute("INSERT INTO symbol_index VALUES ('LEGACY', ?, NULL)",
+                       [datetime(2026, 7, 1, 8)])
+    got = store.read_symbol_index_latest("LEGACY", datetime(2026, 7, 2))
+    assert got is not None and got.indexes == ()
+
+
 def test_read_latest_respects_as_of_firewall(store):
     # a snapshot stamped in the future must be invisible at an earlier decision_ts
     store.write_symbol_index([_row("BBRI", datetime(2026, 7, 5, 8), ("LQ45",))])

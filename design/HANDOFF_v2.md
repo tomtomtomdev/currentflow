@@ -67,8 +67,14 @@ Left→right, `gap: 18px`, horizontal padding `18px`:
 
 ## Screens / Views
 
-### 1. Signal Pipeline (default view)
+### 1. Signal Pipeline (the deciding view)
 **Purpose:** triage the whole watchlist at a glance — see every candidate's verdict and *why*, per stage.
+
+> **Landing view (2026-08-17):** the app no longer *opens* here — it lands on **Framework Lenses**
+> (§Screens 6, `app.DEFAULT_VIEW`), with `‹ Pipeline` one click away and the pipeline's
+> `▸ Framework Lenses` button back. Navigation only: the pipeline is still the **sole surface that
+> forms a verdict**, and the lens surface is a pure read downstream of it — RULE A/B unchanged.
+> See the PROGRESS.md decisions log (2026-08-17).
 
 **Layout:** a stage-header grid then two "lane" groups (Track A, Track B). Every candidate row is a CSS grid:
 `grid-template-columns: 170px repeat(4, 1fr) 150px; gap: 8px;` — i.e. **[Candidate] [Gate] [Phase] [Signal] [Veto] [Result]**.
