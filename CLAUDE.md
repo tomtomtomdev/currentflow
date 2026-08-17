@@ -142,9 +142,25 @@ The terminal's look & interaction are specified as a **high-fidelity design hand
 > Foreign Flow, Accumulation Detector, Money Replay are now **evidence tabs** opened from a pipeline
 > row. [`design/HANDOFF_v2.md`](design/HANDOFF_v2.md) is the authoritative v2 spec;
 > `currentflow/ui/pipeline_view.py` + `shell.py` (`.cf-pipe*`) implement it. RULE A/B unchanged.
+>
+> **Dedicated surfaces beside it** (full width, no ARMED rail — an observation must never sit next
+> to a live candidate as though it were one): the **Pattern Catalog** (LD-14, P1) and, from Slice 23,
+> **Framework Lenses** — the five source frameworks (Wyckoff · Wyckoff 2.0 · VPA · Bandarmology ·
+> Magic Formula) read **apart** instead of fused into the §2 gate chain, one section each plus a
+> confluence section (`signals/frameworks.py` + `ui/lens_view.py` + `shell.py` `.cf-lens*`). A lens
+> is a **pure read over an already-computed `EngineResult`**, so it cannot arm, un-reject, or re-gate
+> anything (RULE A structural); its only digits are counts of symbols, and the confluence figure is a
+> **set size**, never a score and never multiplied into SMS (RULE B). Framework agreement never
+> overrides the phase gate, and every row says so by carrying the engine's own verdict.
 
 - [`design/HANDOFF_v2.md`](design/HANDOFF_v2.md) — **authoritative v2 per-screen spec** (pipeline +
   the four evidence tabs, tokens, data model, interactions). Read this first for the current layout.
+- [`design/FRAMEWORK_LENSES_REDESIGN.md`](design/FRAMEWORK_LENSES_REDESIGN.md) (+ the static
+  reference render [`design/framework-lenses-redesign.html`](design/framework-lenses-redesign.html))
+  — the Framework Lenses **composition** spec (tab-card switcher · state bands · the fixed
+  five-slot cross-lens strip · the RULE A treatment on a confluence row). Shipped; it supersedes
+  the composition half of `HANDOFF_v2.md` §Screens 6, which has been rewritten to match. Tokens,
+  states, copy and rules are unchanged by it — layout only.
 - [`design/README.md`](design/README.md) — the handoff index: what the app is, fidelity,
   non-negotiable implementation constraints, shared design tokens, and reading order.
 - [`design/SCREENS_terminal.md`](design/SCREENS_terminal.md) — per-screen spec: global shell

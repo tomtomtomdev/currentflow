@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Framework Lenses — redesign, implementation reference</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+body { background:#070a10; color:#e6edf3; margin:0; padding:26px 30px 60px;
+  font-family:'Geist', ui-sans-serif, system-ui, -apple-system, sans-serif; }
+.exp-wrap { max-width:1240px; }
+.exp-note { border:1px dashed rgba(255,255,255,0.14); border-radius:9px; padding:12px 15px;
+  margin-bottom:22px; font-size:11.5px; line-height:1.55; color:#8b98a9; }
+.exp-note b { color:#e6edf3; }
+.exp-h { font-size:11px; letter-spacing:0.12em; color:#5a6675; margin:34px 0 10px;
+  font-family:'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace; }
+</style>
+<style>
+/* === Framework Lenses — redesign layer (2026-08-17) ==========================
+   Extends the existing .cf-lens* sheet in currentflow/ui/shell.py.
+   Tokens unchanged from STYLE_GUIDE.md; only composition is new.            */
+.cf-lensbar { display:flex; align-items:stretch; gap:7px; margin:0 0 9px; }
+.cf-lensbarlab { display:flex; align-items:center; font-family:'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-size:9px;
+  letter-spacing:0.14em; color:#5a6675; padding-right:4px; }
+.cf-lenstab { flex:1; min-width:0; background:#0d121b; border:1px solid rgba(255,255,255,0.06);
+  border-top:2px solid rgba(255,255,255,0.06); border-radius:8px; padding:9px 11px; cursor:pointer; }
+.cf-lenstab:hover { border-color:rgba(88,196,221,0.28); }
+.cf-lenstab.is-active { background:rgba(88,196,221,0.10); border-color:rgba(88,196,221,0.38);
+  border-top-color:#58c4dd; }
+.cf-lenstabhead { display:flex; align-items:center; gap:6px; }
+.cf-lenstabcode { font-family:'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-size:8.5px; letter-spacing:0.06em; padding:1px 5px;
+  border-radius:4px; flex:none; background:rgba(255,255,255,0.04); color:#5a6675; }
+.cf-lenstab.is-active .cf-lenstabcode { background:rgba(88,196,221,0.18); color:#8fdcec; }
+.cf-lenstablab { font-size:11px; font-weight:500; color:#8b98a9; overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap; }
+.cf-lenstab.is-active .cf-lenstablab { font-weight:600; color:#e6edf3; }
+.cf-lenstabtally { font-family:'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-size:9px; letter-spacing:0.03em; color:#5a6675; margin-top:5px; }
+
+.cf-lenskey { display:flex; align-items:center; gap:14px; flex-wrap:wrap; padding:7px 11px;
+  border:1px solid rgba(255,255,255,0.05); border-radius:8px; background:rgba(255,255,255,0.012);
+  margin-bottom:12px; }
+.cf-lenskeylab { font-family:'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-size:9px; letter-spacing:0.1em; color:#5a6675; }
+.cf-lenskeyitem { display:flex; align-items:center; gap:6px; font-size:10px; color:#5a6675; }
+.cf-lenskeyitem .cf-lensmark { width:16px; height:16px; }
+.cf-lenskeyitem b { font-family:'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-size:9.5px; font-weight:600; letter-spacing:0.05em; }
+
+.cf-lenshead { background:#0d121b; border:1px solid rgba(255,255,255,0.06); border-radius:9px;
+  padding:12px 14px; margin:10px 0 11px; }
+.cf-lensheadline { display:flex; align-items:baseline; gap:9px; flex-wrap:wrap; }
+.cf-lenscode { font-family:'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-size:9.5px; letter-spacing:0.08em; color:#58c4dd;
+  border:1px solid rgba(88,196,221,0.25); background:rgba(88,196,221,0.1);
+  border-radius:4px; padding:2px 6px; }
+.cf-lenstitle { font-size:14px; font-weight:600; color:#e6edf3; letter-spacing:0.01em; }
+.cf-lensfw { font-family:'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-size:9.5px; color:#58c4dd; letter-spacing:0.05em; }
+.cf-lensscope { font-size:10.5px; color:#8b98a9; margin-top:6px; line-height:1.45; max-width:104ch; }
+.cf-lenssrc { font-family:'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-size:9px; color:#5a6675; margin-top:5px; }
+
+.cf-lensrule { display:flex; align-items:center; gap:10px; margin:2px 0 10px; }
+.cf-lenscount { font-family:'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-size:10px; color:#5a6675; }
+.cf-lanerule { flex:1; height:1px; background:rgba(255,255,255,0.06); }
+
+.cf-lenscols { display:grid; grid-template-columns:104px 138px 1fr 214px; gap:9px;
+  padding:0 2px 6px; font-family:'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-size:9px; letter-spacing:0.08em; color:#3d4654; }
+
+/* state band — carries the state label once per group, so rows do not repeat it */
+.cf-lensband { display:flex; align-items:center; gap:9px; margin:12px 0 6px; }
+.cf-lensband.is-empty { opacity:0.55; }
+.cf-lensbandmark { font-family:'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-size:10px; width:18px; height:18px; border-radius:4px;
+  display:inline-flex; align-items:center; justify-content:center; flex:none; }
+.cf-lensbandlab { font-family:'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-size:10px; font-weight:600; letter-spacing:0.1em; }
+.cf-lensbandcount { font-family:'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-size:9.5px; color:#5a6675; }
+.cf-lensbandmeans { font-size:9.5px; color:#3d4654; }
+.cf-lensempty { font-family:'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-size:9.5px; color:#3d4654; padding:2px 0 10px 26px; }
+
+.cf-lensrow { display:grid; grid-template-columns:104px 138px 1fr 214px; gap:9px;
+  align-items:stretch; margin-bottom:7px; }
+.cf-lensrow.is-dim { opacity:0.72; }
+.cf-lenscand, .cf-lensstate, .cf-lensbody, .cf-lensside {
+  border-radius:8px; padding:9px 11px; display:flex; flex-direction:column; justify-content:center; }
+.cf-lenscand { background:#0d121b; border:1px solid rgba(255,255,255,0.07); }
+.cf-lensrow.is-untradeable .cf-lenscand { border-color:rgba(248,81,73,0.32); }
+.cf-candtick { font-family:'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-weight:600; font-size:14px; color:#e6edf3; }
+.cf-candmeta { font-family:'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-size:9.5px; color:#5a6675; margin-top:3px; }
+.cf-lensmark { font-family:'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-size:10px; width:16px; height:16px; border-radius:4px;
+  display:inline-flex; align-items:center; justify-content:center; flex:none;
+  background:rgba(255,255,255,0.05); }
+.cf-cellhead { display:flex; align-items:center; gap:6px; }
+.cf-lenstag { font-family:'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-size:8.5px; letter-spacing:0.04em; margin-top:4px; line-height:1.35; }
+.cf-lensbody { background:rgba(255,255,255,0.015); border:1px solid rgba(255,255,255,0.06); }
+.cf-lensdetail { font-size:10.5px; color:#c2ccd8; line-height:1.5; }
+.cf-lensnote { font-size:9px; color:#5a6675; margin-top:6px; line-height:1.4; }
+.cf-conflnote { font-size:10px; color:#8b98a9; margin-top:8px; line-height:1.45; }
+.cf-lensside { background:rgba(255,255,255,0.015); border:1px solid rgba(255,255,255,0.06); }
+.cf-lensside.is-untradeable { background:rgba(248,81,73,0.07); border-color:rgba(248,81,73,0.42); }
+
+/* five fixed slots — categorical set membership, never a proportion */
+.cf-lensstrip { display:flex; gap:3px; }
+.cf-lensslot { font-family:'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-size:8px; letter-spacing:0.04em; padding:3px 0;
+  border-radius:4px; text-align:center; flex:1; }
+.cf-lensslot.is-on { background:rgba(88,196,221,0.12); border:1px solid rgba(88,196,221,0.3); color:#58c4dd; }
+.cf-lensslot.is-self { background:rgba(255,255,255,0.05); border:1px dashed rgba(255,255,255,0.16); color:#8b98a9; }
+.cf-lensslot.is-off { background:transparent; border:1px solid rgba(255,255,255,0.05); color:#2f3846; }
+
+.cf-lensverdict { font-family:'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-size:9px; color:#5a6675; margin-top:7px; }
+.cf-vd-armed { color:#e8c168; } .cf-vd-watch { color:#8fdcec; } .cf-vd-rejected { color:#8b98a9; }
+
+.cf-conflcount { font-family:'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-weight:600; font-size:18px; color:#e6edf3; }
+.cf-conflcount.is-muted { color:#8b98a9; }
+.cf-conflof { font-family:'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-size:9px; color:#5a6675; }
+.cf-rulea { font-family:'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-size:10px; font-weight:600; letter-spacing:0.05em;
+  line-height:1.35; color:#8b98a9; }
+.cf-rulea.is-not { font-size:11px; color:#f85149; }
+
+/* state palette — deliberately NOT the pipeline pass/fail palette */
+.cf-lensstate.st-flagged  { background:rgba(63,185,80,0.06);   border:1px solid rgba(63,185,80,0.26); }
+.cf-lensstate.st-contrary { background:rgba(248,81,73,0.06);   border:1px solid rgba(248,81,73,0.28); }
+.cf-lensstate.st-neutral  { background:rgba(88,196,221,0.05);  border:1px solid rgba(88,196,221,0.2); }
+.cf-lensstate.st-na       { background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.07); }
+.cf-lensstate.st-unread   { background:rgba(255,255,255,0.015);border:1px solid rgba(255,255,255,0.05); }
+.st-flagged  .cf-lensmark, .st-flagged  .cf-lenstag, .st-flagged  .cf-lensbandmark, .st-flagged  .cf-lensbandlab { color:#7ee08a; }
+.st-contrary .cf-lensmark, .st-contrary .cf-lenstag, .st-contrary .cf-lensbandmark, .st-contrary .cf-lensbandlab { color:#f6a9a4; }
+.st-neutral  .cf-lensmark, .st-neutral  .cf-lenstag, .st-neutral  .cf-lensbandmark, .st-neutral  .cf-lensbandlab { color:#8fdcec; }
+.st-na       .cf-lensmark, .st-na       .cf-lenstag, .st-na       .cf-lensbandmark, .st-na       .cf-lensbandlab { color:#8b98a9; }
+.st-unread   .cf-lensmark, .st-unread   .cf-lenstag, .st-unread   .cf-lensbandmark, .st-unread   .cf-lensbandlab { color:#5a6675; }
+.cf-lensband.st-flagged  .cf-lensbandmark { background:rgba(63,185,80,0.06);   border:1px solid rgba(63,185,80,0.26); }
+.cf-lensband.st-contrary .cf-lensbandmark { background:rgba(248,81,73,0.06);   border:1px solid rgba(248,81,73,0.28); }
+.cf-lensband.st-neutral  .cf-lensbandmark { background:rgba(88,196,221,0.05);  border:1px solid rgba(88,196,221,0.2); }
+.cf-lensband.st-na       .cf-lensbandmark { background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.07); }
+.cf-lensband.st-unread   .cf-lensbandmark { background:rgba(255,255,255,0.015);border:1px solid rgba(255,255,255,0.05); }
+
+.cf-lensfoot { margin-top:18px; font-size:10px; color:#5a6675; line-height:1.6; max-width:120ch; }
+</style>
+</head><body><div class="exp-wrap">
+<div class="exp-note"><b>Framework Lenses — redesign, implementation reference.</b> Same sample data, same tokens, same five states as <code>framework-lenses-current.html</code>; only the composition changed. Every class in the second <code>&lt;style&gt;</code> block above is the sheet to paste into <code>currentflow/ui/shell.py</code>. <b>Switcher, legend and all six sections are stacked here</b> — in the app the switcher is one row of six buttons and one section renders at a time. The switcher is shown once in its <code>wyckoff</code>-active state. Written spec: <code>FRAMEWORK_LENSES_REDESIGN.md</code>.</div>
+
+<div class="exp-h">SWITCHER + READ-STATE KEY (persistent chrome above every section)</div>
+<div class="cf-lensbar"><div class="cf-lensbarlab">LENS</div><div class="cf-lenstab is-active"><div class="cf-lenstabhead"><span class="cf-lenstabcode">WYK</span><span class="cf-lenstablab">Wyckoff Structure</span></div><div class="cf-lenstabtally">2 flagged · 0 unread</div></div><div class="cf-lenstab"><div class="cf-lenstabhead"><span class="cf-lenstabcode">VP</span><span class="cf-lenstablab">Wyckoff 2.0 — Volume Profile</span></div><div class="cf-lenstabtally">1 flagged · 1 unread</div></div><div class="cf-lenstab"><div class="cf-lenstabhead"><span class="cf-lenstabcode">VPA</span><span class="cf-lenstablab">VPA — Bar Character</span></div><div class="cf-lenstabtally">1 flagged · 1 unread</div></div><div class="cf-lenstab"><div class="cf-lenstabhead"><span class="cf-lenstabcode">BND</span><span class="cf-lenstablab">Bandarmology — Broker Footprint</span></div><div class="cf-lenstabtally">2 flagged · 0 unread</div></div><div class="cf-lenstab"><div class="cf-lenstabhead"><span class="cf-lenstabcode">MF</span><span class="cf-lenstablab">Magic Formula — Conviction Tilt</span></div><div class="cf-lenstabtally">1 flagged · 1 unread</div></div><div class="cf-lenstab"><div class="cf-lenstabhead"><span class="cf-lenstabcode">∪</span><span class="cf-lenstablab">Confluence</span></div><div class="cf-lenstabtally">2 symbols · widest 3</div></div></div>
+<div class="cf-lenskey"><span class="cf-lenskeylab">READ STATES</span><span class="cf-lenskeyitem st-flagged"><span class="cf-lensmark">◉</span><b>FLAGGED</b>this framework's accumulation read is present</span><span class="cf-lenskeyitem st-contrary"><span class="cf-lensmark">◐</span><b>CONTRARY</b>it reads the other side</span><span class="cf-lenskeyitem st-neutral"><span class="cf-lensmark">○</span><b>NEUTRAL</b>read it, named nothing</span><span class="cf-lenskeyitem st-na"><span class="cf-lensmark">—</span><b>N/A</b>deliberately abstains</span><span class="cf-lenskeyitem st-unread"><span class="cf-lensmark">·</span><b>UNREAD</b>could not read it (missing ≠ zero)</span></div>
+
+<div class="exp-h">SECTION · WYCKOFF STRUCTURE</div>
+<div class="cf-lenshead"><div class="cf-lensheadline"><span class="cf-lenscode">WYK</span><span class="cf-lenstitle">Wyckoff Structure</span><span class="cf-lensfw">Wyckoff — accumulation phases, Composite Man</span></div><div class="cf-lensscope">trading range, phase, and the C/D events (selling climax · spring · SOS · LPS · UTAD)</div><div class="cf-lenssrc">source: signals/phase.py · LOCKED_SPEC §2 [3] (the RULE A classifier, read here as observation)</div></div><div class="cf-lensrule"><div class="cf-lanerule"></div><span class="cf-lenscount">2 flagged · 1 contrary · 1 neutral · 0 unread</span></div>
+<div class="cf-lenscols"><div>SYMBOL</div><div>THIS LENS READS</div><div>IN ITS OWN VOCABULARY</div><div>ALSO FLAGGED BY · ENGINE</div></div><div class="cf-lensband st-flagged"><span class="cf-lensbandmark">◉</span><span class="cf-lensbandlab">FLAGGED</span><span class="cf-lensbandcount">2 names</span><div class="cf-lanerule"></div><span class="cf-lensbandmeans">this framework's accumulation read is present</span></div>
+<div class="cf-lensrow">
+  <div class="cf-lenscand"><div class="cf-candtick">BBNI</div><div class="cf-candmeta">Track A</div></div>
+  <div class="cf-lensstate st-flagged"><div class="cf-cellhead"><span class="cf-lensmark">◉</span></div><div class="cf-lenstag">PHASE D</div></div>
+  <div class="cf-lensbody"><div class="cf-lensdetail">sign of strength through resistance, then a last point of support · events: SOS 2026-07-21, LPS 2026-07-29</div></div>
+  <div class="cf-lensside"><div class="cf-lensstrip"><span class="cf-lensslot is-self">WYK</span><span class="cf-lensslot is-off">VP</span><span class="cf-lensslot is-off">VPA</span><span class="cf-lensslot is-off">BND</span><span class="cf-lensslot is-off">MF</span></div><div class="cf-lensverdict">pipeline: <span class="cf-vd-watch">WATCH</span></div></div>
+</div>
+<div class="cf-lensrow">
+  <div class="cf-lenscand"><div class="cf-candtick">BRMS</div><div class="cf-candmeta">Track B</div></div>
+  <div class="cf-lensstate st-flagged"><div class="cf-cellhead"><span class="cf-lensmark">◉</span></div><div class="cf-lenstag">PHASE C</div></div>
+  <div class="cf-lensbody"><div class="cf-lensdetail">spring below range support on expanded volume, recovered same session · events: SELLING_CLIMAX 2026-05-11, SPRING 2026-08-04</div></div>
+  <div class="cf-lensside"><div class="cf-lensstrip"><span class="cf-lensslot is-self">WYK</span><span class="cf-lensslot is-on">VP</span><span class="cf-lensslot is-off">VPA</span><span class="cf-lensslot is-on">BND</span><span class="cf-lensslot is-off">MF</span></div><div class="cf-lensverdict">pipeline: <span class="cf-vd-armed">ARMED</span></div></div>
+</div>
+<div class="cf-lensband st-contrary"><span class="cf-lensbandmark">◐</span><span class="cf-lensbandlab">CONTRARY</span><span class="cf-lensbandcount">1 name</span><div class="cf-lanerule"></div><span class="cf-lensbandmeans">it reads the other side</span></div>
+<div class="cf-lensrow">
+  <div class="cf-lenscand"><div class="cf-candtick">CUAN</div><div class="cf-candmeta">Track B</div></div>
+  <div class="cf-lensstate st-contrary"><div class="cf-cellhead"><span class="cf-lensmark">◐</span></div><div class="cf-lenstag">DISTRIBUTION</div></div>
+  <div class="cf-lensbody"><div class="cf-lensdetail">upthrust after distribution — supply overcame demand at the range high · events: UTAD 2026-08-06</div></div>
+  <div class="cf-lensside"><div class="cf-lensstrip"><span class="cf-lensslot is-self">WYK</span><span class="cf-lensslot is-off">VP</span><span class="cf-lensslot is-off">VPA</span><span class="cf-lensslot is-off">BND</span><span class="cf-lensslot is-off">MF</span></div><div class="cf-lensverdict">pipeline: <span class="cf-vd-rejected">VETOED</span></div></div>
+</div>
+<div class="cf-lensband st-neutral"><span class="cf-lensbandmark">○</span><span class="cf-lensbandlab">NEUTRAL</span><span class="cf-lensbandcount">1 name</span><div class="cf-lanerule"></div><span class="cf-lensbandmeans">read it, named nothing</span></div>
+<div class="cf-lensrow">
+  <div class="cf-lenscand"><div class="cf-candtick">PTRO</div><div class="cf-candmeta">Track B</div></div>
+  <div class="cf-lensstate st-neutral"><div class="cf-cellhead"><span class="cf-lensmark">○</span></div><div class="cf-lenstag">PHASE B</div></div>
+  <div class="cf-lensbody"><div class="cf-lensdetail">range established, no test of support yet — cause still building</div></div>
+  <div class="cf-lensside"><div class="cf-lensstrip"><span class="cf-lensslot is-self">WYK</span><span class="cf-lensslot is-off">VP</span><span class="cf-lensslot is-on">VPA</span><span class="cf-lensslot is-on">BND</span><span class="cf-lensslot is-on">MF</span></div><div class="cf-lensverdict">pipeline: <span class="cf-vd-rejected">GATE_REJECTED</span></div></div>
+</div>
+<div class="cf-lensband st-na is-empty"><span class="cf-lensbandmark">—</span><span class="cf-lensbandlab">N/A</span><span class="cf-lensbandcount">0 names</span><div class="cf-lanerule"></div><span class="cf-lensbandmeans">deliberately abstains</span></div>
+<div class="cf-lensempty">no name in this state today — stated, not omitted</div>
+<div class="cf-lensband st-unread is-empty"><span class="cf-lensbandmark">·</span><span class="cf-lensbandlab">UNREAD</span><span class="cf-lensbandcount">0 names</span><div class="cf-lanerule"></div><span class="cf-lensbandmeans">could not read it (missing ≠ zero)</span></div>
+<div class="cf-lensempty">no name in this state today — stated, not omitted</div>
+
+<div class="exp-h">SECTION · WYCKOFF 2.0 — VOLUME PROFILE</div>
+<div class="cf-lenshead"><div class="cf-lensheadline"><span class="cf-lenscode">VP</span><span class="cf-lenstitle">Wyckoff 2.0 — Volume Profile</span><span class="cf-lensfw">Wyckoff 2.0 (Villahermosa) — volume at price</span></div><div class="cf-lensscope">where in the profile the structure happened: spring at VAL · LPS at POC · UTAD at VAH</div><div class="cf-lenssrc">source: signals/volume_profile.py · LOCKED_SPEC §4.1 (c) — daily-bar approximation</div></div><div class="cf-lensrule"><div class="cf-lanerule"></div><span class="cf-lenscount">1 flagged · 1 contrary · 1 neutral · 1 unread</span></div>
+<div class="cf-lenscols"><div>SYMBOL</div><div>THIS LENS READS</div><div>IN ITS OWN VOCABULARY</div><div>ALSO FLAGGED BY · ENGINE</div></div><div class="cf-lensband st-flagged"><span class="cf-lensbandmark">◉</span><span class="cf-lensbandlab">FLAGGED</span><span class="cf-lensbandcount">1 name</span><div class="cf-lanerule"></div><span class="cf-lensbandmeans">this framework's accumulation read is present</span></div>
+<div class="cf-lensrow">
+  <div class="cf-lenscand"><div class="cf-candtick">BRMS</div><div class="cf-candmeta">Track B</div></div>
+  <div class="cf-lensstate st-flagged"><div class="cf-cellhead"><span class="cf-lensmark">◉</span></div><div class="cf-lenstag">SPRING@VAL</div></div>
+  <div class="cf-lensbody"><div class="cf-lensdetail">the spring shook out below the value-area low and closed back inside it</div><div class="cf-lensnote">approximate — daily-bar volume-at-price; a true POC needs intraday depth this system does not ingest</div></div>
+  <div class="cf-lensside"><div class="cf-lensstrip"><span class="cf-lensslot is-on">WYK</span><span class="cf-lensslot is-self">VP</span><span class="cf-lensslot is-off">VPA</span><span class="cf-lensslot is-on">BND</span><span class="cf-lensslot is-off">MF</span></div><div class="cf-lensverdict">pipeline: <span class="cf-vd-armed">ARMED</span></div></div>
+</div>
+<div class="cf-lensband st-contrary"><span class="cf-lensbandmark">◐</span><span class="cf-lensbandlab">CONTRARY</span><span class="cf-lensbandcount">1 name</span><div class="cf-lanerule"></div><span class="cf-lensbandmeans">it reads the other side</span></div>
+<div class="cf-lensrow">
+  <div class="cf-lenscand"><div class="cf-candtick">CUAN</div><div class="cf-candmeta">Track B</div></div>
+  <div class="cf-lensstate st-contrary"><div class="cf-cellhead"><span class="cf-lensmark">◐</span></div><div class="cf-lenstag">UTAD@VAH</div></div>
+  <div class="cf-lensbody"><div class="cf-lensdetail">the upthrust printed at the value-area high and closed back inside it</div><div class="cf-lensnote">approximate — daily-bar volume-at-price; a true POC needs intraday depth this system does not ingest</div></div>
+  <div class="cf-lensside"><div class="cf-lensstrip"><span class="cf-lensslot is-off">WYK</span><span class="cf-lensslot is-self">VP</span><span class="cf-lensslot is-off">VPA</span><span class="cf-lensslot is-off">BND</span><span class="cf-lensslot is-off">MF</span></div><div class="cf-lensverdict">pipeline: <span class="cf-vd-rejected">VETOED</span></div></div>
+</div>
+<div class="cf-lensband st-neutral"><span class="cf-lensbandmark">○</span><span class="cf-lensbandlab">NEUTRAL</span><span class="cf-lensbandcount">1 name</span><div class="cf-lanerule"></div><span class="cf-lensbandmeans">read it, named nothing</span></div>
+<div class="cf-lensrow">
+  <div class="cf-lenscand"><div class="cf-candtick">PTRO</div><div class="cf-candmeta">Track B</div></div>
+  <div class="cf-lensstate st-neutral"><div class="cf-cellhead"><span class="cf-lensmark">○</span></div><div class="cf-lenstag">NO CONFLUENCE</div></div>
+  <div class="cf-lensbody"><div class="cf-lensdetail">profile built, but no structure event landed on the point of control or a value-area edge</div><div class="cf-lensnote">approximate — daily-bar volume-at-price; a true POC needs intraday depth this system does not ingest</div></div>
+  <div class="cf-lensside"><div class="cf-lensstrip"><span class="cf-lensslot is-off">WYK</span><span class="cf-lensslot is-self">VP</span><span class="cf-lensslot is-on">VPA</span><span class="cf-lensslot is-on">BND</span><span class="cf-lensslot is-on">MF</span></div><div class="cf-lensverdict">pipeline: <span class="cf-vd-rejected">GATE_REJECTED</span></div></div>
+</div>
+<div class="cf-lensband st-na is-empty"><span class="cf-lensbandmark">—</span><span class="cf-lensbandlab">N/A</span><span class="cf-lensbandcount">0 names</span><div class="cf-lanerule"></div><span class="cf-lensbandmeans">deliberately abstains</span></div>
+<div class="cf-lensempty">no name in this state today — stated, not omitted</div>
+<div class="cf-lensband st-unread"><span class="cf-lensbandmark">·</span><span class="cf-lensbandlab">UNREAD</span><span class="cf-lensbandcount">1 name</span><div class="cf-lanerule"></div><span class="cf-lensbandmeans">could not read it (missing ≠ zero)</span></div>
+<div class="cf-lensrow is-dim">
+  <div class="cf-lenscand"><div class="cf-candtick">BBNI</div><div class="cf-candmeta">Track A</div></div>
+  <div class="cf-lensstate st-unread"><div class="cf-cellhead"><span class="cf-lensmark">·</span></div><div class="cf-lenstag">NO PROFILE</div></div>
+  <div class="cf-lensbody"><div class="cf-lensdetail">volume-at-price unread — too few complete bars in the window (missing ≠ zero)</div></div>
+  <div class="cf-lensside"><div class="cf-lensstrip"><span class="cf-lensslot is-on">WYK</span><span class="cf-lensslot is-self">VP</span><span class="cf-lensslot is-off">VPA</span><span class="cf-lensslot is-off">BND</span><span class="cf-lensslot is-off">MF</span></div><div class="cf-lensverdict">pipeline: <span class="cf-vd-watch">WATCH</span></div></div>
+</div>
+
+<div class="exp-h">SECTION · VPA — BAR CHARACTER</div>
+<div class="cf-lenshead"><div class="cf-lensheadline"><span class="cf-lenscode">VPA</span><span class="cf-lenstitle">VPA — Bar Character</span><span class="cf-lensfw">Volume Price Analysis (Coulling) / VSA (Williams)</span></div><div class="cf-lensscope">where the bar closed inside its own spread: absorption · stopping volume · no supply</div><div class="cf-lenssrc">source: signals/vpa.py · LOCKED_SPEC §4.1 (b)</div></div><div class="cf-lensrule"><div class="cf-lanerule"></div><span class="cf-lenscount">1 flagged · 1 contrary · 1 neutral · 1 unread</span></div>
+<div class="cf-lenscols"><div>SYMBOL</div><div>THIS LENS READS</div><div>IN ITS OWN VOCABULARY</div><div>ALSO FLAGGED BY · ENGINE</div></div><div class="cf-lensband st-flagged"><span class="cf-lensbandmark">◉</span><span class="cf-lensbandlab">FLAGGED</span><span class="cf-lensbandcount">1 name</span><div class="cf-lanerule"></div><span class="cf-lensbandmeans">this framework's accumulation read is present</span></div>
+<div class="cf-lensrow">
+  <div class="cf-lenscand"><div class="cf-candtick">PTRO</div><div class="cf-candmeta">Track B</div></div>
+  <div class="cf-lensstate st-flagged"><div class="cf-cellhead"><span class="cf-lensmark">◉</span></div><div class="cf-lenstag">DEMAND SIDE</div></div>
+  <div class="cf-lensbody"><div class="cf-lensdetail">absorption / stopping / no-supply prints in the window · latest bar: ABSORPTION</div></div>
+  <div class="cf-lensside"><div class="cf-lensstrip"><span class="cf-lensslot is-off">WYK</span><span class="cf-lensslot is-off">VP</span><span class="cf-lensslot is-self">VPA</span><span class="cf-lensslot is-on">BND</span><span class="cf-lensslot is-on">MF</span></div><div class="cf-lensverdict">pipeline: <span class="cf-vd-rejected">GATE_REJECTED</span></div></div>
+</div>
+<div class="cf-lensband st-contrary"><span class="cf-lensbandmark">◐</span><span class="cf-lensbandlab">CONTRARY</span><span class="cf-lensbandcount">1 name</span><div class="cf-lanerule"></div><span class="cf-lensbandmeans">it reads the other side</span></div>
+<div class="cf-lensrow">
+  <div class="cf-lenscand"><div class="cf-candtick">BRMS</div><div class="cf-candmeta">Track B</div></div>
+  <div class="cf-lensstate st-contrary"><div class="cf-cellhead"><span class="cf-lensmark">◐</span></div><div class="cf-lenstag">SUPPLY SIDE</div></div>
+  <div class="cf-lensbody"><div class="cf-lensdetail">no-demand / supply-present / churn prints in the window · latest bar: CHURN</div></div>
+  <div class="cf-lensside"><div class="cf-lensstrip"><span class="cf-lensslot is-on">WYK</span><span class="cf-lensslot is-on">VP</span><span class="cf-lensslot is-self">VPA</span><span class="cf-lensslot is-on">BND</span><span class="cf-lensslot is-off">MF</span></div><div class="cf-lensverdict">pipeline: <span class="cf-vd-armed">ARMED</span></div></div>
+</div>
+<div class="cf-lensband st-neutral"><span class="cf-lensbandmark">○</span><span class="cf-lensbandlab">NEUTRAL</span><span class="cf-lensbandcount">1 name</span><div class="cf-lanerule"></div><span class="cf-lensbandmeans">read it, named nothing</span></div>
+<div class="cf-lensrow">
+  <div class="cf-lenscand"><div class="cf-candtick">BBNI</div><div class="cf-candmeta">Track A</div></div>
+  <div class="cf-lensstate st-neutral"><div class="cf-cellhead"><span class="cf-lensmark">○</span></div><div class="cf-lenstag">NO CHARACTER</div></div>
+  <div class="cf-lensbody"><div class="cf-lensdetail">bars read, none carried a character the framework names · latest bar: NEUTRAL</div></div>
+  <div class="cf-lensside"><div class="cf-lensstrip"><span class="cf-lensslot is-on">WYK</span><span class="cf-lensslot is-off">VP</span><span class="cf-lensslot is-self">VPA</span><span class="cf-lensslot is-off">BND</span><span class="cf-lensslot is-off">MF</span></div><div class="cf-lensverdict">pipeline: <span class="cf-vd-watch">WATCH</span></div></div>
+</div>
+<div class="cf-lensband st-na is-empty"><span class="cf-lensbandmark">—</span><span class="cf-lensbandlab">N/A</span><span class="cf-lensbandcount">0 names</span><div class="cf-lanerule"></div><span class="cf-lensbandmeans">deliberately abstains</span></div>
+<div class="cf-lensempty">no name in this state today — stated, not omitted</div>
+<div class="cf-lensband st-unread"><span class="cf-lensbandmark">·</span><span class="cf-lensbandlab">UNREAD</span><span class="cf-lensbandcount">1 name</span><div class="cf-lanerule"></div><span class="cf-lensbandmeans">could not read it (missing ≠ zero)</span></div>
+<div class="cf-lensrow is-dim">
+  <div class="cf-lenscand"><div class="cf-candtick">CUAN</div><div class="cf-candmeta">Track B</div></div>
+  <div class="cf-lensstate st-unread"><div class="cf-cellhead"><span class="cf-lensmark">·</span></div><div class="cf-lenstag">UNREADABLE</div></div>
+  <div class="cf-lensbody"><div class="cf-lensdetail">no bar in the window carried a readable spread and volume context (a locked ARA/ARB print has no spread to close inside)</div></div>
+  <div class="cf-lensside"><div class="cf-lensstrip"><span class="cf-lensslot is-off">WYK</span><span class="cf-lensslot is-off">VP</span><span class="cf-lensslot is-self">VPA</span><span class="cf-lensslot is-off">BND</span><span class="cf-lensslot is-off">MF</span></div><div class="cf-lensverdict">pipeline: <span class="cf-vd-rejected">VETOED</span></div></div>
+</div>
+
+<div class="exp-h">SECTION · BANDARMOLOGY — BROKER FOOTPRINT</div>
+<div class="cf-lenshead"><div class="cf-lensheadline"><span class="cf-lenscode">BND</span><span class="cf-lenstitle">Bandarmology — Broker Footprint</span><span class="cf-lensfw">Bandarmology — IDX broker-code flow</span></div><div class="cf-lensscope">who is buying and for how long: top-2 concentration, persistence, KSEI ownership drift</div><div class="cf-lenssrc">source: signals/broker_flow.py + signals/ownership.py + the §5 bandar-family vetoes</div></div><div class="cf-lensrule"><div class="cf-lanerule"></div><span class="cf-lenscount">2 flagged · 1 contrary · 1 neutral · 0 unread</span></div>
+<div class="cf-lenscols"><div>SYMBOL</div><div>THIS LENS READS</div><div>IN ITS OWN VOCABULARY</div><div>ALSO FLAGGED BY · ENGINE</div></div><div class="cf-lensband st-flagged"><span class="cf-lensbandmark">◉</span><span class="cf-lensbandlab">FLAGGED</span><span class="cf-lensbandcount">2 names</span><div class="cf-lanerule"></div><span class="cf-lensbandmeans">this framework's accumulation read is present</span></div>
+<div class="cf-lensrow">
+  <div class="cf-lenscand"><div class="cf-candtick">BRMS</div><div class="cf-candmeta">Track B</div></div>
+  <div class="cf-lensstate st-flagged"><div class="cf-cellhead"><span class="cf-lensmark">◉</span></div><div class="cf-lenstag">PERSISTENT ACCUMULATOR</div></div>
+  <div class="cf-lensbody"><div class="cf-lensdetail">the same top-2 buyers net-bought 6 consecutive days on a flat-to-down tape — quiet accumulation, not a chase · KSEI: foreign share rising across the range</div></div>
+  <div class="cf-lensside"><div class="cf-lensstrip"><span class="cf-lensslot is-on">WYK</span><span class="cf-lensslot is-on">VP</span><span class="cf-lensslot is-off">VPA</span><span class="cf-lensslot is-self">BND</span><span class="cf-lensslot is-off">MF</span></div><div class="cf-lensverdict">pipeline: <span class="cf-vd-armed">ARMED</span></div></div>
+</div>
+<div class="cf-lensrow">
+  <div class="cf-lenscand"><div class="cf-candtick">PTRO</div><div class="cf-candmeta">Track B</div></div>
+  <div class="cf-lensstate st-flagged"><div class="cf-cellhead"><span class="cf-lensmark">◉</span></div><div class="cf-lenstag">PERSISTENT ACCUMULATOR</div></div>
+  <div class="cf-lensbody"><div class="cf-lensdetail">the same top-2 buyers net-bought 4 consecutive days on a flat-to-down tape — quiet accumulation, not a chase</div></div>
+  <div class="cf-lensside"><div class="cf-lensstrip"><span class="cf-lensslot is-off">WYK</span><span class="cf-lensslot is-off">VP</span><span class="cf-lensslot is-on">VPA</span><span class="cf-lensslot is-self">BND</span><span class="cf-lensslot is-on">MF</span></div><div class="cf-lensverdict">pipeline: <span class="cf-vd-rejected">GATE_REJECTED</span></div></div>
+</div>
+<div class="cf-lensband st-contrary"><span class="cf-lensbandmark">◐</span><span class="cf-lensbandlab">CONTRARY</span><span class="cf-lensbandcount">1 name</span><div class="cf-lanerule"></div><span class="cf-lensbandmeans">it reads the other side</span></div>
+<div class="cf-lensrow">
+  <div class="cf-lenscand"><div class="cf-candtick">CUAN</div><div class="cf-candmeta">Track B</div></div>
+  <div class="cf-lensstate st-contrary"><div class="cf-cellhead"><span class="cf-lensmark">◐</span></div><div class="cf-lenstag">SINGLE BANDAR MONOPOLY</div></div>
+  <div class="cf-lensbody"><div class="cf-lensdetail">one broker took 71% of the window&#x27;s net buying — a single-participant footprint, not a syndicate</div><div class="cf-lensnote">the framework&#x27;s own disqualifier — the §5 veto&#x27;s engine effect is unchanged</div></div>
+  <div class="cf-lensside"><div class="cf-lensstrip"><span class="cf-lensslot is-off">WYK</span><span class="cf-lensslot is-off">VP</span><span class="cf-lensslot is-off">VPA</span><span class="cf-lensslot is-self">BND</span><span class="cf-lensslot is-off">MF</span></div><div class="cf-lensverdict">pipeline: <span class="cf-vd-rejected">VETOED</span></div></div>
+</div>
+<div class="cf-lensband st-neutral"><span class="cf-lensbandmark">○</span><span class="cf-lensbandlab">NEUTRAL</span><span class="cf-lensbandcount">1 name</span><div class="cf-lanerule"></div><span class="cf-lensbandmeans">read it, named nothing</span></div>
+<div class="cf-lensrow">
+  <div class="cf-lenscand"><div class="cf-candtick">BBNI</div><div class="cf-candmeta">Track A</div></div>
+  <div class="cf-lensstate st-neutral"><div class="cf-cellhead"><span class="cf-lensmark">○</span></div><div class="cf-lenstag">CONCENTRATION ON A RISING TAPE</div></div>
+  <div class="cf-lensbody"><div class="cf-lensdetail">top-2 buyers persisted 5 consecutive days, but the tape rose with them — a chase, not the quiet mark-down absorption the framework reads</div></div>
+  <div class="cf-lensside"><div class="cf-lensstrip"><span class="cf-lensslot is-on">WYK</span><span class="cf-lensslot is-off">VP</span><span class="cf-lensslot is-off">VPA</span><span class="cf-lensslot is-self">BND</span><span class="cf-lensslot is-off">MF</span></div><div class="cf-lensverdict">pipeline: <span class="cf-vd-watch">WATCH</span></div></div>
+</div>
+<div class="cf-lensband st-na is-empty"><span class="cf-lensbandmark">—</span><span class="cf-lensbandlab">N/A</span><span class="cf-lensbandcount">0 names</span><div class="cf-lanerule"></div><span class="cf-lensbandmeans">deliberately abstains</span></div>
+<div class="cf-lensempty">no name in this state today — stated, not omitted</div>
+<div class="cf-lensband st-unread is-empty"><span class="cf-lensbandmark">·</span><span class="cf-lensbandlab">UNREAD</span><span class="cf-lensbandcount">0 names</span><div class="cf-lanerule"></div><span class="cf-lensbandmeans">could not read it (missing ≠ zero)</span></div>
+<div class="cf-lensempty">no name in this state today — stated, not omitted</div>
+
+<div class="exp-h">SECTION · MAGIC FORMULA — CONVICTION TILT</div>
+<div class="cf-lenshead"><div class="cf-lensheadline"><span class="cf-lenscode">MF</span><span class="cf-lenstitle">Magic Formula — Conviction Tilt</span><span class="cf-lensfw">Greenblatt — Magic Formula (EY = EBIT/EV, ROC)</span></div><div class="cf-lensscope">quality tercile that sizes conviction and hold horizon — never an entry gate (LD-6)</div><div class="cf-lenssrc">source: fundamentals/tilt.py over SCR-4 (fitem 13474 Rank(Magic Formula)%)</div></div><div class="cf-lensrule"><div class="cf-lanerule"></div><span class="cf-lenscount">1 flagged · 0 contrary · 1 neutral · 1 not applicable · 1 unread</span></div>
+<div class="cf-lenscols"><div>SYMBOL</div><div>THIS LENS READS</div><div>IN ITS OWN VOCABULARY</div><div>ALSO FLAGGED BY · ENGINE</div></div><div class="cf-lensband st-flagged"><span class="cf-lensbandmark">◉</span><span class="cf-lensbandlab">FLAGGED</span><span class="cf-lensbandcount">1 name</span><div class="cf-lanerule"></div><span class="cf-lensbandmeans">this framework's accumulation read is present</span></div>
+<div class="cf-lensrow">
+  <div class="cf-lenscand"><div class="cf-candtick">PTRO</div><div class="cf-candmeta">Track B</div></div>
+  <div class="cf-lensstate st-flagged"><div class="cf-cellhead"><span class="cf-lensmark">◉</span></div><div class="cf-lenstag">COMPOUNDER</div></div>
+  <div class="cf-lensbody"><div class="cf-lensdetail">MF rank 88% (top tercile) → compounder, hold through markup</div><div class="cf-lensnote">conviction &amp; hold horizon only — fundamentals never gate an entry (LD-6)</div></div>
+  <div class="cf-lensside"><div class="cf-lensstrip"><span class="cf-lensslot is-off">WYK</span><span class="cf-lensslot is-off">VP</span><span class="cf-lensslot is-on">VPA</span><span class="cf-lensslot is-on">BND</span><span class="cf-lensslot is-self">MF</span></div><div class="cf-lensverdict">pipeline: <span class="cf-vd-rejected">GATE_REJECTED</span></div></div>
+</div>
+<div class="cf-lensband st-contrary is-empty"><span class="cf-lensbandmark">◐</span><span class="cf-lensbandlab">CONTRARY</span><span class="cf-lensbandcount">0 names</span><div class="cf-lanerule"></div><span class="cf-lensbandmeans">it reads the other side</span></div>
+<div class="cf-lensempty">no name in this state today — stated, not omitted</div>
+<div class="cf-lensband st-neutral"><span class="cf-lensbandmark">○</span><span class="cf-lensbandlab">NEUTRAL</span><span class="cf-lensbandcount">1 name</span><div class="cf-lanerule"></div><span class="cf-lensbandmeans">read it, named nothing</span></div>
+<div class="cf-lensrow">
+  <div class="cf-lenscand"><div class="cf-candtick">BRMS</div><div class="cf-candmeta">Track B</div></div>
+  <div class="cf-lensstate st-neutral"><div class="cf-cellhead"><span class="cf-lensmark">○</span></div><div class="cf-lenstag">NEUTRAL</div></div>
+  <div class="cf-lensbody"><div class="cf-lensdetail">MF rank 51% (mid tercile) → neutral, standard hold</div><div class="cf-lensnote">conviction &amp; hold horizon only — fundamentals never gate an entry (LD-6)</div></div>
+  <div class="cf-lensside"><div class="cf-lensstrip"><span class="cf-lensslot is-on">WYK</span><span class="cf-lensslot is-on">VP</span><span class="cf-lensslot is-off">VPA</span><span class="cf-lensslot is-on">BND</span><span class="cf-lensslot is-self">MF</span></div><div class="cf-lensverdict">pipeline: <span class="cf-vd-armed">ARMED</span></div></div>
+</div>
+<div class="cf-lensband st-na"><span class="cf-lensbandmark">—</span><span class="cf-lensbandlab">N/A</span><span class="cf-lensbandcount">1 name</span><div class="cf-lanerule"></div><span class="cf-lensbandmeans">deliberately abstains</span></div>
+<div class="cf-lensrow is-dim">
+  <div class="cf-lenscand"><div class="cf-candtick">BBNI</div><div class="cf-candmeta">Track A</div></div>
+  <div class="cf-lensstate st-na"><div class="cf-cellhead"><span class="cf-lensmark">—</span></div><div class="cf-lenstag">MF SKIPPED</div></div>
+  <div class="cf-lensbody"><div class="cf-lensdetail">§7 FLOW_ONLY (FINANCIALS) — ROE/PE/PB distort on leverage, so Magic Formula is deliberately not run on financials or utilities (LD-7); the sector proxy sizes this name instead</div></div>
+  <div class="cf-lensside"><div class="cf-lensstrip"><span class="cf-lensslot is-on">WYK</span><span class="cf-lensslot is-off">VP</span><span class="cf-lensslot is-off">VPA</span><span class="cf-lensslot is-off">BND</span><span class="cf-lensslot is-self">MF</span></div><div class="cf-lensverdict">pipeline: <span class="cf-vd-watch">WATCH</span></div></div>
+</div>
+<div class="cf-lensband st-unread"><span class="cf-lensbandmark">·</span><span class="cf-lensbandlab">UNREAD</span><span class="cf-lensbandcount">1 name</span><div class="cf-lanerule"></div><span class="cf-lensbandmeans">could not read it (missing ≠ zero)</span></div>
+<div class="cf-lensrow is-dim">
+  <div class="cf-lenscand"><div class="cf-candtick">CUAN</div><div class="cf-candmeta">Track B</div></div>
+  <div class="cf-lensstate st-unread"><div class="cf-cellhead"><span class="cf-lensmark">·</span></div><div class="cf-lenstag">NO MF DATA</div></div>
+  <div class="cf-lensbody"><div class="cf-lensdetail">no Magic Formula rank visible at this decision moment (SCR-4 not pulled, or the name is absent from it) — un-ranked, never assumed mid-tercile</div></div>
+  <div class="cf-lensside"><div class="cf-lensstrip"><span class="cf-lensslot is-off">WYK</span><span class="cf-lensslot is-off">VP</span><span class="cf-lensslot is-off">VPA</span><span class="cf-lensslot is-off">BND</span><span class="cf-lensslot is-self">MF</span></div><div class="cf-lensverdict">pipeline: <span class="cf-vd-rejected">VETOED</span></div></div>
+</div>
+
+<div class="exp-h">SECTION · CONFLUENCE — WHERE THE FRAMEWORKS AGREE</div>
+<div class="cf-lenshead"><div class="cf-lensheadline"><span class="cf-lenscode">∪</span><span class="cf-lenstitle">Confluence — where the frameworks agree</span><span class="cf-lensfw">aggregation across all five lenses</span></div><div class="cf-lensscope">symbols flagged by two or more frameworks at this decision moment</div><div class="cf-lenssrc">source: signals/frameworks.py · set membership only, no composite (RULE B)</div></div><div class="cf-lensrule"><div class="cf-lanerule"></div><span class="cf-lenscount">2 symbols · widest agreement: 3 of 5 lenses</span></div>
+<div class="cf-lenscols"><div>SYMBOL</div><div>SET SIZE</div><div>WHICH FRAMEWORKS</div><div>ENGINE · RULE A</div></div><div class="cf-lensrow">
+  <div class="cf-lenscand"><div class="cf-candtick">BRMS</div><div class="cf-candmeta">Track B</div></div>
+  <div class="cf-lensstate st-neutral"><div class="cf-cellhead"><span class="cf-conflcount">3</span><span class="cf-conflof">of 5 lenses</span></div><div class="cf-lenstag">FRAMEWORKS AGREEING</div></div>
+  <div class="cf-lensbody"><div class="cf-lensstrip"><span class="cf-lensslot is-on">WYK</span><span class="cf-lensslot is-on">VP</span><span class="cf-lensslot is-off">VPA</span><span class="cf-lensslot is-on">BND</span><span class="cf-lensslot is-off">MF</span></div><div class="cf-lensnote cf-conflnote">3 frameworks flagged this name; the pipeline verdict is ARMED — see the Signal Pipeline for the stage that decided it</div></div>
+  <div class="cf-lensside"><div class="cf-rulea">RULE A · TRADEABLE PHASE</div><div class="cf-lensverdict">pipeline: <span class="cf-vd-armed">ARMED</span></div></div>
+</div>
+<div class="cf-lensrow is-untradeable">
+  <div class="cf-lenscand"><div class="cf-candtick">PTRO</div><div class="cf-candmeta">Track B</div></div>
+  <div class="cf-lensstate st-neutral"><div class="cf-cellhead"><span class="cf-conflcount is-muted">3</span><span class="cf-conflof">of 5 lenses</span></div><div class="cf-lenstag">FRAMEWORKS AGREEING</div></div>
+  <div class="cf-lensbody"><div class="cf-lensstrip"><span class="cf-lensslot is-off">WYK</span><span class="cf-lensslot is-off">VP</span><span class="cf-lensslot is-on">VPA</span><span class="cf-lensslot is-on">BND</span><span class="cf-lensslot is-on">MF</span></div><div class="cf-lensnote cf-conflnote">3 frameworks flagged this name, but RULE A rejected it (GATE_REJECTED) — only Wyckoff Phase C/D is tradeable, and framework agreement never overrides that gate</div></div>
+  <div class="cf-lensside is-untradeable"><div class="cf-rulea is-not">RULE A · NOT TRADEABLE</div><div class="cf-lensverdict">pipeline: <span class="cf-vd-rejected">GATE_REJECTED</span></div></div>
+</div>
+
+<div class="cf-lensfoot">These sections read each framework <b>apart</b>; the Signal Pipeline reads them <b>fused</b> into the locked §2 gate chain, and only the pipeline decides anything. A lens can flag a name the pipeline rejects — that is the point of the split, not a contradiction. Framework agreement is a count of observations, never a score, a probability, or a buy/sell claim (RULE B), and it never overrides the RULE A phase gate. Observation, not a recommendation.</div>
+</div></body></html>

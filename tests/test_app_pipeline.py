@@ -84,3 +84,47 @@ def test_row_click_opens_evidence_then_back_returns(_session):
     assert not at.exception, at.exception
     md2 = " ".join(m.value for m in at.markdown)
     assert "UNIVERSE GATE" in md2 and "Why " not in md2
+
+
+@patch("currentflow.dal.session.session_status", return_value=_FAKE_SESSION)
+def test_framework_lenses_open_switch_sections_and_return(_session):
+    """The five frameworks read apart: the lens view opens from the pipeline, every
+    section switches without exception, and `‹ Pipeline` returns home. The pipeline
+    itself is untouched by the trip — a lens surface decides nothing (RULE A)."""
+    at = _authed_app()
+    opener = [b for b in at.button if b.key == "cfopenlens"]
+    if not opener:
+        pytest.skip("no candidates ingested in the checked-in store")
+
+    opener[0].click()
+    at.run()
+    assert not at.exception, at.exception
+    md = " ".join(m.value for m in at.markdown)
+    assert "Framework Lenses" in md
+    assert "UNIVERSE GATE" not in md  # a dedicated surface, not the pipeline grid
+
+    # the redesigned chrome: tab-card switcher with per-lens tallies, the persistent
+    # read-state key, column captions, and the state bands (all five, even at zero)
+    assert "cf-lenstab" in md and "cf-lenskey" in md and "cf-lenscols" in md
+    assert "no name in this state today" in md
+
+    sections = [b.key for b in at.button if b.key and b.key.startswith("cflens-")]
+    assert sections == [
+        "cflens-wyckoff", "cflens-wyckoff2", "cflens-vpa",
+        "cflens-bandar", "cflens-mf", "cflens-confluence",
+    ]
+    for key in sections:
+        next(b for b in at.button if b.key == key).click()
+        at.run()
+        assert not at.exception, at.exception
+        section_md = " ".join(m.value for m in at.markdown)
+        # every row carries the engine's own verdict, and the cross-lens strip is always
+        # five fixed slots — never a proportion (RULE A / RULE B, at the app level)
+        assert "pipeline:" in section_md
+        slots = section_md.count('class="cf-lensslot')   # rendered slots, not the sheet
+        assert slots and slots % 5 == 0
+
+    next(b for b in at.button if b.key == "cflensback").click()
+    at.run()
+    assert not at.exception, at.exception
+    assert "UNIVERSE GATE" in " ".join(m.value for m in at.markdown)

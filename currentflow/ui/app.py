@@ -27,6 +27,7 @@ from currentflow.signals import (
     distribution,
     engine,
     foreign_flow,
+    frameworks,
     heatmap,
     ownership,
     replay,
@@ -84,7 +85,7 @@ from currentflow.ui.risk_view import (
 from currentflow.ui import shell
 from currentflow.ui.sector_view import scatter_points, sector_rows
 from currentflow.ui.sms_view import GATE_BANNER, WATCHLIST_FRAMING, component_rows, score_display, state_label
-from currentflow.ui import catalog_view, daily_top_view, fast_mode_view, ml_view, pipeline_view, ranking_view, timemachine, volume_profile_view, vpa_view, watchlist_view
+from currentflow.ui import catalog_view, daily_top_view, fast_mode_view, lens_view, ml_view, pipeline_view, ranking_view, timemachine, volume_profile_view, vpa_view, watchlist_view
 from currentflow.store.schema import MODE_FAST, MODE_HASTE
 from currentflow.validation import fast_mode as fast_mode_mod
 from currentflow.validation.promotion import ValidationLedger
@@ -1702,6 +1703,21 @@ def _close_catalog() -> None:
     st.session_state["cf_view"] = None
 
 
+def _open_lenses() -> None:
+    """Open the Framework Lenses view — the five source frameworks read APART, one
+    section each, plus their confluence. The pipeline (which reads them fused into the
+    locked §2 gate chain) is untouched and remains the only thing that decides."""
+    st.session_state["cf_view"] = "lenses"
+
+
+def _close_lenses() -> None:
+    st.session_state["cf_view"] = None
+
+
+def _set_lens_section(key: str) -> None:
+    st.session_state["cf_lens"] = key
+
+
 _EVIDENCE_TABS = (
     ("broker", "Broker Flow"),
     ("foreign", "Foreign Flow"),
@@ -2018,6 +2034,109 @@ def _render_catalog(store: Store) -> None:
         st.divider()
 
 
+def _scr4_map(store: Store, decision_ts: datetime) -> dict[str, object]:
+    """SCR-4 fundamental-tilt rows by symbol, from the newest screener day already visible
+    at `decision_ts`. Empty when SCR-4 has never been pulled — the Magic Formula lens then
+    reads UNAVAILABLE for every name rather than assuming a mid tercile (missing ≠ zero)."""
+    row = store._con.execute(
+        'SELECT max("date") FROM scr4_fundamental_tilt WHERE "as_of" < ?', [decision_ts]
+    ).fetchone()
+    day = row[0] if row else None
+    if day is None:
+        return {}
+    return {r.symbol: r for r in store.read_scr4(day, decision_ts)}
+
+
+def _render_lenses(store: Store) -> None:
+    """Framework Lenses — the five source frameworks as five switchable sections, plus a
+    confluence section for the names more than one of them flagged.
+
+    RULE A: read-only over `engine.evaluate()`. A lens section cannot arm a name or reopen
+    the C/D gate; every row carries the pipeline's own verdict, so framework agreement can
+    never be mistaken for tradeability. RULE B: categories and sentences only — the sole
+    digits are counts of symbols (set cardinality), never a score or a buy/sell verb."""
+    back_col, head_col = st.columns([0.13, 0.87], gap="small")
+    with back_col, st.container(key="cfback"):
+        st.button("‹ Pipeline", key="cflensback", on_click=_close_lenses)
+    with head_col:
+        _module_header(
+            "Framework Lenses",
+            "The five frameworks the system is built on, read separately instead of fused "
+            "into the §2 gate chain — Wyckoff · Wyckoff 2.0 (volume profile) · VPA bar "
+            "character · Bandarmology · Magic Formula — with a confluence section for the "
+            "names more than one of them flags.",
+            "observation", "OBSERVATION · ships now",
+        )
+
+    asof = _asof_day()
+    symbols = _symbols(store, "daily_bar", asof_day=asof)
+    if not symbols:
+        st.warning(_no_data_note("No data"))
+        return
+
+    decision_ts = _decision_ts()
+    fundamentals = _scr4_map(store, decision_ts)
+    reads = [
+        frameworks.read_symbol(
+            _candidate(store, s, decision_ts, asof_day=asof)["result"],
+            fundamentals=fundamentals.get(s),
+            sector=OPERATOR_SECTOR_MAP.get(s),
+        )
+        for s in symbols
+    ]
+
+    active = st.session_state.get("cf_lens", lens_view.SECTIONS[0][0])
+    if active not in lens_view.section_keys():
+        active = lens_view.SECTIONS[0][0]
+    # switcher: one card per section carrying that lens's tally, so the bar is itself a
+    # census of the day. Card HTML + an invisible overlay button (the cfwatch/cfpipe
+    # pattern) — a lens switch moves `cf_lens` and nothing else; it can never change a
+    # verdict.
+    tabs = lens_view.section_tabs(reads)
+    with st.container(key="cfevbar"):
+        st.markdown('<span class="cf-evlabel">LENS</span>', unsafe_allow_html=True)
+        for col, tab in zip(st.columns(len(tabs)), tabs):
+            key = tab["key"]
+            with col, st.container(key=f"cflenstab-{key}"):
+                st.markdown(
+                    shell.lens_tab_html(tab, active=key == active), unsafe_allow_html=True,
+                )
+                with st.container(key=f"cflenspick-{key}"):
+                    st.button(
+                        tab["label"], key=f"cflens-{key}", on_click=_set_lens_section,
+                        args=(key,), help=f"Read {tab['label']}",
+                    )
+
+    header = lens_view.section_header(active)
+    st.caption(header["framing"])
+    st.markdown(shell.lens_key_html(lens_view.read_state_key()), unsafe_allow_html=True)
+    st.markdown(
+        shell.lens_section_header_html(header, lens_view.section_count(reads, active)),
+        unsafe_allow_html=True,
+    )
+    st.markdown(shell.lens_columns_html(lens_view.columns(active)), unsafe_allow_html=True)
+
+    if active == lens_view.CONFLUENCE:
+        rows = lens_view.confluence_rows(reads)
+        if not rows:
+            st.markdown(
+                '<div class="cf-lanenote">— no symbol was flagged by two or more '
+                'frameworks at this decision moment</div>',
+                unsafe_allow_html=True,
+            )
+        for row in rows:
+            st.markdown(shell.confluence_row_html(row), unsafe_allow_html=True)
+    else:
+        # grouped under state bands, all five, in the locked order — an empty band still
+        # renders and says so (missing ≠ zero, and unread ≠ found nothing)
+        for band in lens_view.lens_bands(lens_view.lens_rows(reads, active)):
+            st.markdown(shell.lens_band_html(band), unsafe_allow_html=True)
+            for row in band["rows"]:
+                st.markdown(shell.lens_row_html(row), unsafe_allow_html=True)
+
+    st.markdown(shell.lens_footer_html(), unsafe_allow_html=True)
+
+
 def main() -> None:
     configure_logging()  # persist dal `net-error` lines to logs/net.log
     st.set_page_config(page_title="CurrentFlow", layout="wide")
@@ -2057,6 +2176,14 @@ def main() -> None:
         st.markdown(shell.ticker_html(), unsafe_allow_html=True)
         return
 
+    # Framework Lenses: the same five frameworks the pipeline fuses into the §2 gate chain,
+    # read APART — one section each + their confluence. Full width like the catalog, so a
+    # per-framework observation never sits beside the ARMED rail as if it were a candidate.
+    if st.session_state.get("cf_view") == "lenses":
+        _render_lenses(store)
+        st.markdown(shell.ticker_html(), unsafe_allow_html=True)
+        return
+
     main_col, rail_col = st.columns([2.55, 1], gap="medium")
     with rail_col:
         _render_session_head(info)
@@ -2067,6 +2194,8 @@ def main() -> None:
             _render_detail(store, detail)
         else:
             _render_pipeline(store)
+            st.button("▸ Framework Lenses (the five frameworks, read apart)",
+                      key="cfopenlens", on_click=_open_lenses)
             st.button("▸ Pattern Catalog (research · base rates)",
                       key="cfopencat", on_click=_open_catalog)
 

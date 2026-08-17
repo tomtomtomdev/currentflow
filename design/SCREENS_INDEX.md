@@ -18,6 +18,32 @@ Every terminal shot shows the full shell: top status bar (as-of stamp, RULE-B ba
 - `screens/09-risk-monitor.png` — Risk Monitor.
 - `screens/10-sms-rank.png` — SMS / Rank. **RULE B in force:** "GATED · number withheld", per-module validation bar (1.4 / 3 months), flow-ranked ordering framed as observation, no score number rendered.
 
+## Post-v2 surfaces — **no capture, no `.dc.html` prototype** (spec'd from the implementation)
+
+These two full-width surfaces were built after the prototype was drawn, directly in Streamlit. They
+have **no `.dc.html` prototype and no PNG here** — so for them the direction reverses: the shipped
+code is the source and the handoff is derived from it. Named rather than faked; do not read the
+absence of a shot as "not built". (Framework Lenses is the partial exception: its *composition* was
+later redesigned in a handoff — [`FRAMEWORK_LENSES_REDESIGN.md`](FRAMEWORK_LENSES_REDESIGN.md) +
+the static reference render [`framework-lenses-redesign.html`](framework-lenses-redesign.html),
+2026-08-17, shipped — which is a rendered reference, not an interactive prototype. Tokens, states,
+copy and rules were unchanged by it; only layout moved.)
+
+- **Framework Lenses** (PLAN.md Slice 23 · `design/HANDOFF_v2.md` §Screens **6**) — the five source
+  frameworks (Wyckoff · Wyckoff 2.0 volume profile · VPA bar character · Bandarmology · Greenblatt
+  Magic Formula) read **apart** instead of fused into the §2 gate chain, one switchable section each
+  plus a **Confluence** section. Full width, **no ARMED rail**. Implemented in
+  `currentflow/ui/lens_view.py` + `shell.py` (`.cf-lens*`, `lens_*_html`). Rows sit under **state
+  bands** (all five, printed even at zero) and each carries a **fixed five-slot cross-lens strip**
+  (`WYK · VP · VPA · BND · MF`). Its lens-state glyphs (`◉ ◐ ○ — ·`) and tints are deliberately
+  **not** the pipeline's stage palette — a lens read is an observation, not a verdict. Only digits on
+  the surface are counts of symbols; the confluence figure is a **set size**, never a score, and the
+  strip is categorical, never a meter (RULE B). Every row carries the engine's own verdict, and a
+  confluence row RULE A rejected makes `RULE A · NOT TRADEABLE` its loudest element, so agreement can
+  never look like tradeability (RULE A).
+- **Pattern Catalog** (PLAN.md Slice 21 · LD-14) — the dedicated base-rate research view under P1–P4.
+  **Not yet spec'd in `HANDOFF_v2.md` at all** — an open gap, listed here so it stays visible.
+
 ## What to reproduce exactly
 - The **RULE-B gating states** — badges ("OBSERVATION · ships now" vs "GATED · number withheld"), the amber validation progress bar, and the fact that no score/probability number appears on gated modules.
 - The **no-shadow, layered-background + hairline-border** depth model.

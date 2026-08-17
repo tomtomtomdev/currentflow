@@ -158,10 +158,157 @@ For `EXITED`, the P&L badge: `margin-left:auto`, Geist Mono 9.5px 600, `padding 
 
 ---
 
+### 6. Framework Lenses (dedicated surface: `cf_view = 'lenses'`)
+
+> **Provenance — read this first.** Unlike screens 1–5, this surface had **no `.dc.html`
+> prototype** at first: it was built directly in Streamlit (PLAN.md Slice 23, 2026-08-17) and this
+> entry was a spec **derived from the shipped implementation**. A redesign of its *composition*
+> then arrived as a handoff — [`FRAMEWORK_LENSES_REDESIGN.md`](FRAMEWORK_LENSES_REDESIGN.md) +
+> [`framework-lenses-redesign.html`](framework-lenses-redesign.html) (2026-08-17) — and is now
+> **shipped**; the composition below is the redesigned one. **Tokens, states, copy and rules are
+> unchanged** by that redesign; only layout moved. The `.cf-lens*` CSS in `currentflow/ui/shell.py`
+> remains the executable copy. The Pattern-Catalog gap (Slice 21) is unchanged — it still has no
+> entry in this file at all.
+
+**Purpose:** the pipeline (screen 1) reads the five source frameworks **fused** into the locked §2
+gate chain — a candidate stops at the first stage it fails, so a name RULE A rejects becomes
+invisible to every other framework that *did* see something. This surface reads them **apart**:
+one switchable section per framework, plus a confluence section for the names more than one flags.
+
+**Placement:** full width, **no ARMED watchlist rail beside it** — the same posture as the Pattern
+Catalog. A per-framework observation must never sit next to a live candidate as though it were one.
+Reached by a button under the pipeline (`▸ Framework Lenses (the five frameworks, read apart)`);
+`‹ Pipeline` returns.
+
+**The five lenses** (fixed order, `LENS_ORDER`):
+
+| section key | title | framework | reads |
+|---|---|---|---|
+| `wyckoff` | Wyckoff Structure | Wyckoff — accumulation phases, Composite Man | range, phase, and the C/D events (climax · spring · SOS · LPS · UTAD) |
+| `wyckoff2` | Wyckoff 2.0 — Volume Profile | Villahermosa — volume at price | where in the profile the structure happened: spring@VAL · LPS@POC · UTAD@VAH |
+| `vpa` | VPA — Bar Character | Coulling / Williams (VSA) | where the bar closed inside its own spread: absorption · stopping volume · no supply |
+| `bandar` | Bandarmology — Broker Footprint | Bandarmology — IDX broker-code flow | top-2 concentration, persistence, KSEI drift, the bandar-family §5 vetoes |
+| `mf` | Magic Formula — Conviction Tilt | Greenblatt (EY = EBIT/EV, ROC) | quality tercile that sizes conviction — never an entry gate (LD-6) |
+
+**Layout:**
+
+- **Section switcher** — six **tab cards** (`.cf-lenstab`, `flex:1`, padding `9px 11px`, radius 8) in
+  `st.columns(6)` inside the shared `cfevbar` container, prefixed by a `LENS` label. Each card holds a
+  lens **code chip** (`WYK · VP · VPA · BND · MF · ∪`), the section name, and a Geist-Mono **tally**
+  (`2 flagged · 0 unread`; the confluence card reads `2 symbols · widest 3`) — the switcher is itself a
+  census of the day. Active card: bg `rgba(88,196,221,0.10)`, border `rgba(88,196,221,0.38)`, 2px
+  accent top rule. Clicks come from an invisible overlay `st.button` (`st-key-cflenspick-*`, the
+  `cfwatch`/`cfpipe` pattern). Order: the five lenses in `LENS_ORDER`, then `Confluence`.
+- **Read-state key** (`.cf-lenskey`) — persistent, rendered once above every section: all five states
+  with mark, label and meaning. `unread` must never be read as "found nothing".
+- **Section header card** (`.cf-lenshead`) — bg `#0d121b`, border `1px rgba(255,255,255,0.06)`,
+  radius 9, padding `12px 14px`. A baseline **head line** (`.cf-lensheadline`) carrying the lens
+  **code** chip + **title** (14px/600, `#e6edf3`) + **framework** (Geist Mono 9.5px, `#58c4dd`,
+  `0.05em`), then **scope** (10.5px, `#8b98a9`) and **source** (Geist Mono 9px, `#5a6675`, prefixed
+  `source: `). Provenance is on-screen, never implied.
+- **Census rule** (`.cf-lensrule`) — a hairline `flex:1` rule + a right-aligned Geist-Mono 10px count
+  string, e.g. `3 flagged · 1 contrary · 4 neutral · 2 unread`. **The unread count is always printed,
+  including at zero** — a framework that could read every name today is itself a fact (missing ≠ zero
+  cuts both ways).
+- **Column captions** (`.cf-lenscols`) — the four columns, named:
+  `SYMBOL · THIS LENS READS · IN ITS OWN VOCABULARY · ALSO FLAGGED BY · ENGINE`
+  (confluence: `SYMBOL · SET SIZE · WHICH FRAMEWORKS · ENGINE · RULE A`).
+- **State bands** (`.cf-lensband`) — rows are grouped under their read state: mark chip `18×18` +
+  label + `2 names` + a `flex:1` hairline + what the state means. **All five bands render in the fixed
+  order whether or not they hold rows**; an empty one prints
+  `no name in this state today — stated, not omitted` (`.cf-lensempty`). Grouping is the sort order
+  below made visible — it asserts nothing about which name is better.
+- **Lens row** (`.cf-lensrow`) — CSS grid `grid-template-columns: 104px 138px 1fr 214px; gap: 9px;
+  margin-bottom: 7px`, i.e. **[Candidate] [State] [Read] [Cross-lens strip + verdict]**. Not clickable
+  (there is no per-lens evidence view; the pipeline owns drill-down). `N/A` and `UNREAD` rows carry
+  `opacity:0.72` (`.is-dim`) — de-emphasis without collapsing.
+  - **Candidate cell** (`.cf-lenscand`): bg `#0d121b`, border, radius 8 — ticker (Geist Mono 600,
+    14px) over `Track {A|B}` (9.5px, `#5a6675`).
+  - **State cell** (`.cf-lensstate.st-*`): a `16×16` mark chip, then the categorical tag (Geist Mono
+    8.5px). The state **word** lives on the band, not repeated per row. Colors per the state table below.
+  - **Read cell** (`.cf-lensbody`): bg `rgba(255,255,255,0.015)`, border `1px rgba(255,255,255,0.06)`,
+    radius 8 — the framework's sentence in its own vocabulary (10.5px, `#c2ccd8`), plus an optional
+    **note** line (9px, `#5a6675`) for a caveat that must travel with the read (the volume-profile
+    daily-bar approximation; "fundamentals never gate an entry (LD-6)"; "KSEI is monthly — a
+    corroborator, never a call on its own").
+  - **Cross-lens cell** (`.cf-lensside`): the **fixed five-slot strip** (`.cf-lensstrip`) —
+    `WYK · VP · VPA · BND · MF` at constant x-positions, `is-on` = that lens flagged this name,
+    `is-self` (dashed) = the section you are reading, `is-off` = it did not. Below it,
+    `pipeline: {ENGINE_STATE}` (Geist Mono 9px), the verdict coloured `ARMED #e8c168` ·
+    `WATCH #8fdcec` · `GATE_REJECTED`/`VETOED #8b98a9` (muted on purpose — stated, not celebrated).
+    A section is never readable in isolation.
+- **Confluence row** — the same grid. Col 2 is the **agreement cell**: a Geist-Mono 600 18px count
+  (`.is-muted #8b98a9` when not tradeable) + `of 5 lenses` + the tag `FRAMEWORKS AGREEING`, on the
+  neutral cyan tint. Col 3 holds the five-slot strip + the row note. Col 4 holds the **RULE A line**
+  first — `RULE A · TRADEABLE PHASE` (`#8b98a9`, 10px) or **`RULE A · NOT TRADEABLE`** (`#f85149`,
+  11px/600, cell `bg rgba(248,81,73,0.07)` / `border rgba(248,81,73,0.42)`, symbol-cell border
+  `rgba(248,81,73,0.32)`) — then `pipeline: {ENGINE_STATE}`. When RULE A rejected the name, that line
+  is the **loudest element in the row**: agreement must never out-shout the gate.
+- **Footer** (`.cf-lensfoot`, 10px `#5a6675`) — states that these sections read the frameworks apart
+  while the pipeline reads them fused, that only the pipeline decides, that a lens flagging a name
+  the pipeline rejects is the point rather than a contradiction, and that agreement is a count of
+  observations, never a score.
+
+**Lens-state styling** (`_LENS_STATE_STYLE`) — **deliberately not the pipeline's pass/fail palette.**
+A lens read is an observation, not a stage verdict, and the two must never look alike on screen:
+
+| state | label | mark | fg | bg | border | means |
+|---|---|---|---|---|---|---|
+| `FLAGGED` | FLAGGED | `◉` | `#7ee08a` | `rgba(63,185,80,0.06)` | `rgba(63,185,80,0.26)` | this framework's accumulation read is present |
+| `CONTRARY` | CONTRARY | `◐` | `#f6a9a4` | `rgba(248,81,73,0.06)` | `rgba(248,81,73,0.28)` | it reads the *other* side (distribution / weakness) |
+| `NEUTRAL` | NEUTRAL | `○` | `#8fdcec` | `rgba(88,196,221,0.05)` | `rgba(88,196,221,0.2)` | it read the name and named nothing |
+| `NOT_APPLICABLE` | N/A | `—` | `#8b98a9` | `rgba(255,255,255,0.02)` | `rgba(255,255,255,0.07)` | it deliberately abstains (§7/LD-7 FLOW_ONLY) |
+| `UNAVAILABLE` | UNREAD | `·` | `#5a6675` | `rgba(255,255,255,0.015)` | `rgba(255,255,255,0.05)` | it could not read this name (missing ≠ zero) |
+
+Row order within a section: `FLAGGED → CONTRARY → NEUTRAL → N/A → UNREAD`, then ticker A–Z, rendered
+as the state bands above. Ordering only — it asserts nothing about which name is the better trade.
+
+**Cross-lens slot** (`.cf-lensslot`): Geist Mono 8px, `0.04em`, padding `3px 0`, radius 4, `flex:1`.
+`is-on` bg `rgba(88,196,221,0.12)` / border `rgba(88,196,221,0.3)` / fg `#58c4dd`; `is-self` bg
+`rgba(255,255,255,0.05)` / `1px dashed rgba(255,255,255,0.16)` / `#8b98a9`; `is-off` transparent /
+`1px solid rgba(255,255,255,0.05)` / `#2f3846`.
+
+**Lens chip** (`.cf-lenschip`, still used where a lens is named in prose): Geist Mono 8px, `0.04em`,
+padding `2px 6px`, radius 4, bg `rgba(88,196,221,0.1)`, fg `#58c4dd`, border `1px rgba(88,196,221,0.22)`.
+
+**Non-negotiable rendering rules (RULE A / RULE B):**
+
+1. **The only digits on this surface are counts of symbols.** Section censuses and the confluence
+   count. The confluence figure is a **set size** — how many independent frameworks flagged the name,
+   the same species of fact as the pipeline's `3 armed · 2 watch`. It is never weighted, never
+   rendered as a percentage or a bar, never sorted into a "quality" ranking, and never multiplied
+   into SMS. Do not add a progress bar, gauge, or `n/5` fraction meter to the agreement cell — a
+   filled meter reads as a confidence, which is exactly what RULE B forbids. **The five-slot strip is
+   not a meter either**: fixed-width, fixed-position, *labelled* categories, so a name flagged by one
+   lens and a name flagged by four produce the same geometry, only different slots. Never sort rows by
+   slot count; never make slot width proportional. Beyond the counts, the only other numerals on the
+   surface are band counts (`2 names`) and the switcher tallies — a percentage inside a framework's
+   own sentence (`MF rank 88%`) is that framework's verbatim read, not a system claim.
+2. **Every row carries the engine's own verdict** (`pipeline: ARMED | WATCH | VETOED |
+   GATE_REJECTED`), and every confluence row carries the explicit RULE A line. A name four frameworks
+   like that RULE A rejected must render as exactly that. Framework agreement never overrides the
+   phase gate and must never *look* like it does.
+3. **Five states, never two.** Collapsing `UNAVAILABLE` into `NEUTRAL` — or rendering either as an
+   empty cell — is the missing-≠-zero failure this whole layer is built to avoid. All five **bands**
+   render too, including at zero, where they say so rather than disappearing.
+4. **No buy/sell verb, no probability, no SMS value** in any tag, sentence, or note.
+5. **A lens cell must not look like a stage cell.** Different glyph set (`◉ ◐ ○ — ·` vs `✓ ✕ ▽ ⤶ ·`),
+   different tint alphas, no `pass`/`fail` wording. Same colors would imply a lens passes or fails a
+   candidate — the one thing this surface must not say.
+
+---
+
 ## Interactions & Behavior
 - **Open evidence:** clicking a pipeline candidate row → `openDetail(ticker, 'broker')`: sets `detailStock` + `selectedStock` to that ticker, `detailTab='broker'`, resets scrubber to 43, stops playback. The header ribbon shows a contextual title ("Why {TICKER} is ARMED / is on WATCH / was REJECTED / was EXITED") and subtitle derived from the decisive stage (fail/low → "Decisive stage: …"; rev → "Entry thesis broken — … {note}."; else "Passed every stage — …").
 - **Evidence tabs:** switch the active evidence view (`broker`/`foreign`/`accum`/`replay`); switching stops playback.
 - **Back to Pipeline:** `‹ Pipeline` clears `detailStock` and returns to the pipeline.
+- **Open Framework Lenses:** `▸ Framework Lenses` on the pipeline sets `cf_view='lenses'` and renders
+  the lens surface full width (no ARMED rail). The section defaults to `wyckoff`.
+- **Switch lens section:** the six switcher cards (overlay buttons) set `cf_lens`; the surface
+  re-renders with that section's header, census, bands, and rows. No other state changes — switching a
+  lens cannot change a verdict, because a lens is a pure read over an already-computed engine result
+  (RULE A). Everything on the surface is static CSS grid/flex: no hover-reveal, no popovers, no JS.
+- **Back from lenses:** `‹ Pipeline` clears `cf_view` and returns to the pipeline unchanged.
 - **Broker matrix column click:** selects that ticker (updates the matrix highlight + broker table context) without leaving the broker view.
 - **Replay transport:** play/pause toggles an interval that increments the scrubber; dragging the range input sets the playhead and pauses. All readouts, phase, and insight recompute from the playhead index.
 - **Trap-flags disclosure:** clicking the "All trap & decay flags" header toggles `trapOpen` (caret rotates 90°).
@@ -181,6 +328,10 @@ Component-level state (no server state in the prototype — everything is derive
 - `scrub` (int, default 43) — replay playhead index.
 - `playing` (bool) — replay transport running; drives a `setInterval`.
 - `trapOpen` (bool, default true) — broker trap-flags disclosure.
+- `cf_view` (`'lenses' | 'catalog' | null`) — when set, a dedicated full-width surface replaces the
+  pipeline **and** the ARMED rail. `null` = the pipeline home.
+- `cf_lens` (`'wyckoff' | 'wyckoff2' | 'vpa' | 'bandar' | 'mf' | 'confluence'`, default `'wyckoff'`) —
+  the active Framework-Lenses section. An unrecognized value falls back to the first section.
 - **Auth/session substate** (see note): `authed` (default **true**), `verifying`, `authMode`, `authStep`, `authRound`, `selChannel`, `resendIn`, `tokenPreview`, `username`, and error fields.
 
 **Derived, per render:** pipeline lanes/rows (from `PIPE` + `TICKERS`), evidence-module data (built lazily only for the active tab), watchlist rows (excludes `REJECTED` and `EXITED`, sorted ARMED→WATCH). Numbers in evidence views are generated by a **seeded RNG** keyed off the ticker so they're stable per name — in production, replace these builders with real data fetches that return the same field shapes.
@@ -202,6 +353,20 @@ The class contains a **complete credential + MFA (OTP) login flow** (`OTP_ROUNDS
 **Broker** `{ code, name, dna }` — 17 brokers. `dna ∈ { 'Foreign Inst', 'Local Inst', 'Smart Money', 'Prop', 'Retail' }`. (e.g. `KZ` = CLSA = Foreign Inst; `DX` = Bahana = Smart Money; `YP` = Mirae = Retail.)
 
 **Pipeline record** (`PIPE[ticker]`): four stage objects `gate / phase / sig / veto`, each `{ s, tag?, r }` where `s ∈ { pass, fail, low, rev, skip }`, `tag` is an optional label (e.g. `PHASE C`, `FLOW REVERSED`), `r` is the reason string. Plus `result ∈ { ARMED, WATCH, REJECTED, EXITED }`, `note` (verdict caption), and — for EXITED only — `exitPnl` (e.g. `'+2.4%'` / `'−1.1%'`). A candidate stops at the first non-pass stage; downstream stages are `skip`. For EXITED, all stages passed on entry and the stage whose signal later reversed carries `s:'rev'`.
+
+**Lens read** (`LensRead`, one per framework per symbol): `{ lens, state, tag, detail, note }` where
+`state ∈ { FLAGGED, CONTRARY, NEUTRAL, NOT_APPLICABLE, UNAVAILABLE }`, `tag` is the short categorical
+label (`PHASE C`, `DEMAND SIDE`, `PERSISTENT ACCUMULATOR`, `SPRING@VAL`, `COMPOUNDER`, `NO MF DATA`…),
+`detail` is the framework's sentence, `note` an optional caveat that must render with it. A symbol's
+`SymbolRead` is `{ symbol, track, reads[5], engine_state, tradeable }` — the engine verdict is carried
+for display and never written by this layer.
+
+**Lens row** (view-model): the `LensRead` fields plus `{ ticker, track, state_label, engine_state,
+tradeable, also[] }`, where `also` is the chip labels of the **other** lenses that flagged the name.
+
+**Confluence row:** `{ ticker, track, lenses[], n_lenses, n_total, engine_state, tradeable, note }`.
+`n_lenses === lenses.length` **by construction** — it is a set size, not a computed figure, and
+nothing may derive a second number from it.
 
 **Stage/verdict enums drive all the cell/badge styling** — see the two tables under Signal Pipeline.
 

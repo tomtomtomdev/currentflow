@@ -507,6 +507,151 @@ div[class*="st-key-cflogincard"] div[data-testid="stForm"] {{ border:none; paddi
 .cf-resnote {{ font-size:9px; color:{TOKENS["text_faint"]}; margin-top:5px; line-height:1.4; }}
 .cf-reswhy {{ font-size:9.5px; color:{TOKENS["accent"]}; margin-top:7px; }}
 .cf-pipefoot {{ margin-top:16px; font-size:10px; color:{TOKENS["text_faint"]}; line-height:1.5; }}
+/* --- Framework Lenses: the five frameworks read apart, plus their confluence ---
+   Composition per design/FRAMEWORK_LENSES_REDESIGN.md (2026-08-17); every token below
+   is the pre-existing STYLE_GUIDE palette — only the layout is new. */
+.cf-lensbar {{ display:flex; align-items:stretch; gap:7px; margin:0 0 9px; }}
+.cf-lenstab {{
+  flex:1; min-width:0; background:{TOKENS["bg_panel"]}; border:1px solid {TOKENS["border_panel"]};
+  border-top:2px solid {TOKENS["border_panel"]}; border-radius:8px; padding:9px 11px;
+}}
+.cf-lenstab.is-active {{
+  background:rgba(88,196,221,0.10); border-color:rgba(88,196,221,0.38); border-top-color:{TOKENS["accent"]};
+}}
+.cf-lenstabhead {{ display:flex; align-items:center; gap:6px; }}
+.cf-lenstabcode {{
+  font-family:{_MONO}; font-size:8.5px; letter-spacing:0.06em; padding:1px 5px; border-radius:4px;
+  flex:none; background:rgba(255,255,255,0.04); color:{TOKENS["text_faint"]};
+}}
+.cf-lenstab.is-active .cf-lenstabcode {{ background:rgba(88,196,221,0.18); color:#8fdcec; }}
+.cf-lenstablab {{
+  font-size:11px; font-weight:500; color:{TOKENS["text_muted"]}; overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap;
+}}
+.cf-lenstab.is-active .cf-lenstablab {{ font-weight:600; color:{TOKENS["text"]}; }}
+.cf-lenstabtally {{ font-family:{_MONO}; font-size:9px; letter-spacing:0.03em; color:{TOKENS["text_faint"]}; margin-top:5px; }}
+/* persistent read-state key — "unread" must never be read as "found nothing" */
+.cf-lenskey {{
+  display:flex; align-items:center; gap:14px; flex-wrap:wrap; padding:7px 11px;
+  border:1px solid rgba(255,255,255,0.05); border-radius:8px; background:rgba(255,255,255,0.012);
+  margin-bottom:12px;
+}}
+.cf-lenskeylab {{ font-family:{_MONO}; font-size:9px; letter-spacing:0.1em; color:{TOKENS["text_faint"]}; }}
+.cf-lenskeyitem {{ display:flex; align-items:center; gap:6px; font-size:10px; color:{TOKENS["text_faint"]}; }}
+.cf-lenskeyitem .cf-lensmark {{ width:16px; height:16px; }}
+.cf-lenskeyitem b {{ font-family:{_MONO}; font-size:9.5px; font-weight:600; letter-spacing:0.05em; }}
+.cf-lenshead {{
+  background:{TOKENS["bg_panel"]}; border:1px solid {TOKENS["border_panel"]}; border-radius:9px;
+  padding:12px 14px; margin:10px 0 11px;
+}}
+.cf-lensheadline {{ display:flex; align-items:baseline; gap:9px; flex-wrap:wrap; }}
+.cf-lenscode {{
+  font-family:{_MONO}; font-size:9.5px; letter-spacing:0.08em; color:{TOKENS["accent"]};
+  border:1px solid rgba(88,196,221,0.25); background:rgba(88,196,221,0.1);
+  border-radius:4px; padding:2px 6px;
+}}
+.cf-lenstitle {{ font-size:14px; font-weight:600; color:{TOKENS["text"]}; letter-spacing:0.01em; }}
+.cf-lensfw {{ font-family:{_MONO}; font-size:9.5px; color:{TOKENS["accent"]}; letter-spacing:0.05em; }}
+.cf-lensscope {{ font-size:10.5px; color:{TOKENS["text_muted"]}; margin-top:6px; line-height:1.45; max-width:104ch; }}
+.cf-lenssrc {{ font-family:{_MONO}; font-size:9px; color:{TOKENS["text_faint"]}; margin-top:5px; }}
+.cf-lensrule {{ display:flex; align-items:center; gap:10px; margin:2px 0 10px; }}
+.cf-lenscount {{ font-family:{_MONO}; font-size:10px; color:{TOKENS["text_faint"]}; }}
+.cf-lenscols {{
+  display:grid; grid-template-columns:104px 138px 1fr 214px; gap:9px; padding:0 2px 6px;
+  font-family:{_MONO}; font-size:9px; letter-spacing:0.08em; color:#3d4654;
+}}
+/* state band — carries the state label once per group, so rows do not repeat it */
+.cf-lensband {{ display:flex; align-items:center; gap:9px; margin:12px 0 6px; }}
+.cf-lensband.is-empty {{ opacity:0.55; }}
+.cf-lensbandmark {{
+  font-family:{_MONO}; font-size:10px; width:18px; height:18px; border-radius:4px;
+  display:inline-flex; align-items:center; justify-content:center; flex:none;
+}}
+.cf-lensbandlab {{ font-family:{_MONO}; font-size:10px; font-weight:600; letter-spacing:0.1em; }}
+.cf-lensbandcount {{ font-family:{_MONO}; font-size:9.5px; color:{TOKENS["text_faint"]}; }}
+.cf-lensbandmeans {{ font-size:9.5px; color:#3d4654; }}
+.cf-lensempty {{ font-family:{_MONO}; font-size:9.5px; color:#3d4654; padding:2px 0 10px 26px; }}
+.cf-lensrow {{
+  display:grid; grid-template-columns:104px 138px 1fr 214px; gap:9px; align-items:stretch;
+  margin-bottom:7px;
+}}
+.cf-lensrow.is-dim {{ opacity:0.72; }}
+.cf-lenscand, .cf-lensstate, .cf-lensbody, .cf-lensside {{
+  border-radius:8px; padding:9px 11px; display:flex; flex-direction:column; justify-content:center;
+}}
+.cf-lenscand {{ background:{TOKENS["bg_panel"]}; border:1px solid {TOKENS["border_bar"]}; }}
+.cf-lensrow.is-untradeable .cf-lenscand {{ border-color:rgba(248,81,73,0.32); }}
+.cf-lensmark {{
+  font-family:{_MONO}; font-size:10px; width:16px; height:16px; border-radius:4px;
+  display:inline-flex; align-items:center; justify-content:center; flex:none;
+  background:rgba(255,255,255,0.05);
+}}
+.cf-lenstag {{ font-family:{_MONO}; font-size:8.5px; letter-spacing:0.04em; margin-top:4px; line-height:1.35; }}
+.cf-lensbody {{ background:rgba(255,255,255,0.015); border:1px solid {TOKENS["border_panel"]}; }}
+.cf-lensdetail {{ font-size:10.5px; color:{TOKENS["text_secondary"]}; line-height:1.5; }}
+.cf-lensnote {{ font-size:9px; color:{TOKENS["text_faint"]}; margin-top:6px; line-height:1.4; }}
+.cf-conflnote {{ font-size:10px; color:{TOKENS["text_muted"]}; margin-top:8px; line-height:1.45; }}
+.cf-lensside {{ background:rgba(255,255,255,0.015); border:1px solid {TOKENS["border_panel"]}; }}
+.cf-lensside.is-untradeable {{ background:rgba(248,81,73,0.07); border-color:rgba(248,81,73,0.42); }}
+/* five fixed slots — categorical set membership, never a proportion */
+.cf-lensstrip {{ display:flex; gap:3px; }}
+.cf-lensslot {{
+  font-family:{_MONO}; font-size:8px; letter-spacing:0.04em; padding:3px 0; border-radius:4px;
+  text-align:center; flex:1;
+}}
+.cf-lensslot.is-on {{ background:rgba(88,196,221,0.12); border:1px solid rgba(88,196,221,0.3); color:{TOKENS["accent"]}; }}
+.cf-lensslot.is-self {{ background:rgba(255,255,255,0.05); border:1px dashed rgba(255,255,255,0.16); color:{TOKENS["text_muted"]}; }}
+.cf-lensslot.is-off {{ background:transparent; border:1px solid rgba(255,255,255,0.05); color:#2f3846; }}
+.cf-lenschip {{
+  font-family:{_MONO}; font-size:8px; letter-spacing:0.04em; padding:2px 6px; border-radius:4px;
+  background:rgba(88,196,221,0.1); color:{TOKENS["accent"]}; border:1px solid rgba(88,196,221,0.22);
+  display:inline-block; margin:0 3px 3px 0;
+}}
+.cf-lensverdict {{ font-family:{_MONO}; font-size:9px; color:{TOKENS["text_faint"]}; margin-top:7px; }}
+.cf-vd-armed {{ color:{TOKENS["armed_text"]}; }}
+.cf-vd-watch {{ color:#8fdcec; }}
+.cf-vd-rejected {{ color:{TOKENS["text_muted"]}; }}
+.cf-conflset {{ display:flex; flex-wrap:wrap; align-items:center; }}
+.cf-conflcount {{ font-family:{_MONO}; font-weight:600; font-size:18px; color:{TOKENS["text"]}; }}
+.cf-conflcount.is-muted {{ color:{TOKENS["text_muted"]}; }}
+.cf-conflof {{ font-family:{_MONO}; font-size:9px; color:{TOKENS["text_faint"]}; }}
+/* RULE A on a confluence row: muted when tradeable, the loudest element when not */
+.cf-rulea {{
+  font-family:{_MONO}; font-size:10px; font-weight:600; letter-spacing:0.05em; line-height:1.35;
+  color:{TOKENS["text_muted"]};
+}}
+.cf-rulea.is-not {{ font-size:11px; color:{TOKENS["sell"]}; }}
+/* state palette — deliberately NOT the pipeline pass/fail palette */
+.cf-lensstate.st-flagged  {{ background:rgba(63,185,80,0.06);   border:1px solid rgba(63,185,80,0.26); }}
+.cf-lensstate.st-contrary {{ background:rgba(248,81,73,0.06);   border:1px solid rgba(248,81,73,0.28); }}
+.cf-lensstate.st-neutral  {{ background:rgba(88,196,221,0.05);  border:1px solid rgba(88,196,221,0.2); }}
+.cf-lensstate.st-na       {{ background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.07); }}
+.cf-lensstate.st-unread   {{ background:rgba(255,255,255,0.015);border:1px solid rgba(255,255,255,0.05); }}
+.st-flagged  .cf-lensmark, .st-flagged  .cf-lenstag, .st-flagged  .cf-lensbandmark, .st-flagged  .cf-lensbandlab {{ color:#7ee08a; }}
+.st-contrary .cf-lensmark, .st-contrary .cf-lenstag, .st-contrary .cf-lensbandmark, .st-contrary .cf-lensbandlab {{ color:#f6a9a4; }}
+.st-neutral  .cf-lensmark, .st-neutral  .cf-lenstag, .st-neutral  .cf-lensbandmark, .st-neutral  .cf-lensbandlab {{ color:#8fdcec; }}
+.st-na       .cf-lensmark, .st-na       .cf-lenstag, .st-na       .cf-lensbandmark, .st-na       .cf-lensbandlab {{ color:{TOKENS["text_muted"]}; }}
+.st-unread   .cf-lensmark, .st-unread   .cf-lenstag, .st-unread   .cf-lensbandmark, .st-unread   .cf-lensbandlab {{ color:{TOKENS["text_faint"]}; }}
+.cf-lensband.st-flagged  .cf-lensbandmark {{ background:rgba(63,185,80,0.06);   border:1px solid rgba(63,185,80,0.26); }}
+.cf-lensband.st-contrary .cf-lensbandmark {{ background:rgba(248,81,73,0.06);   border:1px solid rgba(248,81,73,0.28); }}
+.cf-lensband.st-neutral  .cf-lensbandmark {{ background:rgba(88,196,221,0.05);  border:1px solid rgba(88,196,221,0.2); }}
+.cf-lensband.st-na       .cf-lensbandmark {{ background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.07); }}
+.cf-lensband.st-unread   .cf-lensbandmark {{ background:rgba(255,255,255,0.015);border:1px solid rgba(255,255,255,0.05); }}
+.cf-lensfoot {{ margin-top:18px; font-size:10px; color:{TOKENS["text_faint"]}; line-height:1.6; max-width:120ch; }}
+/* switcher card + invisible overlay button (the cfwatch/cfpipe pattern) */
+div[class*="st-key-cflenstab-"] {{ position:relative; }}
+div[class*="st-key-cflenstab-"] div[data-testid="stMarkdownContainer"] {{ margin:0 !important; }}
+div[class*="st-key-cflenspick-"] {{ position:absolute; inset:0; z-index:2; width:100% !important; height:100% !important; }}
+div[class*="st-key-cflenspick-"] div[data-testid="stButton"],
+div[class*="st-key-cflenspick-"] div[data-testid="stButton"] > div {{
+  position:absolute; inset:0; width:100% !important; height:100% !important; min-height:0; margin:0; padding:0;
+}}
+div[class*="st-key-cflenspick-"] button {{
+  position:absolute; inset:0; width:100% !important; height:100% !important; min-height:0;
+  padding:0; background:transparent; border:1px solid transparent; border-radius:8px; color:transparent;
+}}
+div[class*="st-key-cflenspick-"] button:hover {{ background:rgba(88,196,221,0.035); border-color:rgba(88,196,221,0.28); }}
+div[class*="st-key-cflenspick-"] button p {{ display:none; }}
 /* clickable pipeline row: card HTML + an invisible full-width overlay button
    (same pattern as the watchlist cards) — full-row click opens the evidence. */
 div[class*="st-key-cfpipe-"] {{ position:relative; margin-bottom:8px; }}
@@ -1518,6 +1663,199 @@ def pipeline_footer_html() -> str:
         'stops at the first stage it fails — later stages are never evaluated (NOT EVALUATED). '
         'Tap any row to open the evidence pages — broker flow, foreign flow, accumulation '
         'detector, money replay — for that name. Observation, not a recommendation.</div>'
+    )
+
+
+# --- Framework Lenses (the five frameworks read apart) ---------------------------------
+
+# lens-state → glyph + CSS class. Deliberately NOT the pipeline's pass/fail palette (and
+# never its ✓ ✕ ▽ ⤶ glyph set): a lens read is an observation, not a stage verdict, and the
+# two must never look alike on screen. Colours live in the sheet, keyed off the class.
+_LENS_STATE_STYLE = {
+    "FLAGGED":        {"mark": "◉", "cls": "st-flagged", "fg": "#7ee08a", "bg": "rgba(63,185,80,0.06)", "bd": "rgba(63,185,80,0.26)"},
+    "CONTRARY":       {"mark": "◐", "cls": "st-contrary", "fg": "#f6a9a4", "bg": "rgba(248,81,73,0.06)", "bd": "rgba(248,81,73,0.28)"},
+    "NEUTRAL":        {"mark": "○", "cls": "st-neutral", "fg": "#8fdcec", "bg": "rgba(88,196,221,0.05)", "bd": "rgba(88,196,221,0.2)"},
+    "NOT_APPLICABLE": {"mark": "—", "cls": "st-na", "fg": "#8b98a9", "bg": "rgba(255,255,255,0.02)", "bd": "rgba(255,255,255,0.07)"},
+    "UNAVAILABLE":    {"mark": "·", "cls": "st-unread", "fg": "#5a6675", "bg": "rgba(255,255,255,0.015)", "bd": "rgba(255,255,255,0.05)"},
+}
+
+# engine verdict → colour class. Muted on purpose: the verdict is stated, not celebrated.
+_LENS_VERDICT_CLASS = {"ARMED": "cf-vd-armed", "WATCH": "cf-vd-watch"}
+
+
+def lens_tab_html(tab: dict, *, active: bool) -> str:
+    """One switcher card: lens code chip + section name + the day's tally for that lens.
+    The tally is a count of symbols (RULE B) — it ranks nothing."""
+    cls = "cf-lenstab is-active" if active else "cf-lenstab"
+    return (
+        f'<div class="{cls}">'
+        '<div class="cf-lenstabhead">'
+        f'<span class="cf-lenstabcode">{escape(tab["code"])}</span>'
+        f'<span class="cf-lenstablab">{escape(tab["label"])}</span></div>'
+        f'<div class="cf-lenstabtally">{escape(tab["tally"])}</div>'
+        "</div>"
+    )
+
+
+def lens_key_html(items) -> str:
+    """The persistent read-state key. All five states, always — an absent state is stated,
+    never omitted, so "unread" can never be read as "found nothing"."""
+    cells = "".join(
+        f'<span class="cf-lenskeyitem {_LENS_STATE_STYLE[i["state"]]["cls"]}">'
+        f'<span class="cf-lensmark">{_LENS_STATE_STYLE[i["state"]]["mark"]}</span>'
+        f'<b>{escape(i["label"])}</b>{escape(i["means"])}</span>'
+        for i in items
+    )
+    return f'<div class="cf-lenskey"><span class="cf-lenskeylab">READ STATES</span>{cells}</div>'
+
+
+def lens_columns_html(captions) -> str:
+    """The four column captions above a section's rows."""
+    cells = "".join(f"<div>{escape(c)}</div>" for c in captions)
+    return f'<div class="cf-lenscols">{cells}</div>'
+
+
+def lens_section_header_html(header: dict, count_str: str) -> str:
+    """One framework section's header: lens code, title, the framework named, what it
+    reads, and where the read comes from (provenance, never a claim)."""
+    code = header.get("code")
+    code_html = f'<span class="cf-lenscode">{escape(code)}</span>' if code else ""
+    return (
+        '<div class="cf-lenshead">'
+        '<div class="cf-lensheadline">'
+        f"{code_html}"
+        f'<span class="cf-lenstitle">{escape(header["title"])}</span>'
+        f'<span class="cf-lensfw">{escape(header["framework"])}</span></div>'
+        f'<div class="cf-lensscope">{escape(header["scope"])}</div>'
+        f'<div class="cf-lenssrc">source: {escape(header["source"])}</div>'
+        "</div>"
+        '<div class="cf-lensrule">'
+        '<div class="cf-lanerule"></div>'
+        f'<span class="cf-lenscount">{escape(count_str)}</span>'
+        "</div>"
+    )
+
+
+def lens_band_html(band: dict) -> str:
+    """The header rule for one read state — the group's mark, label, count and what the
+    state means. Rendered whether or not the band holds rows; at zero it says so."""
+    s = _LENS_STATE_STYLE[band["state"]]
+    empty = " is-empty" if not band["count"] else ""
+    html = (
+        f'<div class="cf-lensband {s["cls"]}{empty}">'
+        f'<span class="cf-lensbandmark">{s["mark"]}</span>'
+        f'<span class="cf-lensbandlab">{escape(band["label"])}</span>'
+        f'<span class="cf-lensbandcount">{escape(band["count_str"])}</span>'
+        '<div class="cf-lanerule"></div>'
+        f'<span class="cf-lensbandmeans">{escape(band["means"])}</span>'
+        "</div>"
+    )
+    if not band["count"]:
+        html += f'<div class="cf-lensempty">{escape(band["empty_note"])}</div>'
+    return html
+
+
+def _lens_chips(labels) -> str:
+    return "".join(f'<span class="cf-lenschip">{escape(l)}</span>' for l in labels)
+
+
+def _lens_strip_html(slots) -> str:
+    """The fixed five-slot cross-lens strip. Every slot is the same width at the same x
+    whatever the count — set membership, never a proportion, never a meter (RULE B)."""
+    cells = "".join(
+        f'<span class="cf-lensslot is-{escape(s["slot"])}">{escape(s["code"])}</span>'
+        for s in slots
+    )
+    return f'<div class="cf-lensstrip">{cells}</div>'
+
+
+def _lens_verdict_html(engine_state: str) -> str:
+    cls = _LENS_VERDICT_CLASS.get(engine_state, "cf-vd-rejected")
+    return (
+        f'<div class="cf-lensverdict">pipeline: '
+        f'<span class="{cls}">{escape(engine_state)}</span></div>'
+    )
+
+
+def lens_row_html(row: dict) -> str:
+    """One symbol as one framework read it: ticker · state mark + tag · the framework's
+    own sentence · which lenses also flagged it + the engine's own verdict. The state
+    *word* lives on the band above the group, not repeated on every row."""
+    s = _LENS_STATE_STYLE[row["state"]]
+    dim = " is-dim" if row.get("dim") else ""
+    cand = (
+        '<div class="cf-lenscand">'
+        f'<div class="cf-candtick">{escape(row["ticker"])}</div>'
+        f'<div class="cf-candmeta">Track {escape(row["track"])}</div>'
+        "</div>"
+    )
+    state = (
+        f'<div class="cf-lensstate {s["cls"]}">'
+        f'<div class="cf-cellhead"><span class="cf-lensmark">{s["mark"]}</span></div>'
+        f'<div class="cf-lenstag">{escape(row["tag"])}</div>'
+        "</div>"
+    )
+    note = f'<div class="cf-lensnote">{escape(row["note"])}</div>' if row.get("note") else ""
+    body = (
+        '<div class="cf-lensbody">'
+        f'<div class="cf-lensdetail">{escape(row["detail"])}</div>'
+        f"{note}</div>"
+    )
+    side = (
+        '<div class="cf-lensside">'
+        f'{_lens_strip_html(row.get("strip") or ())}'
+        f'{_lens_verdict_html(row["engine_state"])}'
+        "</div>"
+    )
+    return f'<div class="cf-lensrow{dim}">{cand}{state}{body}{side}</div>'
+
+
+def confluence_row_html(row: dict) -> str:
+    """One symbol several frameworks flagged. The count is a set size — never a score.
+    When RULE A rejected the name, the gate line is the loudest element in the row:
+    framework agreement must never out-shout the gate it cannot override."""
+    untradeable = "" if row["tradeable"] else " is-untradeable"
+    cand = (
+        '<div class="cf-lenscand">'
+        f'<div class="cf-candtick">{escape(row["ticker"])}</div>'
+        f'<div class="cf-candmeta">Track {escape(row["track"])}</div>'
+        "</div>"
+    )
+    muted = "" if row["tradeable"] else " is-muted"
+    count = (
+        '<div class="cf-lensstate st-neutral">'
+        '<div class="cf-cellhead">'
+        f'<span class="cf-conflcount{muted}">{row["n_lenses"]}</span>'
+        f'<span class="cf-conflof">of {row["n_total"]} lenses</span></div>'
+        '<div class="cf-lenstag">FRAMEWORKS AGREEING</div>'
+        "</div>"
+    )
+    body = (
+        '<div class="cf-lensbody">'
+        f'{_lens_strip_html(row.get("strip") or ())}'
+        f'<div class="cf-lensnote cf-conflnote">{escape(row["note"])}</div>'
+        "</div>"
+    )
+    rule_a = row.get("rule_a") or (
+        "RULE A · TRADEABLE PHASE" if row["tradeable"] else "RULE A · NOT TRADEABLE"
+    )
+    side = (
+        f'<div class="cf-lensside{untradeable}">'
+        f'<div class="cf-rulea{"" if row["tradeable"] else " is-not"}">{escape(rule_a)}</div>'
+        f'{_lens_verdict_html(row["engine_state"])}'
+        "</div>"
+    )
+    return f'<div class="cf-lensrow{untradeable}">{cand}{count}{body}{side}</div>'
+
+
+def lens_footer_html() -> str:
+    return (
+        '<div class="cf-lensfoot">These sections read each framework <b>apart</b>; the '
+        'Signal Pipeline reads them <b>fused</b> into the locked §2 gate chain, and only the '
+        'pipeline decides anything. A lens can flag a name the pipeline rejects — that is the '
+        'point of the split, not a contradiction. Framework agreement is a count of '
+        'observations, never a score, a probability, or a buy/sell claim (RULE B), and it '
+        'never overrides the RULE A phase gate. Observation, not a recommendation.</div>'
     )
 
 
