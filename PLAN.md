@@ -901,6 +901,61 @@ every measurement honestly reports `UNMEASURED`. Cross-checking delisting dates 
 the IDX *Pengumuman* archive (§3.1) would replace `ANNUAL_SNAPSHOT` precision with exact
 dates; the loader takes them as-is via `effective_to` when that happens.
 
+## Slice 23 — Framework Lenses: the five frameworks read apart + confluence  ✅  (2026-08-17)
+
+> **Presentation-only** (slice-14 nav posture): a new observation surface over output the
+> engine already produced; nothing decides, scores, gates, or arms → **no spec bump**.
+> Operator ask: *stop fusing the five frameworks into one gate chain — give each its own
+> section, and aggregate the names more than one of them flags.*
+
+**Goal:** the §2 pipeline reads the frameworks **fused** — a candidate stops at the first
+stage it fails, so a name RULE A rejects becomes invisible to every other framework that
+did see something. This slice reads them **apart**: one switchable section per framework,
+plus a confluence section. The pipeline is untouched and remains the only thing that decides.
+
+- [x] **Lens layer** (`signals/frameworks.py`): `read_symbol()` maps each framework onto the
+      signal it already owns — Wyckoff → `phase.py`; Wyckoff 2.0 → `volume_profile.py`
+      (reusing `confluences()`); VPA → `vpa.py`; Bandarmology → the `broker_concentration`
+      component + `ownership` + the bandar-family §5 vetoes; Magic Formula →
+      `fundamentals/tilt.py` over the SCR-4 cache — and emits a `LensRead`: a **category and
+      a sentence**, never a number.
+- [x] **RULE A is structural, not tested**: a lens is a *pure function of an already-computed*
+      `EngineResult`, so it cannot arm a name, un-reject one, or reopen the C/D gate. Every
+      row and every confluence row carries the engine's own verdict; a name four lenses like
+      that RULE A rejected reads as exactly that.
+- [x] **RULE B by construction**: the only digits are **counts of symbols**. The confluence
+      figure is a **set size** (how many frameworks agree) — the same species of fact as the
+      pipeline's "3 armed · 2 watch" — never weighted, never ranked into quality, never
+      multiplied into SMS (asserted: §4 weights byte-identical across a full pass).
+- [x] **Five states, not two** — `FLAGGED` / `CONTRARY` / `NEUTRAL` / `UNAVAILABLE` /
+      `NOT_APPLICABLE`: "could not read this name" never renders like "read it and named
+      nothing", and §7/LD-7's deliberate abstention on FLOW_ONLY sectors is its own state.
+      Each section's census always names the unread count, including at zero.
+- [x] **Frameworks may disagree on screen**: the ARMED archetype's flat high-volume cluster
+      reads CHURN under VPA — the lens says so while the pipeline still arms the name.
+- [x] **View + shell** (`ui/lens_view.py`, `shell.lens_*_html`): full-width dedicated surface
+      (`cf_view == "lenses"`, no ARMED rail beside it — the LD-14 catalog's posture), a
+      six-button section switcher, and a palette deliberately unlike the pipeline's pass/fail
+      stage marks. Every row also names the *other* lenses that flagged the same name.
+- [x] **Tests** (`tests/test_frameworks.py`, `tests/test_app_pipeline.py`): purity over the
+      engine result, a RULE-A-rejected name still read by the other four lenses, per-lens
+      archetypes, missing ≠ zero for all five lenses, FLOW_ONLY abstention, confluence set
+      semantics + ordering + minimum, no score/verb leakage, view-model ordering, HTML escape,
+      and app-level open → switch all six sections → back. **34 new tests (762 total, green).**
+- [x] **Composition redesign** (same day, `design/FRAMEWORK_LENSES_REDESIGN.md` +
+      `design/framework-lenses-redesign.html`): **layout only — tokens, states, copy and rules
+      unchanged.** Six plain buttons → six **tab cards** carrying each lens's tally (the
+      switcher becomes a census of the day); rows grouped under **state bands** that render
+      even at zero (`no name in this state today — stated, not omitted`) with the state word
+      lifted off the row; variable cross-lens chips → a **fixed five-slot strip**
+      (`WYK · VP · VPA · BND · MF`) whose slots are categorical and fixed-width, so agreement
+      can never read as a meter (RULE B); `N/A`/`UNREAD` rows dimmed but never collapsed; a
+      persistent read-state key and column captions above every section; and on a confluence
+      row RULE A rejected, `RULE A · NOT TRADEABLE` becomes the **loudest element in the row**
+      while the agreement count is muted — agreement must never out-shout the gate.
+      Nothing removed. **10 further tests (773 total, green);** `design/HANDOFF_v2.md`
+      §Screens 6 rewritten to the shipped composition.
+
 ## Acceptance criteria (definition of done — `LOCKED_SPEC.md` §13)
 
 - [x] Look-ahead test passes (no `availability_ts >= decision_ts`).
