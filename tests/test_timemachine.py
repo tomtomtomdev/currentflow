@@ -123,6 +123,18 @@ def _authed_app(timeout: float = 120) -> AppTest:
     return at
 
 
+def _pipeline_app(timeout: float = 120) -> AppTest:
+    """The terminal on the Signal Pipeline. The app lands on Framework Lenses
+    (`app.DEFAULT_VIEW`), so the pipeline-side Time Machine assertions (candidate row
+    selectors, the Fast-Mode toggle) route there explicitly instead of silently skipping.
+    `cf_view = None` is exactly what the `‹ Pipeline` back button sets."""
+    at = _authed_app(timeout)
+    at.session_state["cf_view"] = None
+    at.run()
+    assert not at.exception, at.exception
+    return at
+
+
 def _committed_day(at: AppTest) -> Date | None:
     """The Time Machine day the app currently holds (SafeSessionState has no `.get`)."""
     return at.session_state["cf_asof_day"] if "cf_asof_day" in at.session_state else None
@@ -212,7 +224,7 @@ def test_rewound_asof_stamp_moves_back_to_the_last_visible_day(_session):
 def test_rewound_terminal_lists_only_names_visible_then(_session):
     """The candidate list is drawn from names with a row already visible at the rewound
     moment — never a name first ingested later, listed and then rendered empty."""
-    at = _authed_app()
+    at = _pipeline_app()
     live_syms = set(_app_symbols(at))
     if not live_syms:
         pytest.skip("no data ingested in the checked-in store")
@@ -249,7 +261,7 @@ def _asof_stamp(at: AppTest) -> Date | None:
 def test_arming_fast_mode_is_disabled_while_rewound(_session):
     """A rewound view must not drive live state: arming is a WRITE and the paper book is
     a live record, so the toggle is disabled rather than silently acting at today's date."""
-    at = _authed_app()
+    at = _pipeline_app()
     at.session_state["cf_asof_day"] = Date(2026, 6, 1)  # inside the ingested range
     at.run()
     assert not at.exception, at.exception

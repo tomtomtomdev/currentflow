@@ -152,6 +152,13 @@ The terminal's look & interaction are specified as a **high-fidelity design hand
 > anything (RULE A structural); its only digits are counts of symbols, and the confluence figure is a
 > **set size**, never a score and never multiplied into SMS (RULE B). Framework agreement never
 > overrides the phase gate, and every row says so by carrying the engine's own verdict.
+>
+> **Landing view (2026-08-17):** the terminal now *opens* on **Framework Lenses**
+> (`app.DEFAULT_VIEW`, resolved by the pure `app._active_view`); `‹ Pipeline` leaves it and the
+> pipeline's `▸ Framework Lenses` button returns. This is **chrome only** — which surface paints
+> first decides nothing. Signal Pipeline remains the *sole deciding* surface (the §2 gate chain and
+> the only place a verdict is formed), and the lens surface is still a pure read downstream of it,
+> so RULE A/B are untouched. Pipeline-side tests navigate there explicitly rather than skip.
 
 - [`design/HANDOFF_v2.md`](design/HANDOFF_v2.md) — **authoritative v2 per-screen spec** (pipeline +
   the four evidence tabs, tokens, data model, interactions). Read this first for the current layout.
@@ -189,7 +196,8 @@ module reconstructs from stored `as_of` (look-ahead audit). Keep the observation
 **server-authoritative** (promoted by the paper-trade engine), never a client toggle.
 
 The §9 modules were built as slices 2–8 (each maps to `LOCKED_SPEC.md` §9). **v2 reorganizes the
-navigation, not the spec:** Signal Pipeline is the home; Broker/Foreign/Accum/Replay are its evidence
+navigation, not the spec:** Signal Pipeline is the deciding surface (Framework Lenses is what the
+terminal now lands on — see above); Broker/Foreign/Accum/Replay are the pipeline's evidence
 tabs; and Smart Heatmap, Sector Rotate, Risk Monitor, SMS/Rank, AI Ranking, Daily Top, ML are no
 longer top-level (code + tests retained — see PROGRESS.md decisions). No `LOCKED_SPEC.md` bump — RULE
 A/B and §9's module *behavior* are unchanged; only the shell's nav model changed.

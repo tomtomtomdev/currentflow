@@ -794,7 +794,10 @@ class Store:
         r = self._con.execute(sql, [symbol, decision_ts]).fetchone()
         if r is None:
             return None
-        indexes = tuple(i for i in r[2].split(",") if i)  # "" → () (no membership known)
+        # "" or a NULL membership string → () = "no membership known", never a crash.
+        # `track.assign_track` reads () as Track B, so absent data can never be mistaken
+        # for Track A (missing ≠ zero); a torn/partial roster row degrades, not explodes.
+        indexes = tuple(i for i in (r[2] or "").split(",") if i)
         return SymbolIndexRow(symbol=r[0], as_of=r[1], indexes=indexes)
 
     # --- point-in-time index roster (slice 20) ------------------------------------
