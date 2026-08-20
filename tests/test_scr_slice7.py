@@ -10,7 +10,7 @@ from datetime import datetime
 from currentflow.dal.client import ExodusClient
 from currentflow.fundamentals.tilt import TiltKind, classify_tilt
 from currentflow.screeners.scr3 import SCR3_TEMPLATE, run_scr3
-from currentflow.screeners.scr4 import SCR4_TEMPLATE, run_scr4
+from currentflow.screeners.scr4 import NO_GATE_SENTINEL, SCR4_TEMPLATE, run_scr4
 from tests.conftest import scripted_transport
 
 DAY = Date(2026, 6, 30)
@@ -47,10 +47,24 @@ def test_scr3_template_matches_locked_spec():
     assert rules[(13373, "0")] == (">", "basic")        # RS 3M > 0
 
 
-def test_scr4_template_is_ranking_pull_no_filters():
+def test_scr4_template_is_ranking_pull_that_never_gates():
+    """SCR-4 carries one filter per ranking column, each bounded so wide it excludes
+    nothing — the only way exodus will return the columns at all (see below)."""
     assert SCR4_TEMPLATE["name"] == "scr4-fundamental-tilt"
     assert SCR4_TEMPLATE["sequence"] == "13474,13411,2897,15276,1461,2892"
-    assert json.loads(SCR4_TEMPLATE["filters"]) == []   # NOT a gate — fundamentals never block entry
+
+    filters = json.loads(SCR4_TEMPLATE["filters"])
+    # One filter per sequenced fitem: exodus derives the result columns from the RULES,
+    # and silently wipes `sequence` when `filters` is empty (live-verified 2026-08-12),
+    # so a filter-less SCR-4 comes back with zero fundamental values.
+    assert [f["item1"] for f in filters] == [13474, 13411, 2897, 15276, 1461, 2892]
+    for f in filters:
+        # NOT a gate (§7 / LD-6): fundamentals never block entry. Every bound is the
+        # wide sentinel — no `> 0` may return, since that excludes loss-makers and
+        # negative-EBIT names (the 2026-08-12 drift this test pins shut).
+        assert f["type"] == "basic" and f["operator"] == ">"
+        assert f["item2"] == NO_GATE_SENTINEL
+        assert float(f["item2"]) < 0
 
 
 # --- SCR-3 run / cache / look-ahead --------------------------------------------------

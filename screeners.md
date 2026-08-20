@@ -29,7 +29,7 @@ IHSG universe (~900)
 |---|---|
 | `universe` | JSON string. All: `{"scope":"IHSG","scopeID":"0","name":"IHSG"}`. Index scope: `{"scope":"idx","scopeID":"550","name":"LQ45"}`. **scopeIDs (from `screener/universe`):** LQ45 `550`, IDX80 `1000003288`, IDX30 `559`, KOMPAS100 `555`, **IDXSMC-LIQ `1000003583`** (small-mid liquid → Track B), IDXSMC-COM `1000003584`. |
 | `filters` | JSON string — array of filter objects (see below). AND-combined. |
-| `sequence` | comma-separated `fitem_id`s → result columns. |
+| `sequence` | comma-separated `fitem_id`s → result columns. **Only honored alongside non-empty `filters`** (live-verified 2026-08-12): post `"filters":"[]"` and the server wipes `sequence` to `[""]` and returns every row with an empty `results[]`. Columns are effectively derived from the **rules** — an attribute-only pull must carry a non-excluding filter per column (see SCR-4). |
 | `ordercol` / `ordertype` | sort column index (into `sequence`) / `ASC`\|`DESC`. |
 | `name`, `description`, `screenerid`, `type` | template identity; `type:"TEMPLATE_TYPE_CUSTOM"`. |
 | `page` / `limit` | pagination (**live-verified 2026-07-03**): integer `page` is REQUIRED — omitting it → `400 "Screener Page can't be empty"`; `limit` = page size (default 25). Response carries `totalrows`/`curpage`/`perpage`. The DAL sends `limit=SCREENER_PAGE_LIMIT` (900, one IHSG-sized page) and pages by `totalrows` — never a silent truncation. |
@@ -45,6 +45,14 @@ IHSG universe (~900)
 ```
 
 Operators: `>`, `<` (also `>=`,`<=`,`=`). Results return in `calcs[].results[]` as `{id, item, raw, display}` per company.
+
+**Run vs save** (live-verified 2026-08-12). The same POST does both — `SAVE_OR_RUN_SCREENER`:
+
+- **Run only** (what the DAL does): omit `save`. Nothing is persisted; a `name` is still required (`400 "Screener Name can't be empty"` without one).
+- **Save**: add `"save":"1"` plus `"screenerid":"<id>"` to update an existing saved screener (omit `screenerid` to create). **On write the filter keys drop their underscores** — `item1name`/`item2name`, not the `item1_name`/`item2_name` that reads return. Round-trip through `GET /screener/templates/{id}?type=TEMPLATE_TYPE_CUSTOM` to verify.
+- Listing / detail: `GET /screener/templates` (all saved), `GET /screener/templates/{id}`, `GET /screener/favorites`, `GET /screener/metric` (metric vocabulary), `GET /screener/universe` (scopeIDs), `GET /screener/preset` (Guru presets).
+
+The operator's saved Stockbit-side copies of these templates are a **convenience mirror, not the source of truth** — the pipeline posts the templates pinned in this file. A saved copy can drift from spec independently (it did: see the 2026-08-12 decisions-log entry).
 
 ---
 
@@ -205,10 +213,25 @@ Close > 20MA > 50MA with positive relative strength. Run on ARMED-candidate name
 Ranking pull, not a filter. Sort survivors by Magic Formula inputs to set conviction multiplier / hold horizon. Fundamentals never block entry.
 
 Sequence leads with **`13474` Rank(Magic Formula)(%)** — Stockbit's combined Greenblatt rank, used directly (no manual summing). Tercile → COMPOUNDER / NEUTRAL / SPECULATIVE. Supporting columns: `13411` ROC Greenblatt, `2897` EV/EBIT, `15276` Rank ROIC, `1461` ROE (bank proxy), `2892` Market Cap. Guru preset alternative: Stockbit ships `Greenblatt's Magic Formula` (`screener/preset` id 6, `TEMPLATE_TYPE_GURU`).
+
+> **⚠ API constraint (live-verified 2026-08-12) — a filter-less template returns no columns.**
+> Exodus derives a result's columns from the **rules**, not from `sequence`: posting
+> `"filters":"[]"` makes the server **wipe `sequence` to `[""]`** and return every row with an
+> empty `results[]`. The pre-2026-08-12 payload here (`"filters":"[]"` + a 6-item sequence) was
+> therefore **unrunnable as specified** — it would have fed `run_scr4` 978 rows of nothing, and
+> every tilt input would have been `None`. It had never run against live data (`scr4_fundamental_tilt`
+> was empty), so no stored row was affected.
+>
+> Each ranking column is now carried by a filter bounded at a **wide sentinel**
+> (`> -99999999999999`), which excludes nothing. Measured on 2026-08-12: **978 rows — identical
+> to the unfiltered universe — with all six columns populated.** SCR-4 remains a ranking pull,
+> not a gate. **`> 0` bounds are not acceptable** here: they drop loss-makers and negative-EBIT
+> names (Market Cap `> 0` alone cuts 978 → 966), which is exactly the gating §7 forbids.
+
 ```json
 {"name":"scr4-fundamental-tilt","type":"TEMPLATE_TYPE_CUSTOM","ordercol":0,"ordertype":"DESC","sequence":"13474,13411,2897,15276,1461,2892",
  "universe":"{\"scope\":\"IHSG\",\"scopeID\":\"0\",\"name\":\"IHSG\"}",
- "filters":"[]"}
+ "filters":"[{\"item1\":13474,\"item1_name\":\"Rank (Magic Formula)(%)\",\"item2\":\"-99999999999999\",\"item2_name\":\"\",\"multiplier\":\"0\",\"operator\":\">\",\"type\":\"basic\"},{\"item1\":13411,\"item1_name\":\"ROC Greenblatt\",\"item2\":\"-99999999999999\",\"item2_name\":\"\",\"multiplier\":\"0\",\"operator\":\">\",\"type\":\"basic\"},{\"item1\":2897,\"item1_name\":\"EV to EBIT (TTM)\",\"item2\":\"-99999999999999\",\"item2_name\":\"\",\"multiplier\":\"0\",\"operator\":\">\",\"type\":\"basic\"},{\"item1\":15276,\"item1_name\":\"Rank ROIC\",\"item2\":\"-99999999999999\",\"item2_name\":\"\",\"multiplier\":\"0\",\"operator\":\">\",\"type\":\"basic\"},{\"item1\":1461,\"item1_name\":\"Return on Equity (TTM)\",\"item2\":\"-99999999999999\",\"item2_name\":\"\",\"multiplier\":\"0\",\"operator\":\">\",\"type\":\"basic\"},{\"item1\":2892,\"item1_name\":\"Market Cap\",\"item2\":\"-99999999999999\",\"item2_name\":\"\",\"multiplier\":\"0\",\"operator\":\">\",\"type\":\"basic\"}]"}
 ```
 **Engine residual:** FLOW_ONLY dual-track (financials/utilities skip MF, use ROE/NIM/CAR proxy), point-in-time fundamentals for backtest (DATA_SOURCES §3.1).
 

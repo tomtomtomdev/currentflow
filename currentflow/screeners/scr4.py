@@ -1,8 +1,10 @@
 """SCR-4 · Fundamental Tilt reference (screeners.md; spec §7) — a RANKING pull, NOT a gate.
 
 Sorts survivors by Magic Formula inputs to set the conviction multiplier / hold horizon.
-Fundamentals never block entry (LD-6), so this screener carries **no filters** — it is a
-sorted attribute pull. Sequence leads with `13474` Rank(Magic Formula)(%), Stockbit's
+Fundamentals never block entry (LD-6), so this screener **excludes nothing** — it is a
+sorted attribute pull whose filters exist only to carry the columns (see `NO_GATE_SENTINEL`
+below; exodus drops the columns entirely if `filters` is empty). Sequence leads with
+`13474` Rank(Magic Formula)(%), Stockbit's
 combined Greenblatt rank, used directly (no manual summing) → tercile → COMPOUNDER /
 NEUTRAL / SPECULATIVE via `fundamentals.tilt`.
 
@@ -31,7 +33,20 @@ FITEM_RANK_ROIC = 15276
 FITEM_ROE = 1461             # bank / FLOW_ONLY sector proxy
 FITEM_MARKET_CAP = 2892
 
-# Template exactly as pinned in screeners.md (SCR-4) — ranking pull, no filters.
+# Exodus derives a result's columns from its RULES, not from `sequence`: posting an empty
+# `filters` makes the server wipe `sequence` to [""] and return every row with **zero**
+# values (live-verified 2026-08-12 — see screeners.md §SCR-4 + PROGRESS decisions log).
+# A filter-less SCR-4 therefore yields no Magic Formula data at all, which is the one thing
+# this screener exists to fetch.
+#
+# So each ranking column is carried by a filter bounded at a sentinel so wide nothing can
+# fall outside it — the pull stays a RANKING pull, never a gate (§7 / LD-6: fundamentals
+# never block entry). Live-measured: 978 rows, identical to the unfiltered universe, with
+# all six columns present. `> 0` bounds are NOT acceptable here — they drop loss-makers and
+# negative-EBIT names (966 rows on Market Cap alone), i.e. they gate.
+NO_GATE_SENTINEL = "-99999999999999"
+
+# Template exactly as pinned in screeners.md (SCR-4) — ranking pull, non-excluding bounds.
 SCR4_TEMPLATE: dict = {
     "name": "scr4-fundamental-tilt",
     "type": "TEMPLATE_TYPE_CUSTOM",
@@ -39,7 +54,23 @@ SCR4_TEMPLATE: dict = {
     "ordertype": "DESC",
     "sequence": "13474,13411,2897,15276,1461,2892",
     "universe": json.dumps({"scope": "IHSG", "scopeID": "0", "name": "IHSG"}),
-    "filters": json.dumps([]),
+    "filters": json.dumps(
+        [
+            {
+                "item1": fitem, "item1_name": name,
+                "item2": NO_GATE_SENTINEL, "item2_name": "",
+                "multiplier": "0", "operator": ">", "type": "basic",
+            }
+            for fitem, name in (
+                (FITEM_MF_RANK, "Rank (Magic Formula)(%)"),
+                (FITEM_ROC_GREENBLATT, "ROC Greenblatt"),
+                (FITEM_EV_EBIT, "EV to EBIT (TTM)"),
+                (FITEM_RANK_ROIC, "Rank ROIC"),
+                (FITEM_ROE, "Return on Equity (TTM)"),
+                (FITEM_MARKET_CAP, "Market Cap"),
+            )
+        ]
+    ),
 }
 
 
