@@ -410,7 +410,13 @@ def parse_screener_results(payload: Any) -> list[dict[str, Any]]:
         for res in c.get("results") or []:
             if not isinstance(res, dict):
                 continue
-            fid = _int(res.get("item") or res.get("id"))
+            # `id` is the numeric fitem; `item` is its human label ("Bandar Value") in
+            # the live shape, but a numeric fitem in older captures. Prefer `id`, fall
+            # back to `item` only when it actually parses as a number — reading `item`
+            # first silently dropped every value on live payloads.
+            fid = _int(res.get("id"))
+            if fid is None:
+                fid = _int(res.get("item"))
             if fid is not None:
                 values[fid] = _num(res.get("raw"))
         out.append({"symbol": sym, "values": values})

@@ -71,6 +71,39 @@ def test_parse_screener_results_tolerates_flat_list():
     assert rows == [{"symbol": "PTRO", "values": {}}]
 
 
+def test_parse_screener_results_reads_live_shape_id_is_the_fitem():
+    """Live capture (2026-08-16): `id` is the numeric fitem, `item` is its LABEL, `raw`
+    is a decimal string, and the company sits under a nested `company` object.
+
+    Preferring `item` here silently dropped every value (`_int("Bandar Value") is None`),
+    so the store cached symbol lists with NULL metrics. `id` must win.
+    """
+    payload = {
+        "data": {
+            "calcs": [
+                {
+                    "company": {"symbol": "TINS", "name": "Timah Tbk."},
+                    "results": [
+                        {"display": "173.64 B", "id": 14399,
+                         "item": "Bandar Value", "raw": "173640172775.38"},
+                        {"display": "104.17 B", "id": 14426,
+                         "item": "Bandar Value MA 20", "raw": "104169842159.91"},
+                        {"display": "6.48", "id": 14400,
+                         "item": "Bandar Accum/Dist", "raw": "6.48"},
+                    ],
+                }
+            ]
+        }
+    }
+    rows = parse_screener_results(payload)
+    assert [r["symbol"] for r in rows] == ["TINS"]
+    assert rows[0]["values"] == {
+        14399: pytest.approx(173640172775.38),
+        14426: pytest.approx(104169842159.91),
+        14400: pytest.approx(6.48),
+    }
+
+
 # --- client POST path -------------------------------------------------------------------------
 
 
